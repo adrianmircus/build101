@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# claude code (config personal; lo compartido es .claude/agents, CLAUDE.md y AGENTS.md)
+.claude/settings.local.json
+CLAUDE.local.md
 
 # vercel
 .vercel
