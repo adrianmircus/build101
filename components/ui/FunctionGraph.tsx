@@ -3,6 +3,7 @@
 import { compile } from "mathjs";
 import { useMemo } from "react";
 import type { GraphSpec } from "@/lib/contract";
+import { describeGraph, formatNumber as fmt } from "@/lib/graphText";
 
 // Draws a graph the AI described (functions of x and marked points), for students who can't draw it:
 // options to choose with eye gaze and the graph of what a student dictated. Expressions are evaluated with
@@ -59,14 +60,6 @@ function ticks(min: number, max: number): number[] {
   const out: number[] = [];
   for (let t = Math.ceil(min / step) * step; t <= max; t += step) if (t !== 0) out.push(t);
   return out;
-}
-
-const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2)).replace("-", "−");
-
-export function describeGraph(spec: GraphSpec): string {
-  const fns = spec.functions.map((f) => `y = ${f.expr}`).join(" y ");
-  const pts = spec.points.map((p) => `${p.label ? `${p.label} ` : ""}(${fmt(p.x)}, ${fmt(p.y)})`).join(", ");
-  return ["Gráfica", fns && `de ${fns}`, pts && `con los puntos ${pts}`].filter(Boolean).join(" ");
 }
 
 export function FunctionGraph({ spec, size = "lg" }: { spec: GraphSpec; size?: "sm" | "lg" }) {

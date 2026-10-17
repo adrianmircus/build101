@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Change, GenerationRequest, GenerationResponse, Question } from "@/lib/contract";
 import { GAZE_PROFILE, profileLabel, sortProfiles, usesGaze, usesVoice, VOICE_PROFILE } from "@/lib/profiles";
 import { type Api, withFallback } from "./client";
+import { describeGraph } from "@/lib/graphText";
 import { GraphSchema, toGraph } from "./graph";
 import { loadProfile, type ProfileData } from "./profiles";
 import { buildMessage, SYSTEM } from "./prompt";
@@ -15,7 +16,9 @@ const Output = z.object({
 });
 
 // The API doesn't support min/max on arrays: the SDK removes them from the schema and checks them on parse.
-const GazeOutput = Output.extend({
+// Without "content": the platform writes it from the questions, so the model doesn't write everything twice.
+const GazeOutput = z.object({
+  changes: Output.shape.changes,
   questions: z.array(
     z.object({
       exercise: z.number().int(),
@@ -38,6 +41,18 @@ function validQuestions(questions: Question[]): boolean {
       return new Set(ids).size === ids.length && ids.includes(q.answer);
     })
   );
+}
+
+// The multiple choice version as text, for the teacher to read: each question with its options, graphs in words.
+function questionsText(questions: Question[]): string {
+  return questions
+    .map((q, i) => {
+      const options = q.options
+        .map((o) => `- **${o.id})** ${o.text}${o.graph ? ` (${describeGraph(o.graph)})` : ""}`)
+        .join("\n");
+      return `**Pregunta ${i + 1}** (ejercicio ${q.exercise})\n\n${q.stem}\n\n${options}`;
+    })
+    .join("\n\n");
 }
 
 // Error with a message that can be shown as-is in the UI.
@@ -108,7 +123,7 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
     );
     checkStop(response.stop_reason);
     if (!response.parsed_output) throw new AgentError(INCOMPLETE);
-    const { content, changes } = response.parsed_output;
+    const { changes } = response.parsed_output;
     const questions: Question[] = response.parsed_output.questions.map((q) => ({
       ...q,
       options: q.options.map(({ graph, ...o }) => ({ ...o, ...(toGraph(graph) ? { graph: toGraph(graph) } : {}) })),
@@ -116,7 +131,7 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
     if (!validQuestions(questions)) {
       throw new AgentError("La IA armó mal las opciones. Probá generar de nuevo.");
     }
-    return { profiles, content, changes: [...changes, ...notices], questions };
+    return { profiles, content: questionsText(questions), changes: [...changes, ...notices], questions };
   }
 
   const response = await parseOrFail(() =>

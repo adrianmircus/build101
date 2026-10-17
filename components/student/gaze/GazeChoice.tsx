@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { describeGraph, FunctionGraph } from "@/components/ui/FunctionGraph";
+import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { MathText } from "@/components/ui/MathText";
 import type { OptionId, Question } from "@/lib/contract";
+import { describeGraph } from "@/lib/graphText";
 import { targetOf, zoneOf, type Zone } from "./calibration";
 import { useGazeZone } from "./GazeSession";
 import { useDwell } from "./useDwell";
