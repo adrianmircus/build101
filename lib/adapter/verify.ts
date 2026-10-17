@@ -9,7 +9,7 @@ export interface ItemCheck {
   ok: boolean;
   issues: string[];
   solution: Verdict | "no_aplica"; // solo para problemas con texto
-  readability: { before: number; after: number };
+  readability: { before: number | null; after: number | null }; // null: muy pocas palabras, no aplica
 }
 
 const PLACEHOLDER = /\{\{(m\d+)\}\}/g;
@@ -76,6 +76,12 @@ export function fillMath(text: string, math: MathObject[]): string {
   });
 }
 
+// Legibilidad de uno o varios textos con marcadores. Los marcadores no cuentan como palabras: si quedan menos de
+// MIN_WORDS (un ejercicio que es casi todo fórmulas), da null y la pantalla muestra "no aplica".
+export function textReadability(parts: string[]): number | null {
+  return readability(parts.map((p) => stripPlaceholders(p).replace(/\*\*/g, "")).join(". "));
+}
+
 // Ejercicios principales: los ids que empiezan con el mismo número (2a, 2b, 2.c, 2) son un solo ejercicio.
 export function mainExercises(items: { id: string }[]): number {
   return new Set(items.map((it) => it.id.match(/\d+/)?.[0] ?? it.id.trim().toLowerCase())).size;
@@ -101,49 +107,115 @@ export function scopeIssue(items: { id: string }[]): string | null {
 // Palabras que cambian la relación entre los datos o funcionan como pista del método. Si la adaptación agrega
 // una que no estaba ("menos que" en lugar de "más que", "Sumá…") o saca una del original (una negación, "como máximo"),
 // el ejercicio va a revisión: puede haber cambiado la tarea aunque los números sean los mismos.
+//
+// Tres grupos: "relación" (comparaciones entre datos), "operación" (el método) y "contexto" (palabras que arman la
+// lógica de un problema con texto: cada, en total, queda, no). En un problema con texto cuentan los tres. En un ejercicio
+// donde la matemática está toda en los marcadores (una ecuación), las palabras no cambian la cuenta: ahí agregar
+// "contexto" o nombrar una operación ("sin fracciones", "anula un denominador", "el producto") no es pista; sí lo es una
+// instrucción de método ("Multiplicá los dos lados…") o una comparación nueva. Sacar algo del original cuenta siempre.
+type Group = "relación" | "operación" | "contexto";
 const word = (src: string) => new RegExp(`(?<![\\p{L}\\p{N}])(?:${src})(?![\\p{L}\\p{N}])`, "iu");
-const RELATIONS: [string, RegExp][] = [
-  ["más que", word("más\\s+(?:\\p{L}+\\s+)?que")],
-  ["menos que", word("menos\\s+(?:\\p{L}+\\s+)?que")],
-  ["más de", word("más\\s+de")],
-  ["menos de", word("menos\\s+de")],
-  ["mayor", word("mayor(?:es)?")],
-  ["menor", word("menor(?:es)?")],
-  ["como mínimo", word("al\\s+menos|por\\s+lo\\s+menos|como\\s+mínimo|mínimo")],
-  ["como máximo", word("como\\s+máximo|a\\s+lo\\s+sumo|máximo")],
-  ["doble", word("doble")],
-  ["triple", word("triple")],
-  ["mitad", word("mitad")],
-  ["tercio", word("tercio|tercera\\s+parte")],
-  ["veces", word("veces")],
-  ["cada", word("cada")],
-  ["en total", word("en\\s+total|total|junt[oa]s|entre\\s+tod[oa]s|entre\\s+(?:los|las)\\s+(?:dos|tres|cuatro)")],
-  ["sumar", word("sum(?:a|á|ar|ando|an|as|ás|en|e|ad[oa]s?)")],
-  ["restar", word("rest(?:a|á|ar|ando|an|as|ás|en|e)|diferencia")],
-  ["multiplicar", word("multiplic\\p{L}*|producto")],
-  ["dividir", word("divid\\p{L}*|división|cociente|repart\\p{L}*|partes\\s+iguales")],
-  ["aumentar", word("aument\\p{L}*|increment\\p{L}*|recargo")],
-  ["disminuir", word("disminu\\p{L}*|descuento|rebaja")],
-  ["quedar o faltar", word("qued(?:a|an|ó|aron)|sobr(?:a|an|ó|aron)|falt(?:a|an|ó|aron)")],
-  ["porcentaje", /%|(?<!\p{L})(?:por\s+ciento|porcentaje)(?!\p{L})/iu],
-  ["aproximado", word("aproximad\\p{L}*|redonde\\p{L}*|alrededor\\s+de|cerca\\s+de|casi")],
-  ["negación", word("no|nunca|ningún|ningun[oa]|nadie|tampoco|sin")],
-  ["todos", word("(?<!entre\\s+)tod[oa]s")],
-  ["exactamente", word("exactamente")],
+const RELATIONS: [string, RegExp, Group][] = [
+  ["más que", word("más\\s+(?:\\p{L}+\\s+)?que"), "relación"],
+  ["menos que", word("menos\\s+(?:\\p{L}+\\s+)?que"), "relación"],
+  ["más de", word("más\\s+de"), "relación"],
+  ["menos de", word("menos\\s+de"), "relación"],
+  ["mayor", word("mayor(?:es)?"), "relación"],
+  ["menor", word("menor(?:es)?"), "relación"],
+  // "mínimo común múltiplo" y "máximo común divisor" son nombres, no cotas.
+  ["como mínimo", word("al\\s+menos|por\\s+lo\\s+menos|como\\s+mínimo|mínimo(?!\\s+común)"), "relación"],
+  ["como máximo", word("como\\s+máximo|a\\s+lo\\s+sumo|máximo(?!\\s+común)"), "relación"],
+  ["doble", word("doble"), "relación"],
+  ["triple", word("triple"), "relación"],
+  ["mitad", word("mitad"), "relación"],
+  ["tercio", word("tercio|tercera\\s+parte"), "relación"],
+  ["veces", word("veces"), "relación"],
+  ["cada", word("cada"), "contexto"],
+  ["en total", word("en\\s+total|total|junt[oa]s|entre\\s+tod[oa]s|entre\\s+(?:los|las)\\s+(?:dos|tres|cuatro)"), "contexto"],
+  ["sumar", word("sum(?:a|á|ar|ando|an|as|ás|en|e|ad[oa]s?)"), "operación"],
+  ["restar", word("rest(?:a|á|ar|ando|an|as|ás|en|e)|diferencia"), "operación"],
+  ["multiplicar", word("multiplic\\p{L}*|producto"), "operación"],
+  ["dividir", word("divid\\p{L}*|división|cociente|repart\\p{L}*|partes\\s+iguales"), "operación"],
+  ["aumentar", word("aument\\p{L}*|increment\\p{L}*|recargo"), "operación"],
+  ["disminuir", word("disminu\\p{L}*|descuento|rebaja"), "operación"],
+  ["quedar o faltar", word("qued(?:a|an|ó|aron)|sobr(?:a|an|ó|aron)|falt(?:a|an|ó|aron)"), "contexto"],
+  ["porcentaje", /%|(?<!\p{L})(?:por\s+ciento|porcentaje)(?!\p{L})/iu, "relación"],
+  ["aproximado", word("aproximad\\p{L}*|redonde\\p{L}*|alrededor\\s+de|cerca\\s+de|casi"), "relación"],
+  ["negación", word("no|nunca|ningún|ningun[oa]|nadie|tampoco|sin"), "contexto"],
+  ["todos", word("(?<!entre\\s+)tod[oa]s"), "contexto"],
+  ["exactamente", word("exactamente"), "relación"],
 ];
 
-function relationsIn(text: string): Set<string> {
-  const t = stripPlaceholders(text).replace(/\*\*/g, "");
-  return new Set(RELATIONS.filter(([, re]) => re.test(t)).map(([label]) => label));
+// Una operación dicha como orden al estudiante: imperativo (Multiplicá, dividilo, súmale) en cualquier lugar,
+// o cualquier forma del verbo al principio de una oración o un paso ("Multiplicar los dos lados por…").
+const IMPERATIVES: [string, RegExp][] = [
+  ["sumar", word("sumá\\p{L}*|sumal\\p{L}*|súmal\\p{L}*")],
+  ["restar", word("restá\\p{L}*|restal\\p{L}*|réstal\\p{L}*")],
+  ["multiplicar", word("multiplicá\\p{L}*|multiplical\\p{L}*|multiplícal\\p{L}*")],
+  ["dividir", word("dividí\\p{L}*|dividil\\p{L}*|divídel\\p{L}*|repartí\\p{L}*|repartil\\p{L}*|repártel\\p{L}*")],
+  ["aumentar", word("aumentá\\p{L}*|aumental\\p{L}*|auméntal\\p{L}*")],
+  ["disminuir", word("disminuí\\p{L}*|disminuil\\p{L}*|disminúyel\\p{L}*")],
+];
+
+// Comparaciones opuestas: en el glosario, una relación nueva solo cuenta si invierte una del original.
+const OPPOSITES: [string, string][] = [
+  ["más que", "menos que"],
+  ["más de", "menos de"],
+  ["mayor", "menor"],
+  ["como mínimo", "como máximo"],
+  ["doble", "mitad"],
+  ["triple", "tercio"],
+  ["aumentar", "disminuir"],
+];
+
+const clean = (text: string) => stripPlaceholders(text).replace(/\*\*/g, "");
+
+function relationsIn(text: string, groups: Group[] = ["relación", "operación", "contexto"]): Set<string> {
+  const t = clean(text);
+  return new Set(RELATIONS.filter(([, re, g]) => groups.includes(g) && re.test(t)).map(([label]) => label));
 }
 
-export function hintIssues(origText: string, adaptedText: string): string[] {
+function instructionsIn(text: string, sentenceStart = true): Set<string> {
+  const t = clean(text);
+  const found = new Set(IMPERATIVES.filter(([, re]) => re.test(t)).map(([label]) => label));
+  if (sentenceStart) {
+    const starts = t.split(/[.!?;:\n¿¡]+/).map((s) => s.trim().replace(/^[-•]\s*/, ""));
+    for (const [label, re, g] of RELATIONS) {
+      if (g !== "operación") continue;
+      const head = new RegExp(`^(?:${re.source})`, re.flags);
+      if (starts.some((s) => head.test(s))) found.add(label);
+    }
+  }
+  return found;
+}
+
+const union = (...sets: Set<string>[]) => new Set(sets.flatMap((s) => [...s]));
+
+// wordProblem: true para problemas con texto (cuentan todas las palabras). En los demás ejercicios, lo que se agrega
+// solo cuenta si es una comparación o una instrucción de método; lo que se saca del original cuenta siempre.
+export function hintIssues(origText: string, adaptedText: string, wordProblem = true): string[] {
   const before = relationsIn(origText);
-  const after = relationsIn(adaptedText);
+  const all = relationsIn(adaptedText);
+  const after = wordProblem ? all : union(relationsIn(adaptedText, ["relación"]), instructionsIn(adaptedText));
   const issues: string[] = [];
   for (const r of after) if (!before.has(r)) issues.push(`Agrega «${r}», que no está en el original: puede ser una pista o cambiar la relación`);
-  for (const r of before) if (!after.has(r)) issues.push(`Saca «${r}», que está en el original`);
+  for (const r of before) if (!all.has(r)) issues.push(`Saca «${r}», que está en el original`);
   return issues;
+}
+
+// Pistas del glosario. Solo se mira la explicación (el término es una palabra del enunciado) y no cuentan las palabras
+// que ya están en el original o en la consigna adaptada (esa ya pasó por hintIssues). Las palabras de contexto nunca
+// cuentan: "no", "queda" o "sin" aparecen en cualquier definición. En un problema con texto cuentan las comparaciones y
+// las operaciones nuevas ("se calcula dividiendo"); en los demás ejercicios, solo una orden de método ("multiplicá por…")
+// o una comparación que invierte una del original ("más que" → "menos que").
+function glossaryHints(orig: Item, meanings: string, body: string): string[] {
+  const before = relationsIn(orig.text);
+  const seen = union(before, relationsIn(body));
+  const orders = [...instructionsIn(meanings, false)].filter((r) => !before.has(r)); // una orden de método cuenta siempre
+  const reverses = (r: string) => OPPOSITES.some(([a, b]) => (r === a && before.has(b)) || (r === b && before.has(a)));
+  const words = orig.kind === "problema" ? relationsIn(meanings, ["relación", "operación"]) : relationsIn(meanings, ["relación"]);
+  const others = [...words].filter((r) => !seen.has(r) && (orig.kind === "problema" || reverses(r)));
+  return [...union(new Set(orders), new Set(others))];
 }
 
 // answer: la respuesta del ejercicio original, si se conoce (sirve para que los apoyos no la regalen).
@@ -158,25 +230,25 @@ export function staticIssues(
   const body = [adapted.text, ...adapted.steps].join("\n");
   return [
     ...mathIssues(orig, adapted, body, format, ajustes),
-    ...hintIssues(orig.text, body),
+    ...hintIssues(orig.text, body, orig.kind === "problema"),
     ...glossaryIssues(orig, adapted, body, ajustes),
     ...supportIssues(orig, adapted, ajustes, answer),
   ];
 }
 
-// El glosario va aparte de la consigna: no puede traer números, matemática suelta ni relaciones que no estén en
-// el original. Se controla solo (sin sumarlo a la consigna) para que no tape un dato o una relación que la consigna perdió.
+// El glosario va aparte de la consigna: no puede traer números, matemática suelta ni pistas (ver glossaryHints).
+// Se controla solo (sin sumarlo a la consigna) para que no tape un dato o una relación que la consigna perdió.
 export function glossaryIssues(orig: Item, adapted: AdaptedItem, body: string, ajustes: Adjustment[] = []): string[] {
   const glossary = adapted.glossary.map((g) => `${g.term}: ${g.meaning}`).join("\n");
   if (!glossary.trim()) return [];
   const issues: string[] = [];
   const allowed = numbersIn(simplerNumbers(orig, ajustes) ? body : orig.text);
   const own = placeholders(orig.text);
-  const before = relationsIn(orig.text);
+  const meanings = adapted.glossary.map((g) => g.meaning).join("\n");
   for (const p of placeholders(glossary)) if (!own.includes(p)) issues.push(`El glosario usa {{${p}}}, que no es de este ejercicio`);
   for (const n of numbersIn(glossary)) if (!allowed.some((d) => near(d, n))) issues.push(`El glosario agrega el número ${fmtNum(n)}`);
   if (RAW_MATH.test(stripPlaceholders(glossary))) issues.push("El glosario tiene matemática escrita fuera de los marcadores");
-  for (const r of relationsIn(glossary)) if (!before.has(r)) issues.push(`El glosario agrega «${r}», que no está en el original: puede ser una pista o cambiar la relación`);
+  for (const r of glossaryHints(orig, meanings, body)) issues.push(`El glosario agrega «${r}», que no está en el original: puede ser una pista o cambiar la relación`);
   return issues;
 }
 
@@ -191,6 +263,21 @@ export function headerIssues(orig: Header, adapted: Header): string[] {
   return staticIssues(item, { id: HEADER_ID, text: text(adapted), steps: [], glossary: [], figure: "" }, "lectura_facil").map(
     (issue) => `En el título o las indicaciones: ${issue}`,
   );
+}
+
+// Ajustes que el profe pidió pero que no cambian nada en este práctico: no marcan la versión como "dificultad modificada"
+// y la pantalla avisa por qué no se aplicaron.
+export interface NotApplied {
+  ajuste: Adjustment;
+  reason: string;
+}
+
+export function applicableAdjustments(items: Pick<Item, "kind">[], ajustes: Adjustment[]): { applied: Adjustment[]; notApplied: NotApplied[] } {
+  const notApplied: NotApplied[] = [];
+  if (ajustes.includes("numeros_simples") && !items.some((it) => it.kind === "problema")) {
+    notApplied.push({ ajuste: "numeros_simples", reason: "este práctico no tiene problemas con texto" });
+  }
+  return { applied: ajustes.filter((a) => !notApplied.some((n) => n.ajuste === a)), notApplied };
 }
 
 // Con "números más simples", los datos de un problema con texto pueden cambiar: ahí no se controlan los números.
@@ -306,8 +393,8 @@ export async function checkItem(
   const usesSupport = adapted?.support !== undefined;
   const answer = usesSupport ? await originalAnswer(orig, originalModel) : null;
   const issues = staticIssues(orig, adapted, format, ajustes, answer);
-  const before = readability(stripPlaceholders(orig.text, "x"));
-  const after = adapted ? readability(stripPlaceholders([adapted.text, ...adapted.steps].join(". "), "x")) : before;
+  const before = textReadability([orig.text]);
+  const after = adapted ? textReadability([adapted.text, ...adapted.steps]) : before;
   const simpler = simplerNumbers(orig, ajustes);
 
   // Problemas con texto: un planteo independiente del original y otro de la versión adaptada tienen que dar la misma solución.

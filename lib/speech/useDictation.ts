@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { speakAloud } from "./voice";
 
 // The browser's Web Speech API. TypeScript's DOM types don't include SpeechRecognition: only what we use.
 type Recognition = {
@@ -109,13 +110,10 @@ export function useDictation({ lang = "es-UY", onEnd }: { lang?: string; onEnd?:
   return { supported, listening, transcript, interim, error, start, stop, reset };
 }
 
-// Reads a text aloud in Rioplatense Spanish. Returns false if the browser can't.
-export function speak(text: string, lang = "es-UY"): boolean {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang;
-  utterance.rate = 0.95;
-  window.speechSynthesis.speak(utterance);
+// Reads a text aloud with the Rioplatense ElevenLabs voice, falling back to the browser's voice.
+// Returns false if there is no browser to play it in.
+export function speak(text: string): boolean {
+  if (typeof window === "undefined") return false;
+  speakAloud(text);
   return true;
 }

@@ -2,7 +2,7 @@ import "server-only";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { TranscribeRequest, TranscribeResponse } from "@/lib/contract";
-import { getClient, MODEL } from "./client";
+import { FALLBACK, getClient, MODEL } from "./client";
 import { AgentError } from "./generate";
 
 const Output = z.object({
@@ -29,8 +29,7 @@ export async function transcribeAnswer(request: TranscribeRequest): Promise<Tran
   const response = await getClient().beta.messages.parse({
     model: MODEL,
     max_tokens: 4000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...FALLBACK,
     // Low: it's a transcription and the student is waiting for it.
     output_config: { effort: "low", format: betaZodOutputFormat(Output) },
     system: SYSTEM,

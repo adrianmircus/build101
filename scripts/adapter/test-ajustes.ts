@@ -1,7 +1,8 @@
 // Pruebas sin IA de los ajustes de dificultad. Correr con: npx tsx scripts/test-ajustes.ts
 import { adaptSystem, needsSupport } from "../../lib/adapter/adapt-prompts";
-import { checkItem, keepItems, retryIssues, staticIssues, supportIssues, UNCHECKED_ISSUE, UNSURE_ISSUE } from "../../lib/adapter/verify";
-import type { AdaptedItem, Adjustment, Item, MathModel, Support } from "../../lib/adapter/adapt-schemas";
+import { applicableAdjustments, checkItem, keepItems, retryIssues, staticIssues, supportIssues, UNCHECKED_ISSUE, UNSURE_ISSUE } from "../../lib/adapter/verify";
+import { fmt } from "../../lib/adapter/equivalence";
+import { FORMATS, type AdaptedItem, type Adjustment, type Item, type MathModel, type Support } from "../../lib/adapter/adapt-schemas";
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown) {
@@ -18,6 +19,18 @@ check("con ajustes, la regla 4 los habilita", conGuia.includes("habilitó ajuste
 check("con ajustes, solo los habilitados", conGuia.includes("support.guide") && !conGuia.includes("support.example"), true);
 check("menos ítems solo no pide apoyos al modelo", needsSupport(["menos_items"]), false);
 check("números simples cambia la regla 3", adaptSystem("dislexia", ["numeros_simples"]).includes("te deja cambiarlos"), true);
+check("la nota para el profe va de vos, nunca de usted", FORMATS.every((f) => /notes_for_teacher:.*siempre de vos.*nunca de usted/.test(adaptSystem(f))), true);
+check("el estudiante mantiene el tratamiento del original", adaptSystem("lectura_facil").includes("En todo lo que lee el estudiante"), true);
+
+// Ajustes que no aplican: números más simples sin problemas con texto
+const ecuaciones = [{ kind: "ecuacion" as const }, { kind: "ecuacion" as const }];
+check("números simples sin problemas: no se aplica", applicableAdjustments(ecuaciones, ["numeros_simples"]), {
+  applied: [],
+  notApplied: [{ ajuste: "numeros_simples", reason: "este práctico no tiene problemas con texto" }],
+});
+check("números simples sin problemas: los otros ajustes siguen", applicableAdjustments(ecuaciones, ["numeros_simples", "recordatorio"]).applied, ["recordatorio"]);
+check("números simples con un problema: se aplica", applicableAdjustments([...ecuaciones, { kind: "problema" }], ["numeros_simples"]), { applied: ["numeros_simples"], notApplied: [] });
+check("solución con coma decimal", fmt([0.5, 3]), "{0,5; 3}");
 
 // El problema de Suárez y Cavani (Sistemas, ej. 3a). Respuesta: 11.
 const cavani: Item = {
@@ -95,7 +108,7 @@ const run = async () => {
   const ok = await checkItem(cavani, simple, "lectura_facil", original, fake("x + (x + 2) = 10"), ["numeros_simples"]);
   check("números simples: respuesta entera y única", [ok.ok, ok.solution], [true, "ok"]);
   const frac = await checkItem(cavani, { ...simple, text: simple.text.replace("10 goles", "9 goles") }, "lectura_facil", original, fake("x + (x + 2) = 9"), ["numeros_simples"]);
-  check("números simples: respuesta no entera", frac.issues, ["Con los números nuevos la respuesta no es entera ({3.5})"]);
+  check("números simples: respuesta no entera", frac.issues, ["Con los números nuevos la respuesta no es entera ({3,5})"]);
   // El modelo simulado plantea el ejercicio o el ejemplo según el texto que recibe.
   const route = (ejemplo: string) => async (t: string): Promise<MathModel> =>
     ({ solvable: true, unknown: "x", equation: t.startsWith("Ana y Beto") ? ejemplo : "x + (x + 4) = 26", asks_for: "" });

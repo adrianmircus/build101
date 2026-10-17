@@ -2,7 +2,7 @@ import "server-only";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ResultsAnalysisRequest, ResultsAnalysisResponse } from "@/lib/contract";
-import { getClient, MODEL } from "./client";
+import { FALLBACK, getClient, MODEL } from "./client";
 import { AgentError } from "./generate";
 
 const Output = z.object({
@@ -50,8 +50,7 @@ export async function analyzeResults(request: ResultsAnalysisRequest): Promise<R
   const response = await getClient().beta.messages.parse({
     model: MODEL,
     max_tokens: 8000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...FALLBACK,
     output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
     system: SYSTEM,
     messages: [{ role: "user", content: `${resultsText(request)}\n\nAnalizá los resultados de este grupo.` }],

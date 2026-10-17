@@ -9,6 +9,12 @@ export const MODEL = OPENROUTER_KEY
   ? process.env.OPENROUTER_MODEL || "anthropic/claude-opus-5.5"
   : "claude-opus-5-5";
 
+// Respaldo de modelo del lado del servidor: solo existe en la API de Anthropic. OpenRouter rechaza el campo
+// `fallbacks` con un 400, así que por OpenRouter no se manda.
+export const FALLBACK = OPENROUTER_KEY
+  ? {}
+  : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
+
 let client: Anthropic | null = null;
 
 // Created on the first request, so the build doesn't need ANTHROPIC_API_KEY.

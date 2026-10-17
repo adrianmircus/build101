@@ -56,12 +56,12 @@ Reglas:
 2. Usá todos los marcadores de cada ejercicio al menos una vez, tal cual ({{m3}}). Nunca escribas matemática fuera de un marcador: ni ecuaciones, ni operaciones, ni potencias.
 ${rule3}
 ${rule4}
-5. Usá la misma forma de tratamiento que el original (vos, tú o infinitivo).
+5. En todo lo que lee el estudiante (consigna, pasos, glosario y apoyos), usá la misma forma de tratamiento que el original (vos, tú o infinitivo).
 
 Campos:
 - steps: si la consigna pide varias cosas, separalas en pasos, una acción por paso. Si pide una sola cosa, steps queda vacío.
 - glossary: palabras técnicas que el estudiante puede no conocer, con una explicación de una frase, sin números ni matemática. Como máximo 3 por ejercicio.
-- notes_for_teacher: de 1 a 3 frases sobre qué cambiaste y qué conviene revisar.${supportFields}`;
+- notes_for_teacher: de 1 a 3 frases sobre qué cambiaste y qué conviene revisar. Va dirigida al profe, siempre de vos, en español rioplatense ("revisá", "fijate", "te conviene"), nunca de usted ("revise", "verifique"). El tratamiento de la regla 5 es solo para lo que lee el estudiante.${supportFields}`;
 }
 
 // true si el modelo tiene que devolver el campo support.

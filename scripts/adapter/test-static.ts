@@ -1,7 +1,7 @@
 // Pruebas sin IA de la verificación, la legibilidad y la lectura en voz alta. Correr con: npx tsx scripts/test-static.ts
 import fs from "node:fs";
 import path from "node:path";
-import { staticIssues, numbersIn, hintIssues, headerIssues, mainExercises, scopeIssue, MAX_EXERCISES, MAX_ITEMS } from "../../lib/adapter/verify";
+import { staticIssues, numbersIn, hintIssues, headerIssues, textReadability, mainExercises, scopeIssue, MAX_EXERCISES, MAX_ITEMS } from "../../lib/adapter/verify";
 import { MAX_BYTES, uploadIssue } from "../../lib/adapter/upload";
 import { normalize } from "../../lib/adapter/equivalence";
 import { formulaAudio } from "../../lib/adapter/adapt-client";
@@ -20,7 +20,13 @@ check("sílabas aeroplano", syllables("aeroplano"), 5);
 check("sílabas ciudad", syllables("ciudad"), 2);
 check("sílabas día", syllables("día"), 2);
 check("sílabas matemática", syllables("matemática"), 5);
-check("lectura fácil puntúa más alto", readability("Resolvé la ecuación. Escribí el resultado.") > readability("Resolver la siguiente ecuación de segundo grado utilizando la fórmula general correspondiente y verificar posteriormente."), true);
+const facil = "Resolvé la ecuación. Escribí el resultado. Mirá bien cada dato. Pensá qué se pide. Contestá con una frase corta.";
+const dificil = "Resolver la siguiente ecuación de segundo grado utilizando la fórmula general correspondiente y verificar posteriormente el resultado obtenido.";
+check("lectura fácil puntúa más alto", (readability(facil) ?? 0) > (readability(dificil) ?? 0), true);
+check("legibilidad: con menos de 15 palabras no aplica", readability("Resolvé la ecuación. Escribí el resultado."), null);
+check("legibilidad: casi todo fórmulas no aplica (antes daba 144)", textReadability(["Resolvé {{m1}}.", "Resolvé {{m2}} y {{m3}}.", "Hallá x en {{m4}}."]), null);
+check("legibilidad: siempre entre 0 y 100", [readability("Ve a ver a la la. ".repeat(4)), readability(`${"Inconstitucionalidad ".repeat(20)}.`)], [100, 0]);
+check("legibilidad: los marcadores no cuentan como palabras", textReadability(["Resolvé {{m1}} {{m2}} {{m3}} {{m4}} {{m5}} {{m6}} {{m7}} {{m8}} {{m9}} {{m10}} {{m11}} {{m12}} {{m13}} {{m14}}."]), null);
 
 check("números en cifras y palabras", numbersIn("Ana compró 3 kilos y el doble de {{m2}} a 1,5 pesos"), [1.5, 2, 3]);
 check("números: el signo cuenta", numbersIn("La temperatura bajó a -5 grados"), [-5]);
@@ -107,6 +113,51 @@ check("pistas: agrega el método con los mismos números", staticIssues(orig, { 
 check("pistas: borra una negación", hintIssues("¿Cuántos estudiantes no aprobaron?", "¿Cuántos estudiantes perdieron?"), ["Saca «negación», que está en el original"]);
 check("pistas: borra un dato de relación", hintIssues("Compró como máximo 4 cajas.", "Compró 4 cajas."), ["Saca «como máximo», que está en el original"]);
 check("pistas: la negrita de dislexia no molesta", hintIssues("Resolvé la ecuación {{m1}}.", "**Resolvé** la ecuación {{m1}}."), []);
+
+// Demo con Ecuaciones racionales (2.°, ej. 2): glosario y pasos que solo definen términos no son pistas
+const racional: Item = {
+  id: "2a",
+  kind: "ecuacion",
+  text: "Resolvé en R la ecuación {{m1}}, indicando previamente las restricciones.",
+  math: [{ id: "m1", mathjs: "3/(x-1) = 2/x", latex: "\\frac{3}{x-1} = \\frac{2}{x}", role: "equation" }],
+  figure: "",
+  unsure: false,
+};
+const racionalBien: AdaptedItem = {
+  id: "2a",
+  text: "Resolvé la ecuación {{m1}}.",
+  steps: ["Escribí los valores de x que anulan un denominador.", "Pasá la ecuación a una sin fracciones.", "Fijate qué soluciones quedan."],
+  glossary: [
+    { term: "Restricción", meaning: "Un valor que x no puede tomar porque anula un denominador." },
+    { term: "Ecuación racional", meaning: "Una ecuación con la incógnita en un denominador. Al resolverla queda una ecuación sin fracciones." },
+    { term: "Mínimo común múltiplo", meaning: "El menor número que es múltiplo de todos los denominadores. Sirve para multiplicar y sacar las fracciones." },
+  ],
+  figure: "",
+};
+check("pistas: glosario y pasos de una ecuación racional pasan", staticIssues(racional, racionalBien, "lector_pantalla"), []);
+check("pistas: el glosario no cuenta palabras del término", staticIssues(racional, { ...racionalBien, glossary: [{ term: "Producto cruzado", meaning: "Una forma de pasar a una ecuación sin fracciones." }] }, "lector_pantalla"), []);
+check("pistas: un paso con la orden del método sigue marcado", staticIssues(racional, { ...racionalBien, steps: [...racionalBien.steps, "Multiplicá ambos lados por el denominador común."] }, "lector_pantalla"), [
+  "Agrega «multiplicar», que no está en el original: puede ser una pista o cambiar la relación",
+]);
+check("pistas: un paso en infinitivo con el método sigue marcado", hintIssues("Resolver {{m1}}.", "Resolver {{m1}}.\nMultiplicar ambos miembros por x.", false), [
+  "Agrega «multiplicar», que no está en el original: puede ser una pista o cambiar la relación",
+]);
+check("pistas: el glosario con una orden de método sigue marcado", staticIssues(racional, { ...racionalBien, glossary: [{ term: "Restricción", meaning: "Multiplicá todo por los denominadores y fijate cuáles se anulan." }] }, "lector_pantalla"), [
+  "El glosario agrega «multiplicar», que no está en el original: puede ser una pista o cambiar la relación",
+]);
+check("pistas: en una ecuación, una comparación nueva sigue marcada", hintIssues("Resolvé {{m1}}.", "Resolvé {{m1}}. Escribí solo las soluciones mayores que cero.", false), [
+  "Agrega «mayor», que no está en el original: puede ser una pista o cambiar la relación",
+]);
+check("pistas: en una ecuación, sacar una negación del original sigue marcado", hintIssues("Resolvé {{m1}} sin usar calculadora.", "Resolvé {{m1}} con calculadora.", false), ["Saca «negación», que está en el original"]);
+check("pistas: el glosario de un problema invierte la relación", staticIssues(edades, { ...edadesBien, glossary: [{ term: "edad", meaning: "Los años de una persona. Ana tiene menos que Juan." }] }, "lectura_facil"), [
+  "El glosario agrega «menos que», que no está en el original: puede ser una pista o cambiar la relación",
+]);
+check("pistas: el glosario de un problema con el método sigue marcado", staticIssues(orig, { ...good, glossary: [{ term: "precio", meaning: "Lo que cuesta un kilo. Se calcula dividiendo lo que pagó." }] }, "lectura_facil"), [
+  "El glosario agrega «dividir», que no está en el original: puede ser una pista o cambiar la relación",
+]);
+check("pistas: el glosario de un problema puede usar palabras de contexto", staticIssues(edades, { ...edadesBien, glossary: [{ term: "edad", meaning: "Los años que tiene una persona, sin contar los meses." }] }, "lectura_facil"), []);
+check("pistas: mínimo común múltiplo no es una cota", hintIssues("Resolvé {{m1}}.", "Buscá el mínimo común múltiplo de los denominadores. Resolvé {{m1}}.", false), []);
+check("pistas: en un problema, quitar un dato de relación sigue marcado", staticIssues(edades, { ...edadesBien, text: "Juan y Ana tienen 5 y 35 años en total. ¿Qué edad tiene Ana?" }, "lectura_facil").includes("Saca «más que», que está en el original"), true);
 
 // Glosario, título e indicaciones pasan por los controles de números, matemática suelta y pistas
 check("glosario: una definición en palabras pasa", staticIssues(orig, { ...good, glossary: [{ term: "kilo", meaning: "unidad para pesar las frutas" }] }, "lectura_facil"), []);

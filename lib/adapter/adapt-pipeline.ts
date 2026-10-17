@@ -19,7 +19,21 @@ import {
   type Format,
   type MathModel,
 } from "./adapt-schemas";
-import { checkItem, fillMath, HEADER_ID, headerIssues, keepItems, retryIssues, scopeIssue, type ItemCheck } from "./verify";
+import {
+  applicableAdjustments,
+  checkItem,
+  fillMath,
+  HEADER_ID,
+  headerIssues,
+  keepItems,
+  retryIssues,
+  scopeIssue,
+  textReadability,
+  type ItemCheck,
+  type NotApplied,
+} from "./verify";
+
+export type { NotApplied };
 
 export class PipelineError extends Error {}
 
@@ -34,13 +48,14 @@ export interface FormatResult {
   checks: ItemCheck[];
   header: { ok: boolean; issues: string[] }; // título e indicaciones generales; si no está ok, va a revisión
   retried: string[]; // ids que se regeneraron una vez
-  readability: { before: number; after: number };
+  readability: { before: number | null; after: number | null }; // de toda la versión; null: no aplica
   ms: number;
 }
 
 export interface AdaptResult {
   extraction: Extraction; // con menos_items, solo los ejercicios que eligió el profe
-  ajustes: Adjustment[];
+  ajustes: Adjustment[]; // los que se aplicaron
+  no_aplicados: NotApplied[]; // los que el profe pidió pero no cambian nada en este práctico
   dificultad_modificada: boolean; // la pantalla tiene que mostrarlo en cada versión
   omitted: string[]; // ids que el profe sacó con menos_items
   answerKey: { id: string; solution: string; set: SolutionSet | null }[]; // calculada sin IA cuando se puede
@@ -147,8 +162,6 @@ async function checkAll(
   );
 }
 
-const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
-
 async function adaptFormat(
   ex: Extraction,
   format: Format,
@@ -186,7 +199,11 @@ async function adaptFormat(
     checks,
     header: { ok: header.length === 0, issues: header },
     retried,
-    readability: { before: avg(checks.map((c) => c.readability.before)), after: avg(checks.map((c) => c.readability.after)) },
+    // Sobre el texto de toda la versión, no un promedio por ejercicio: un inciso de tres palabras no da un índice que sirva.
+    readability: {
+      before: textReadability(ex.items.map((it) => it.text)),
+      after: textReadability(adaptation.items.flatMap((it) => [it.text, ...it.steps])),
+    },
     ms: Date.now() - t0,
   };
   onEvent({ stage: "formato_listo", result });
@@ -250,12 +267,16 @@ export async function adaptPractico(
     if (it.kind === "problema") originals.set(it.id, modelProblem(fillMath(it.text, it.math)).catch(() => NOT_SOLVABLE));
   }
 
-  const formats = await Promise.all(FORMATS.map((f) => adaptFormat(ex, f, originals, onEvent, ajustes)));
+  // Un ajuste que no cambia nada en este práctico (números más simples sin problemas con texto) no le llega al modelo
+  // ni marca la versión como "dificultad modificada": la pantalla avisa que no se aplicó.
+  const { applied, notApplied } = applicableAdjustments(ex.items, ajustes);
+  const formats = await Promise.all(FORMATS.map((f) => adaptFormat(ex, f, originals, onEvent, applied)));
   const answerKey = await buildAnswerKey(ex, originals);
   const result: AdaptResult = {
     extraction: ex,
-    ajustes,
-    dificultad_modificada: ajustes.length > 0,
+    ajustes: applied,
+    no_aplicados: notApplied,
+    dificultad_modificada: applied.length > 0,
     omitted,
     answerKey,
     formats,

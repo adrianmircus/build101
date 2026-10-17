@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { approveButton, secondaryButton } from "@/components/ui/styles";
 import { formulaAudio, spokenItem } from "@/lib/adapter/adapt-client";
-import type { FormatResult } from "@/lib/adapter/adapt-pipeline";
-import { FORMAT_LABELS, type AdaptedItem, type Format, type MathObject } from "@/lib/adapter/adapt-schemas";
+import type { FormatResult, NotApplied } from "@/lib/adapter/adapt-pipeline";
+import { ADJUSTMENT_LABELS, FORMAT_LABELS, type AdaptedItem, type Format, type MathObject } from "@/lib/adapter/adapt-schemas";
 import { readabilityLabel } from "@/lib/adapter/readability";
 import type { ItemCheck } from "@/lib/adapter/verify";
 import { MathText, SpeakerIcon, Tex, mathjsToTex } from "./MathText";
@@ -40,6 +40,7 @@ export function AdaptedVersion({
   result,
   math,
   modified,
+  notApplied,
   approved,
   onApprove,
   onReopen,
@@ -48,6 +49,7 @@ export function AdaptedVersion({
   result: FormatResult;
   math: Map<string, MathObject>;
   modified: boolean;
+  notApplied: NotApplied[];
   approved: boolean;
   onApprove: () => void;
   onReopen: () => void;
@@ -78,7 +80,10 @@ export function AdaptedVersion({
           </span>
         )}
         <span className="rounded-lg bg-slate-100 px-3 py-1 text-lg text-slate-800">
-          Legibilidad: {readability.before} → {readability.after} ({readabilityLabel(readability.after)})
+          Legibilidad:{" "}
+          {readability.after === null
+            ? "no aplica (casi todo son fórmulas)"
+            : `${readability.before === null ? "" : `${readability.before} → `}${readability.after} (${readabilityLabel(readability.after)})`}
         </span>
       </div>
 
@@ -87,6 +92,12 @@ export function AdaptedVersion({
           Dificultad modificada: esta versión incluye los ajustes que elegiste.
         </p>
       )}
+
+      {notApplied.map((n) => (
+        <p key={n.ajuste} className="rounded-xl border-2 border-slate-300 bg-slate-50 p-4 text-lg text-slate-900 print:hidden">
+          <span className="font-semibold">«{ADJUSTMENT_LABELS[n.ajuste]}» no se aplicó:</span> {n.reason}.
+        </p>
+      ))}
 
       {adaptation.notes_for_teacher && (
         <aside className="rounded-xl bg-slate-100 p-4 text-lg print:hidden">

@@ -4,7 +4,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Change, GenerationRequest, GenerationResponse, Question } from "@/lib/contract";
 import { GAZE_PROFILE, profileLabel, sortProfiles, usesGaze, VOICE_PROFILE } from "@/lib/profiles";
-import { getClient, MODEL } from "./client";
+import { FALLBACK, getClient, MODEL } from "./client";
 import { loadProfile, type ProfileData } from "./profiles";
 import { buildMessage, SYSTEM } from "./prompt";
 
@@ -75,8 +75,7 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
   const params = {
     model: MODEL,
     max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default" as const,
+    ...FALLBACK,
     system: SYSTEM,
     messages: [{ role: "user" as const, content: buildMessage(request, withData, gaze) }],
   };

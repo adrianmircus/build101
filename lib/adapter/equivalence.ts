@@ -309,10 +309,11 @@ export function sameSet(a: SolutionSet, b: SolutionSet): boolean {
   return a.every((x, i) => Math.abs(x - b[i]) <= SAME_TOL * Math.max(1, Math.abs(x)));
 }
 
+// Para mostrar: coma decimal, como en los prácticos de Uruguay ({0,5; 3}).
 export function fmt(s: SolutionSet): string {
   if (s === "all") return "todos los reales";
   if (s.length === 0) return "ninguna solución";
-  return `{${s.map((x) => +x.toFixed(4)).join("; ")}}`;
+  return `{${s.map((x) => String(+x.toFixed(4)).replace(".", ",")).join("; ")}}`;
 }
 
 function sameExpression(f: Fn, g: Fn): Verdict {

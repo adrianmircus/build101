@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { card, secondaryButton } from "@/components/ui/styles";
-import { runAdapt, speak } from "@/lib/adapter/adapt-client";
+import { runAdapt, speak, stopSpeaking } from "@/lib/adapter/adapt-client";
 import type { AdaptResult } from "@/lib/adapter/adapt-pipeline";
 import { FORMAT_LABELS, FORMATS, type Format, type MathObject } from "@/lib/adapter/adapt-schemas";
 import { AdaptedVersion, type Speech } from "./AdaptedVersion";
@@ -26,7 +26,7 @@ const NONE_APPROVED: Record<Format, boolean> = { lectura_facil: false, dislexia:
 function useSpeech(): Speech {
   const [playing, setPlaying] = useState<string | null>(null);
   const controls = useRef<ReturnType<typeof speak> | null>(null);
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  useEffect(() => () => stopSpeaking(), []);
   return {
     playing,
     toggle(id, text) {
@@ -104,7 +104,7 @@ export function PracticeAdapter() {
         onApproved={(f, value) => setApproved((prev) => ({ ...prev, [f]: value }))}
         speech={speech}
         onRestart={() => {
-          window.speechSynthesis?.cancel();
+          stopSpeaking();
           setRun({ kind: "idle" });
         }}
       />
@@ -200,6 +200,7 @@ function Results({
                 result={fr}
                 math={math}
                 modified={result.dificultad_modificada}
+                notApplied={result.no_aplicados}
                 approved={approved[tab]}
                 onApprove={() => onApproved(tab, true)}
                 onReopen={() => onApproved(tab, false)}

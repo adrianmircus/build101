@@ -53,22 +53,9 @@ export function formulaAudio(m: MathObject, n: number): { buttonLabel: string; t
   return { buttonLabel: `Escuchar la fórmula ${n}`, text: speakMath(m.mathjs) };
 }
 
-// Lee un texto con la voz del navegador. Se llama solo desde un clic (nada de autoplay) y devuelve pausa y stop.
-// onEnd avisa cuando termina o se corta, para que el botón vuelva a "Escuchar".
-export function speak(text: string, onEnd?: () => void): { pause(): void; resume(): void; stop(): void } {
-  const synth = window.speechSynthesis;
-  synth.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.onend = () => onEnd?.();
-  u.onerror = () => onEnd?.();
-  const voices = synth.getVoices();
-  const voice =
-    voices.find((v) => v.lang === "es-UY") ?? voices.find((v) => v.lang === "es-419" || v.lang === "es-US") ?? voices.find((v) => v.lang.startsWith("es"));
-  if (voice) u.voice = voice;
-  u.lang = voice?.lang ?? "es-UY";
-  synth.speak(u);
-  return { pause: () => synth.pause(), resume: () => synth.resume(), stop: () => synth.cancel() };
-}
+// Lee un texto con la voz rioplatense de ElevenLabs (o la del navegador si no está). Se llama solo desde un clic
+// (nada de autoplay) y devuelve pausa y stop. onEnd avisa cuando termina o se corta, para que el botón vuelva a "Escuchar".
+export { speakAloud as speak, stopSpeaking } from "../speech/voice";
 
 // Texto del ejercicio con cada marcador reemplazado por su lectura en voz alta, para el botón "Escuchar" (speak).
 export function spokenItem(item: AdaptedItem, math: MathObject[]): string {
