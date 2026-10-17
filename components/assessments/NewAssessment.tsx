@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AiProgress } from "@/components/ui/AiProgress";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { field, focusWithin, inlineLink, primaryButton } from "@/components/ui/styles";
@@ -45,6 +45,14 @@ export function NewAssessment() {
   const [pdf, setPdf] = useState<PdfState>({ status: "idle" });
   // "Menos ítems": by version, the exercise numbers the teacher left out. Empty: the version keeps them all.
   const [dropped, setDropped] = useState<Record<string, number[]>>({});
+  // From the click until the detail opens (the first time, the dev server can take a few seconds).
+  const [submitting, setSubmitting] = useState(false);
+  // The progress shows up below the button or the upload: the page moves so it's in view.
+  const progress = useRef<HTMLDivElement>(null);
+  const reading = pdf.status === "reading";
+  useEffect(() => {
+    if (submitting || reading) progress.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [submitting, reading]);
 
   if (!data) return <Loading />;
   const group = data.groups.find((g) => g.id === groupId);
@@ -103,7 +111,8 @@ export function NewAssessment() {
           className="space-y-6"
           onSubmit={(e) => {
             e.preventDefault();
-            if (versions.length === 0 || waitingPdf) return;
+            if (versions.length === 0 || waitingPdf || submitting) return;
+            setSubmitting(true);
             const id = createAssessment({
               groupId: group.id,
               type,
@@ -206,16 +215,18 @@ export function NewAssessment() {
                 </label>
 
                 {pdf.status === "reading" && (
-                  <AiProgress
-                    title={`Leyendo ${pdf.name}`}
-                    seconds={40}
-                    steps={[
-                      "Subiendo los archivos",
-                      "Leyendo las páginas",
-                      "Transcribiendo los ejercicios y las fórmulas",
-                      "Revisando lo que no quedó claro",
-                    ]}
-                  />
+                  <div ref={progress}>
+                    <AiProgress
+                      title={`Leyendo ${pdf.name}`}
+                      seconds={40}
+                      steps={[
+                        "Subiendo los archivos",
+                        "Leyendo las páginas",
+                        "Transcribiendo los ejercicios y las fórmulas",
+                        "Revisando lo que no quedó claro",
+                      ]}
+                    />
+                  </div>
                 )}
                 {pdf.status === "error" && (
                   <p role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg text-red-900">
@@ -281,11 +292,20 @@ export function NewAssessment() {
             <button
               type="submit"
               className={primaryButton}
-              disabled={versions.length === 0 || waitingPdf}
+              disabled={versions.length === 0 || waitingPdf || submitting}
               aria-describedby={waitingPdf ? "pdf-needed" : undefined}
             >
-              Generar {versions.length} {versions.length === 1 ? "versión" : "versiones"}
+              {submitting ? "Generando…" : `Generar ${versions.length} ${versions.length === 1 ? "versión" : "versiones"}`}
             </button>
+            {submitting && (
+              <div ref={progress} className="mt-4">
+                <AiProgress
+                  title={`Preparando ${versions.length} ${versions.length === 1 ? "versión" : "versiones"}`}
+                  seconds={4}
+                  steps={["Guardando el práctico", "Mandando cada versión al agente", "Abriendo el progreso de cada versión"]}
+                />
+              </div>
+            )}
             {waitingPdf && (
               <p id="pdf-needed" className="mt-2 text-base text-slate-700">
                 Primero subí el PDF o las fotos y revisá lo que leyó la IA.
