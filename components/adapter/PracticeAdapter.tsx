@@ -1,0 +1,248 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { card, secondaryButton } from "@/components/ui/styles";
+import { runAdapt, speak } from "@/lib/adapter/adapt-client";
+import type { AdaptResult } from "@/lib/adapter/adapt-pipeline";
+import { FORMAT_LABELS, FORMATS, type Format, type MathObject } from "@/lib/adapter/adapt-schemas";
+import { AdaptedVersion, type Speech } from "./AdaptedVersion";
+import { AdapterForm, type AdaptInput } from "./AdapterForm";
+import { AdapterProgress, INITIAL_PROGRESS, type Progress } from "./AdapterProgress";
+import { MathText } from "./MathText";
+
+type Run =
+  | { kind: "idle" }
+  | { kind: "running"; progress: Progress }
+  | { kind: "done"; result: AdaptResult }
+  | { kind: "error"; message: string }
+  | { kind: "out_of_scope"; reason: string };
+
+type Tab = Format | "original";
+const TABS: Tab[] = [...FORMATS, "original"];
+const TAB_LABELS: Record<Tab, string> = { ...FORMAT_LABELS, original: "Original" };
+const NONE_APPROVED: Record<Format, boolean> = { lectura_facil: false, dislexia: false, lector_pantalla: false };
+
+// One voice at a time, only from a click, with stop. The button goes back to "Escuchar" when the reading ends.
+function useSpeech(): Speech {
+  const [playing, setPlaying] = useState<string | null>(null);
+  const controls = useRef<ReturnType<typeof speak> | null>(null);
+  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  return {
+    playing,
+    toggle(id, text) {
+      if (playing === id) {
+        controls.current?.stop();
+        setPlaying(null);
+        return;
+      }
+      controls.current = speak(text, () => setPlaying((p) => (p === id ? null : p)));
+      setPlaying(id);
+    },
+  };
+}
+
+// Teacher's flow: upload → real progress per format → three versions with their checks → approve each one.
+export function PracticeAdapter() {
+  const [run, setRun] = useState<Run>({ kind: "idle" });
+  const [tab, setTab] = useState<Tab>("lectura_facil");
+  const [approved, setApproved] = useState(NONE_APPROVED);
+  const speech = useSpeech();
+
+  async function start(input: AdaptInput) {
+    let progress = INITIAL_PROGRESS;
+    let finished = false;
+    const update = (p: Progress) => {
+      progress = p;
+      setRun({ kind: "running", progress: p });
+    };
+    setApproved(NONE_APPROVED);
+    update(INITIAL_PROGRESS);
+    try {
+      await runAdapt(input, (e) => {
+        switch (e.stage) {
+          case "leyendo":
+            break;
+          case "adaptando":
+          case "verificando":
+          case "reintentando":
+            update({ reading: "done", formats: { ...progress.formats, [e.format]: { stage: e.stage } } });
+            break;
+          case "formato_listo": {
+            const r = e.result;
+            const ok = r.checks.filter((c) => c.ok).length;
+            update({ reading: "done", formats: { ...progress.formats, [r.format]: { stage: "lista", ok, total: r.checks.length } } });
+            break;
+          }
+          case "listo":
+            finished = true;
+            setTab("lectura_facil");
+            setRun({ kind: "done", result: e.result });
+            break;
+          case "fuera_de_alcance":
+            finished = true;
+            setRun({ kind: "out_of_scope", reason: e.reason });
+            break;
+          case "error":
+            finished = true;
+            setRun({ kind: "error", message: e.message });
+            break;
+        }
+      });
+      if (!finished) setRun({ kind: "error", message: "Se cortó la conexión antes de terminar. Probá de nuevo." });
+    } catch {
+      setRun({ kind: "error", message: "No pudimos conectarnos con el servidor. Probá de nuevo." });
+    }
+  }
+
+  if (run.kind === "done") {
+    return (
+      <Results
+        result={run.result}
+        tab={tab}
+        onTab={setTab}
+        approved={approved}
+        onApproved={(f, value) => setApproved((prev) => ({ ...prev, [f]: value }))}
+        speech={speech}
+        onRestart={() => {
+          window.speechSynthesis?.cancel();
+          setRun({ kind: "idle" });
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <AdapterForm disabled={run.kind === "running"} onSubmit={start} />
+      {run.kind === "running" && <AdapterProgress progress={run.progress} />}
+      {run.kind === "error" && (
+        <p role="alert" className="rounded-xl border-2 border-red-700 bg-red-50 p-4 text-lg font-semibold text-red-900">
+          {run.message}
+        </p>
+      )}
+      {run.kind === "out_of_scope" && (
+        <div role="alert" className="rounded-xl border-2 border-amber-600 bg-amber-50 p-4 text-lg text-amber-950">
+          <p className="font-semibold">Este práctico no se puede adaptar todavía.</p>
+          <p className="mt-1">{run.reason}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Results({
+  result,
+  tab,
+  onTab,
+  approved,
+  onApproved,
+  speech,
+  onRestart,
+}: {
+  result: AdaptResult;
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  approved: Record<Format, boolean>;
+  onApproved: (f: Format, value: boolean) => void;
+  speech: Speech;
+  onRestart: () => void;
+}) {
+  const math = useMemo(
+    () => new Map<string, MathObject>(result.extraction.items.flatMap((it) => it.math.map((m) => [m.id, m] as const))),
+    [result],
+  );
+  const done = FORMATS.filter((f) => approved[f]).length;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
+        <p className="text-xl">
+          Listo en {Math.round(result.ms.total / 1000)} s. Aprobaste {done} de {FORMATS.length} versiones.
+        </p>
+        <button type="button" className={secondaryButton} onClick={onRestart}>
+          Adaptar otro práctico
+        </button>
+      </div>
+      {result.omitted.length > 0 && (
+        <p className="text-lg text-slate-800 print:hidden">Ejercicios que sacaste: {result.omitted.join(", ")}.</p>
+      )}
+
+      <div role="tablist" aria-label="Versiones" className="flex flex-wrap gap-2 border-b-2 border-slate-200 print:hidden">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            id={`tab-${t}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            aria-controls={`panel-${t}`}
+            onClick={() => onTab(t)}
+            className={`-mb-0.5 inline-flex min-h-11 items-center gap-2 rounded-t-lg border-2 px-4 text-lg font-semibold ${
+              tab === t ? "border-slate-200 border-b-white bg-white text-indigo-950" : "border-transparent text-indigo-800 hover:bg-slate-100"
+            }`}
+          >
+            {TAB_LABELS[t]}
+            {t !== "original" && approved[t] && <span className="text-emerald-800">✓</span>}
+          </button>
+        ))}
+      </div>
+
+      <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
+        {tab === "original" ? (
+          <Original result={result} math={math} />
+        ) : (
+          (() => {
+            const fr = result.formats.find((f) => f.format === tab);
+            if (!fr) return <p className="text-lg">Esta versión no llegó. Probá adaptar de nuevo.</p>;
+            return (
+              <AdaptedVersion
+                key={tab}
+                result={fr}
+                math={math}
+                modified={result.dificultad_modificada}
+                approved={approved[tab]}
+                onApprove={() => onApproved(tab, true)}
+                onReopen={() => onApproved(tab, false)}
+                speech={speech}
+              />
+            );
+          })()
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The práctico as the AI read it, with the answer key computed without AI: to check the reading before approving.
+function Original({ result, math }: { result: AdaptResult; math: Map<string, MathObject> }) {
+  const ex = result.extraction;
+  return (
+    <article className={`${card} space-y-4 text-xl leading-relaxed`}>
+      <p className="text-lg text-slate-700">Así leyó la IA tu práctico. Si algo está mal leído, las versiones también.</p>
+      <h3 className="text-2xl font-bold">{ex.title}</h3>
+      {ex.general_instructions && (
+        <p>
+          <MathText text={ex.general_instructions} math={math} />
+        </p>
+      )}
+      <ol className="space-y-4">
+        {ex.items.map((it) => {
+          const key = result.answerKey.find((a) => a.id === it.id);
+          return (
+            <li key={it.id} className="space-y-1">
+              <p>
+                <span className="font-bold">{it.id}) </span>
+                <MathText text={it.text} math={math} />
+              </p>
+              {it.figure && <p className="text-lg text-slate-800">Figura: {it.figure}</p>}
+              {it.unsure && <p className="text-lg font-semibold text-amber-900">La IA dudó al leer este ejercicio: revisalo.</p>}
+              {key && key.solution !== "—" && (
+                <p className="text-lg text-slate-800">Solución calculada sin IA: {key.solution}</p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </article>
+  );
+}

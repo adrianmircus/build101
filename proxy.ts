@@ -5,7 +5,13 @@ import { SESSION_COOKIE, verify } from "@/lib/auth/signing";
 export function proxy(request: NextRequest) {
   const session = verify(request.cookies.get(SESSION_COOKIE)?.value);
   const { pathname } = request.nextUrl;
-  const teacherArea = pathname.startsWith("/grupos") || pathname.startsWith("/materia");
+  // APIs answer 401 instead of redirecting. Dictation (/api/answers) is used by students; the rest is the teacher's.
+  if (pathname.startsWith("/api/")) {
+    const allowed = pathname.startsWith("/api/answers/") ? session !== null : session?.role === "teacher";
+    if (!allowed) return NextResponse.json({ error: "Tu sesión venció. Volvé a ingresar." }, { status: 401 });
+    return;
+  }
+  const teacherArea = pathname.startsWith("/grupos") || pathname.startsWith("/materia") || pathname.startsWith("/adaptar");
   if (teacherArea && session?.role !== "teacher") {
     return NextResponse.redirect(new URL("/ingresar/profesor", request.url));
   }
@@ -15,5 +21,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/grupos/:path*", "/materia/:path*", "/estudiante/:path*"],
+  matcher: ["/grupos/:path*", "/materia/:path*", "/adaptar/:path*", "/estudiante/:path*", "/api/:path*"],
 };
