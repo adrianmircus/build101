@@ -3,7 +3,7 @@
 // Correr con: npx tsx scripts/adapter/test-sistemas.ts
 import { checkSteps, compareSystems, fmtSystem, isSystem, solvedForm, solveSystem, type MathStep } from "../../lib/adapter/equivalence";
 import { speakMath } from "../../lib/adapter/speech";
-import { answerKey, checkItem, compareModels, hintIssues, itemEquation, numbersIn, supportIssues } from "../../lib/adapter/verify";
+import { answerKey, checkItem, compareModels, hintIssues, itemEquation, numbersIn, staticIssues, supportIssues } from "../../lib/adapter/verify";
 import { splitEven } from "../../lib/adapter/batches";
 import type { AdaptedItem, Item, MathModel, Support } from "../../lib/adapter/adapt-schemas";
 
@@ -37,6 +37,7 @@ check("sustitución: sistemas equivalentes", compareSystems("y = x + 1; y = -x +
 check("reducción: combinar ecuaciones", compareSystems("2*x - 2*y = -10; 6*x + 3*y = -3", "6*x - 6*y = -30; 9*y = 27").verdict, "ok");
 check("un paso mal hecho se marca", compareSystems("x = 4; y = 5", "x = 4; y = 6").verdict, "error");
 check("perder una ecuación no es equivalente", compareSystems("y = x + 1; y = -x + 9", "x = 4").verdict, "error");
+check("un paso 0 = 5 cierra un sistema incompatible", compareSystems("y = 2*x + 3; y = 2*x + 1", "y = 2*x + 3; 0 = 2").verdict, "ok");
 check("dos sistemas sin solución son equivalentes", compareSystems("x + y = 1; x + y = 2", "2*x + 2*y = 2; x + y = 3").verdict, "ok");
 check(
   "cadena completa de sustitución",
@@ -126,6 +127,11 @@ const enCocina: AdaptedItem = {
   glossary: [],
   figure: "",
 };
+check("un número nuevo en palabras no se marca", staticIssues(problema, { ...enCocina, text: "Los dos cocineros hicieron 26 empanadas en total. Luis hizo 4 empanadas más que Edinson. ¿Cuántas hizo cada uno?" }, "lectura_facil").filter((i) => i.startsWith("Aparece")), []);
+check("un número nuevo en cifras sí", staticIssues(problema, { ...enCocina, text: enCocina.text + " Hay 2 cocineros." }, "lectura_facil").filter((i) => i.startsWith("Aparece")), ["Aparece el número 2, que no está en el original"]);
+const indeterminado = item([m("m1", "y - 3*x = 4; 6*x - 2*y = -8")]);
+check("ejemplo de un sistema indeterminado: termina en 0 = 0", supportIssues(indeterminado, conEjemplo(["y = 2*x + 1; 4*x - 2*y = -2", "y = 2*x + 1; 4*x - 2*(2*x + 1) = -2", "y = 2*x + 1; 0 = 0"]), ["ejemplo_resuelto"], null), []);
+
 const run = async () => {
   const ok = await checkItem(problema, enCocina, "lectura_facil", Promise.resolve(goles), async () => ({ ...goles, unknown: "l, d", equation: "l + d = 26; l = d + 4" }));
   check("problema con dos incógnitas: la respuesta coincide", [ok.ok, ok.solution, ok.issues], [true, "ok", []]);

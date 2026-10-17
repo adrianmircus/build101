@@ -342,7 +342,9 @@ function mathIssues(orig: Item, adapted: AdaptedItem, body: string, format: Form
     const before = numbersIn(orig.text);
     const after = numbersIn(body);
     for (const n of before) if (!after.includes(n)) issues.push(`Falta el dato ${fmtNum(n)}`);
-    for (const n of after) if (!before.includes(n)) issues.push(`Aparece el número ${fmtNum(n)}, que no está en el original`);
+    // Un número nuevo cuenta si está en cifras: "los dos cocineros" no agrega un dato. Si se cambió un dato, igual falta
+    // el original, y el planteo independiente controla la respuesta.
+    for (const n of numbersIn(body, false)) if (!before.includes(n)) issues.push(`Aparece el número ${fmtNum(n)}, que no está en el original`);
   }
 
   if (RAW_MATH.test(stripPlaceholders(body))) issues.push("Hay matemática escrita fuera de los marcadores");
@@ -415,7 +417,8 @@ export function supportIssues(orig: Item, adapted: AdaptedItem, ajustes: Adjustm
       if (ex.steps.some(isSystem)) {
         // Un sistema resuelto da el valor de cada incógnita, no solo de la primera que se despeja.
         const first = solveSystem(ex.steps[0]);
-        if (first && !solvedForm(lastSrc, first.vars)) {
+        // Solo con solución única: un sistema incompatible o indeterminado termina en una igualdad como 0 = 5 o 0 = 0.
+        if (first?.kind === "unique" && !solvedForm(lastSrc, first.vars)) {
           issues.push(`El ejemplo resuelto tiene que terminar con el valor de cada incógnita (${first.vars.map((v) => `${v} = …`).join("; ")})`);
         }
         const last = solveSystem(lastSrc);

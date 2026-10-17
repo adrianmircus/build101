@@ -41,7 +41,9 @@ export async function POST(req: Request) {
           .getAll("items")
           .flatMap((v) => String(v).split(","))
           .map((v) => v.trim())
-          .filter(Boolean);
+          // Van al prompt de la extracción: solo números de ejercicio cortos ("3", "4b", "1a.ii").
+          .filter((v) => /^[\p{L}\p{N}.]{1,8}$/u.test(v))
+          .slice(0, 30);
         if (ajustes.includes("menos_items") && keep_items.length === 0) throw new PipelineError("Elegí qué ejercicios quedan, por ejemplo: 1, 3, 4b.");
         const list = (name: string) =>
           form

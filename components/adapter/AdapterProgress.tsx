@@ -12,7 +12,7 @@ export const INITIAL_PROGRESS: Progress = {
   formats: { lectura_facil: { stage: "esperando" }, dislexia: { stage: "esperando" }, lector_pantalla: { stage: "esperando" } },
 };
 
-const STAGE_TEXT: Record<FormatStage, string> = {
+export const STAGE_TEXT: Record<FormatStage, string> = {
   esperando: "En espera",
   adaptando: "Adaptando…",
   verificando: "Verificando la matemática…",

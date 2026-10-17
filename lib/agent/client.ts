@@ -9,6 +9,12 @@ export const MODEL = OPENROUTER_KEY
   ? process.env.OPENROUTER_MODEL || "anthropic/claude-opus-5.5"
   : "claude-opus-5-5";
 
+// Modelo rápido para las tareas largas y acotadas (adaptar un práctico ya leído, plantear un problema): escribe varias
+// veces más rápido que Opus y cuesta la mitad. Lo que importa (que la matemática no cambie) lo controla el verificador.
+export const FAST_MODEL = OPENROUTER_KEY
+  ? process.env.OPENROUTER_FAST_MODEL || "anthropic/claude-sonnet-5.5"
+  : "claude-sonnet-5-5";
+
 // Respaldo de modelo del lado del servidor: solo existe en la API de Anthropic. OpenRouter rechaza el campo
 // `fallbacks` con un 400, así que por OpenRouter no se manda.
 export const FALLBACK = OPENROUTER_KEY

@@ -419,13 +419,21 @@ export function solveSystem(src: string): SystemSolution | null {
 // Dos sistemas son equivalentes si tienen el mismo conjunto solución. Si los dos tienen solución, eso pasa cuando las
 // filas de uno son combinación de las del otro (mismo rango por separado que juntos).
 export function compareSystems(srcA: string, srcB: string): { verdict: Verdict; detail: string } {
-  const a0 = linearSystem(srcA);
-  const b0 = linearSystem(srcB);
-  if (!a0 || !b0) return { verdict: "unchecked", detail: "No es un sistema de ecuaciones lineales que se pueda revisar" };
-  const vars = [...new Set([...a0.vars, ...b0.vars])].sort();
+  // Las incógnitas de los dos pasos juntos: un paso como "0 = 5" (sistema incompatible) no tiene ninguna propia.
+  let vars: string[];
+  try {
+    const parts = normalize(`${srcA};${srcB}`)
+      .split(";")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    vars = [...new Set(parts.flatMap(equationVars))].sort();
+  } catch {
+    return { verdict: "unchecked", detail: "No es un sistema de ecuaciones lineales que se pueda revisar" };
+  }
   if (vars.length > MAX_SYSTEM_VARS) return { verdict: "unchecked", detail: "Tiene demasiadas incógnitas" };
-  const a = linearSystem(srcA, vars)!;
-  const b = linearSystem(srcB, vars)!;
+  const a = linearSystem(srcA, vars);
+  const b = linearSystem(srcB, vars);
+  if (!a || !b) return { verdict: "unchecked", detail: "No es un sistema de ecuaciones lineales que se pueda revisar" };
   const ra = rref(a.rows);
   const rb = rref(b.rows);
   const ca = consistent(ra);

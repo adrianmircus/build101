@@ -2,7 +2,7 @@
 // → reintentar una vez los ejercicios que fallan → marcar para revisión lo que siga fallando.
 import type Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { getClient, MODEL } from "@/lib/agent/client";
+import { FAST_MODEL, getClient, MODEL } from "@/lib/agent/client";
 import { isSystem, stepSet, type MathStep, type SolutionSet } from "./equivalence";
 import { splitEven } from "./batches";
 import { EXTRACT_SYSTEM, MODEL_SYSTEM, adaptSystem, needsSupport } from "./adapt-prompts";
@@ -76,6 +76,9 @@ export interface AdaptResult {
 
 export type AdaptEvent =
   | { stage: "leyendo" }
+  // Práctico leído: todo lo que se sabe antes de adaptar, para que la pantalla muestre cada versión apenas llega.
+  | { stage: "preparado"; result: AdaptResult; pending: Format[] }
+  | { stage: "clave"; answerKey: AdaptResult["answerKey"] }
   | { stage: "adaptando" | "verificando" | "reintentando"; format: Format }
   | { stage: "formato_listo"; result: FormatResult }
   | { stage: "fuera_de_alcance"; reason: string }
@@ -112,14 +115,22 @@ async function limited<T>(tokens: number, call: () => Promise<T>): Promise<T> {
 
 const NOT_SOLVABLE: MathModel = { solvable: false, unknown: "", equation: "", asks_for: "" };
 
-export async function extract(files: InputFile[], text: string | null): Promise<Extraction> {
+// only: con "menos ítems", los ejercicios que quedan. Los demás vuelven solo con su número (para mostrar cuáles se sacaron):
+// el modelo escribe menos y la lectura tarda menos.
+export async function extract(files: InputFile[], text: string | null, only: string[] = []): Promise<Extraction> {
   const content: Anthropic.ContentBlockParam[] = files.map((f) =>
     f.mediaType === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data } }
       : { type: "image", source: { type: "base64", media_type: f.mediaType, data: f.data } },
   );
   if (text) content.push({ type: "text", text: `Práctico pegado como texto:\n\n${text}` });
-  content.push({ type: "text", text: "Extraé el práctico." });
+  content.push({
+    type: "text",
+    text:
+      only.length > 0
+        ? `Extraé el práctico. Solo hacen falta los ejercicios ${only.join(", ")}, con todos sus incisos. De cada uno de los demás ejercicios, devolvé un solo item con su número como id, kind "otro", text "", math [], figure "", unsure false y block "".`
+        : "Extraé el práctico.",
+  });
 
   const res = await getClient().messages.parse({
     model: MODEL,
@@ -150,6 +161,27 @@ function practicoForPrompt(ex: Extraction): string {
   );
 }
 
+// El modelo a veces completa apoyos que el profe no pidió (un recordatorio vacío "por las dudas"). No vale un reintento:
+// se descartan acá, y el verificador sigue marcando cualquier otra cosa.
+function withoutDisabledSupport(a: Adaptation, ajustes: Adjustment[]): Adaptation {
+  const on = (x: Adjustment) => ajustes.includes(x);
+  return {
+    ...a,
+    items: a.items.map((it) =>
+      it.support
+        ? {
+            ...it,
+            support: {
+              guide: on("preguntas_guia") ? it.support.guide : [],
+              reminder: on("recordatorio") ? it.support.reminder : "",
+              example: on("ejemplo_resuelto") ? it.support.example : { statement: "", steps: [] },
+            },
+          }
+        : it,
+    ),
+  };
+}
+
 async function adaptCall(
   ex: Extraction,
   format: Format,
@@ -167,19 +199,19 @@ async function adaptCall(
   // Con ajustes de dificultad, cada ejercicio trae además sus apoyos (support).
   const schema = needsSupport(ajustes) ? AdaptationWithSupportSchema : AdaptationSchema;
   const res = await limited(8000, () => getClient().messages.parse({
-    model: MODEL,
+    model: FAST_MODEL,
     max_tokens: 8000,
     system: adaptSystem(format, ajustes, intereses),
-    output_config: { effort: "medium", format: zodOutputFormat(schema) },
+    output_config: { effort: "low", format: zodOutputFormat(schema) },
     messages: [{ role: "user", content: user }],
   }));
   if (res.stop_reason === "refusal" || !res.parsed_output) throw new PipelineError("No pudimos adaptar el práctico. Probá de nuevo.");
-  return res.parsed_output;
+  return withoutDisabledSupport(res.parsed_output, ajustes);
 }
 
 export async function modelProblem(text: string): Promise<MathModel> {
   const res = await limited(4000, () => getClient().messages.parse({
-    model: MODEL,
+    model: FAST_MODEL,
     max_tokens: 4000,
     system: MODEL_SYSTEM,
     output_config: { effort: "low", format: zodOutputFormat(MathModelSchema) },
@@ -318,7 +350,7 @@ export async function adaptPractico(
 ): Promise<AdaptResult | null> {
   const t0 = Date.now();
   onEvent({ stage: "leyendo" });
-  const extracted = await extract(files, text);
+  const extracted = await extract(files, text, options.ajustes.includes("menos_items") ? options.keep_items : []);
   const extractMs = Date.now() - t0;
   const { ajustes } = options;
 
@@ -366,10 +398,8 @@ export async function adaptPractico(
   const run: Format[] = [...BASE_FORMATS, ...(targets.includes("razonamiento") ? (["razonamiento"] as const) : [])];
   const forFormat = (f: Format) => applied.filter((a) => !isReasoning(a) || targets.includes(f));
   const intereses = options.intereses ?? [];
-  const formats = await Promise.all(run.map((f) => adaptFormat(work, f, originals, onEvent, forFormat(f), intereses, before)));
-  const answerKey = await buildAnswerKey(ex, originals);
-  const used = [...new Set(formats.flatMap((f) => f.ajustes))];
-  const result: AdaptResult = {
+  const used = [...new Set(run.flatMap(forFormat))];
+  const base: AdaptResult = {
     extraction: ex,
     ajustes: used,
     no_aplicados: notApplied,
@@ -377,10 +407,21 @@ export async function adaptPractico(
     intereses,
     razonamiento_en: targets,
     omitted,
-    answerKey,
-    formats,
-    ms: { extract: extractMs, total: Date.now() - t0 },
+    answerKey: [],
+    formats: [],
+    ms: { extract: extractMs, total: 0 },
   };
+  onEvent({ stage: "preparado", result: base, pending: run });
+  // La clave sale de los planteos, que ya están corriendo: se manda apenas está, sin esperar a las versiones.
+  const keyDone = buildAnswerKey(ex, originals).then((answerKey) => {
+    onEvent({ stage: "clave", answerKey });
+    return answerKey;
+  });
+  const [formats, answerKey] = await Promise.all([
+    Promise.all(run.map((f) => adaptFormat(work, f, originals, onEvent, forFormat(f), intereses, before))),
+    keyDone,
+  ]);
+  const result: AdaptResult = { ...base, answerKey, formats, ms: { extract: extractMs, total: Date.now() - t0 } };
   onEvent({ stage: "listo", result });
   return result;
 }
