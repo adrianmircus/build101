@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { addTransitionType, startTransition, useState, ViewTransition } from "react";
+import { MathMarkdown } from "@/components/ui/MathMarkdown";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
 import { TAB_SLIDE } from "@/components/ui/transitions";
@@ -121,7 +122,7 @@ export function AssessmentDetail() {
                 <h3 id="original-heading" className="mb-3 text-xl font-bold text-slate-700">
                   Original
                 </h3>
-                <div className="whitespace-pre-wrap text-lg leading-relaxed">{assessment.original}</div>
+                <MathMarkdown text={assessment.original} className="space-y-1 text-lg leading-relaxed" />
               </section>
 
               <section
@@ -145,7 +146,7 @@ export function AssessmentDetail() {
                     />
                   </>
                 ) : version.status === "ready" ? (
-                  <div className="whitespace-pre-wrap text-lg leading-relaxed">{version.content}</div>
+                  <MathMarkdown text={version.content ?? ""} className="space-y-1 text-lg leading-relaxed" />
                 ) : version.status === "error" || version.status === "pending" ? (
                   <div className="space-y-4">
                     {version.status === "error" ? (
@@ -187,7 +188,7 @@ export function AssessmentDetail() {
                   {version.questions.map((q, i) => (
                     <li key={i} className="rounded-xl border-2 border-slate-200 p-4">
                       <p className="text-base font-semibold text-slate-700">Ejercicio {q.exercise}</p>
-                      <p className="mt-1 whitespace-pre-wrap text-lg leading-relaxed">{q.stem}</p>
+                      <MathMarkdown text={q.stem} className="mt-1 space-y-1 text-lg leading-relaxed" />
                       <ul className="mt-3 grid grid-cols-2 gap-2">
                         {q.options.map((o) => {
                           const correct = o.id === q.answer;
@@ -198,7 +199,7 @@ export function AssessmentDetail() {
                                 correct ? "border-emerald-700 bg-emerald-50 font-semibold text-emerald-900" : "border-slate-300"
                               }`}
                             >
-                              <span className="font-bold">{o.id})</span> {o.text}
+                              <span className="font-bold">{o.id})</span> <MathMarkdown inline text={o.text} />
                               {correct && <span className="block text-base">✓ Respuesta correcta</span>}
                             </li>
                           );

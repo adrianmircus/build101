@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:adapter": "tsx scripts/adapter/test-equivalence.ts && tsx scripts/adapter/test-static.ts && tsx scripts/adapter/test-ajustes.ts && tsx scripts/adapter/test-acceso.ts",
+    "test:adapter": "tsx scripts/adapter/test-equivalence.ts && tsx scripts/adapter/test-static.ts && tsx scripts/adapter/test-ajustes.ts && tsx scripts/adapter/test-acceso.ts && tsx scripts/adapter/test-ejercicios.ts",
     "postinstall": "node scripts/copy-mediapipe.mjs",
     "profiles:distill": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/distill-profiles.mjs"
   },
