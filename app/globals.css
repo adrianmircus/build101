@@ -160,6 +160,49 @@ li {
   }
 }
 
+/* ---------- Login backdrop (components/auth/MathBackdrop.tsx) ---------- */
+
+/* The notebook fades in once; the waves slide one period (720 units) and loop seamlessly. */
+.login-reveal {
+  animation: login-reveal 1.4s ease-out both;
+}
+.login-wave {
+  animation: login-slide 26s linear infinite;
+}
+.login-wave-slow {
+  animation: login-slide 44s linear infinite;
+}
+/* Duration and delay are set per symbol inline. `translate` leaves each symbol's `rotate` alone. */
+.login-float {
+  animation-name: login-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+.login-backdrop[data-paused] .login-anim {
+  animation-play-state: paused;
+}
+
+@keyframes login-reveal {
+  from {
+    opacity: 0;
+    scale: 1.03;
+  }
+}
+@keyframes login-slide {
+  to {
+    translate: -720px 0;
+  }
+}
+@keyframes login-float {
+  from {
+    translate: 0 8px;
+  }
+  to {
+    translate: 0 -12px;
+  }
+}
+
 /* With reduced motion everything swaps instantly: view transitions, hover transitions and pulses. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(*),
