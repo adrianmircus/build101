@@ -2,13 +2,18 @@
 // La matemática nunca viaja como texto libre: se extrae una vez y se referencia con marcadores {{m1}}.
 import { z } from "zod";
 
-export const FORMATS = ["lectura_facil", "dislexia", "lector_pantalla"] as const;
+// Las tres versiones base salen siempre. "razonamiento" (razonamiento disminuido) es una versión propia que sale solo si
+// el profe la pide: el texto queda cerca del original y lo que cambia son los apoyos para razonar.
+export const BASE_FORMATS = ["lectura_facil", "dislexia", "lector_pantalla"] as const;
+export const FORMATS = [...BASE_FORMATS, "razonamiento"] as const;
 export type Format = (typeof FORMATS)[number];
+export type BaseFormat = (typeof BASE_FORMATS)[number];
 
 export const FORMAT_LABELS: Record<Format, string> = {
   lectura_facil: "Lectura fácil",
   dislexia: "Dislexia",
   lector_pantalla: "Lector de pantalla y baja visión",
+  razonamiento: "Razonamiento disminuido",
 };
 
 export const MathObjectSchema = z.object({
@@ -25,6 +30,9 @@ export const ItemSchema = z.object({
   math: z.array(MathObjectSchema),
   figure: z.string(), // descripción completa de la figura o tabla; "" si no hay
   unsure: z.boolean(),
+  // Consigna común del bloque ("EJERCICIO 2 - Resuelve…"), igual en todos sus incisos; "" si no está en un bloque.
+  // Va aparte del text para no quedar pegada al primer inciso.
+  block: z.string(),
 });
 
 export const ExtractionSchema = z.object({
@@ -65,12 +73,31 @@ export const ADJUSTMENT_LABELS: Record<Adjustment, string> = {
   menos_items: "Menos ítems (elegidos por el profe)",
 };
 
+// Razonamiento disminuido: sus 4 apoyos. Van en la versión propia y en las versiones base que elija el profe.
+export const REASONING_ADJUSTMENTS = ["preguntas_guia", "recordatorio", "ejemplo_resuelto", "numeros_simples"] as const;
+export const isReasoning = (a: Adjustment) => (REASONING_ADJUSTMENTS as readonly Adjustment[]).includes(a);
+
 export interface AdaptOptions {
   ajustes: Adjustment[];
   keep_items: string[]; // con menos_items: ids o números de ejercicio que quedan ("2" deja 2a y 2b)
+  // Versiones que llevan los apoyos de razonamiento disminuido. "razonamiento" es la versión propia.
+  razonamiento_en: Format[];
+  // Intereses del estudiante ("cocina", "fútbol"): los problemas con texto cambian de contexto, no de matemática.
+  intereses: string[];
 }
 
-export const NO_ADJUSTMENTS: AdaptOptions = { ajustes: [], keep_items: [] };
+export const NO_ADJUSTMENTS: AdaptOptions = { ajustes: [], keep_items: [], razonamiento_en: [], intereses: [] };
+
+// Intereses: son texto del profe que va al prompt. Se limpian (letras, números y espacios), se cortan y se acotan a 3.
+export const MAX_INTERESTS = 3;
+export function cleanInterests(raw: string[]): string[] {
+  const out: string[] = [];
+  for (const r of raw) {
+    const i = r.normalize("NFC").replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim().toLocaleLowerCase("es");
+    if (i && !out.includes(i)) out.push(i);
+  }
+  return out.slice(0, MAX_INTERESTS);
+}
 
 // Apoyos de un ejercicio. Van aparte de la consigna: la consigna sigue pasando por los mismos controles.
 export const SupportSchema = z.object({

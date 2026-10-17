@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { card, secondaryButton } from "@/components/ui/styles";
 import { runAdapt, speak, stopSpeaking } from "@/lib/adapter/adapt-client";
 import type { AdaptResult } from "@/lib/adapter/adapt-pipeline";
-import { FORMAT_LABELS, FORMATS, type Format, type MathObject } from "@/lib/adapter/adapt-schemas";
+import { FORMAT_LABELS, FORMATS, isReasoning, type Format, type MathObject } from "@/lib/adapter/adapt-schemas";
 import { AdaptedVersion, type Speech } from "./AdaptedVersion";
 import { AdapterForm, type AdaptInput } from "./AdapterForm";
 import { AdapterProgress, INITIAL_PROGRESS, type Progress } from "./AdapterProgress";
@@ -18,9 +18,8 @@ type Run =
   | { kind: "out_of_scope"; reason: string };
 
 type Tab = Format | "original";
-const TABS: Tab[] = [...FORMATS, "original"];
 const TAB_LABELS: Record<Tab, string> = { ...FORMAT_LABELS, original: "Original" };
-const NONE_APPROVED: Record<Format, boolean> = { lectura_facil: false, dislexia: false, lector_pantalla: false };
+const NONE_APPROVED: Record<Format, boolean> = { lectura_facil: false, dislexia: false, lector_pantalla: false, razonamiento: false };
 
 // One voice at a time, only from a click, with stop. The button goes back to "Escuchar" when the reading ends.
 function useSpeech(): Speech {
@@ -151,24 +150,32 @@ function Results({
     () => new Map<string, MathObject>(result.extraction.items.flatMap((it) => it.math.map((m) => [m.id, m] as const))),
     [result],
   );
-  const done = FORMATS.filter((f) => approved[f]).length;
+  // Tabs in a fixed order, only for the versions that came out (razonamiento disminuido only when asked for).
+  const formats = FORMATS.filter((f) => result.formats.some((r) => r.format === f));
+  const tabs: Tab[] = [...formats, "original"];
+  const done = formats.filter((f) => approved[f]).length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
         <p className="text-xl">
-          Listo en {Math.round(result.ms.total / 1000)} s. Aprobaste {done} de {FORMATS.length} versiones.
+          Listo en {Math.round(result.ms.total / 1000)} s. Aprobaste {done} de {formats.length} versiones.
         </p>
         <button type="button" className={secondaryButton} onClick={onRestart}>
           Adaptar otro práctico
         </button>
       </div>
+      {result.intereses.length > 0 && (
+        <p className="text-lg text-slate-800 print:hidden">
+          Problemas con texto llevados a los intereses del estudiante: {result.intereses.join(", ")}.
+        </p>
+      )}
       {result.omitted.length > 0 && (
         <p className="text-lg text-slate-800 print:hidden">Ejercicios que sacaste: {result.omitted.join(", ")}.</p>
       )}
 
       <div role="tablist" aria-label="Versiones" className="flex flex-wrap gap-2 border-b-2 border-slate-200 print:hidden">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             id={`tab-${t}`}
@@ -199,8 +206,11 @@ function Results({
                 key={tab}
                 result={fr}
                 math={math}
-                modified={result.dificultad_modificada}
-                notApplied={result.no_aplicados}
+                modified={fr.dificultad_modificada}
+                notApplied={result.no_aplicados.filter(
+                  (n) => !isReasoning(n.ajuste) || result.razonamiento_en.length === 0 || result.razonamiento_en.includes(tab),
+                )}
+                interests={result.intereses}
                 approved={approved[tab]}
                 onApprove={() => onApproved(tab, true)}
                 onReopen={() => onApproved(tab, false)}
@@ -226,24 +236,45 @@ function Original({ result, math }: { result: AdaptResult; math: Map<string, Mat
           <MathText text={ex.general_instructions} math={math} />
         </p>
       )}
-      <ol className="space-y-4">
-        {ex.items.map((it) => {
-          const key = result.answerKey.find((a) => a.id === it.id);
-          return (
-            <li key={it.id} className="space-y-1">
-              <p>
-                <span className="font-bold">{it.id}) </span>
-                <MathText text={it.text} math={math} />
-              </p>
-              {it.figure && <p className="text-lg text-slate-800">Figura: {it.figure}</p>}
-              {it.unsure && <p className="text-lg font-semibold text-amber-900">La IA dudó al leer este ejercicio: revisalo.</p>}
-              {key && key.solution !== "—" && (
-                <p className="text-lg text-slate-800">Solución calculada sin IA: {key.solution}</p>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      {blocks(ex.items).map((b, i) => (
+        <section key={`${i}-${b.block}`} className="space-y-3">
+          {b.block && (
+            <h4 className="font-semibold">
+              <MathText text={b.block} math={math} />
+            </h4>
+          )}
+          <ol className="space-y-4">
+            {b.items.map((it) => {
+              const key = result.answerKey.find((a) => a.id === it.id);
+              return (
+                <li key={it.id} className="space-y-1">
+                  <p>
+                    <span className="font-bold">{it.id}) </span>
+                    <MathText text={it.text} math={math} />
+                  </p>
+                  {it.figure && <p className="text-lg text-slate-800">Figura: {it.figure}</p>}
+                  {it.unsure && <p className="text-lg font-semibold text-amber-900">La IA dudó al leer este ejercicio: revisalo.</p>}
+                  {key && key.solution !== "—" && (
+                    <p className="text-lg text-slate-800">Solución calculada sin IA: {key.solution}</p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ))}
     </article>
   );
+}
+
+// Consecutive items that share a block's common instruction ("EJERCICIO 2 - Resuelve…") go under one heading.
+function blocks(items: AdaptResult["extraction"]["items"]) {
+  const out: { block: string; items: typeof items }[] = [];
+  for (const it of items) {
+    const block = it.block.trim();
+    const last = out.at(-1);
+    if (last && last.block === block) last.items.push(it);
+    else out.push({ block, items: [it] });
+  }
+  return out;
 }

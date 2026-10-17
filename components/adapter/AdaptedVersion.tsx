@@ -16,6 +16,7 @@ const FORMAT_STYLE: Record<Format, string> = {
   lectura_facil: "text-xl leading-relaxed",
   dislexia: "text-[1.3rem] leading-loose tracking-wide [word-spacing:0.16em]",
   lector_pantalla: "text-2xl leading-relaxed",
+  razonamiento: "text-xl leading-relaxed",
 };
 
 const PLACEHOLDER = /\{\{(m\d+)\}\}/g;
@@ -41,6 +42,7 @@ export function AdaptedVersion({
   math,
   modified,
   notApplied,
+  interests = [],
   approved,
   onApprove,
   onReopen,
@@ -50,6 +52,7 @@ export function AdaptedVersion({
   math: Map<string, MathObject>;
   modified: boolean;
   notApplied: NotApplied[];
+  interests?: string[];
   approved: boolean;
   onApprove: () => void;
   onReopen: () => void;
@@ -89,7 +92,15 @@ export function AdaptedVersion({
 
       {modified && (
         <p className="rounded-xl border-2 border-amber-600 bg-amber-50 p-4 text-lg font-semibold text-amber-950">
-          Dificultad modificada: esta versión incluye los ajustes que elegiste.
+          Dificultad modificada: esta versión incluye{" "}
+          {result.ajustes.map((a) => ADJUSTMENT_LABELS[a].toLocaleLowerCase("es")).join(", ")}.
+        </p>
+      )}
+
+      {interests.length > 0 && (
+        <p className="rounded-xl border-2 border-indigo-300 bg-indigo-50 p-4 text-lg text-indigo-950 print:hidden">
+          <span className="font-semibold">Con los intereses del estudiante ({interests.join(", ")}):</span> los problemas con
+          texto cambian de tema, no de números ni de pregunta. Revisá que la situación tenga sentido.
         </p>
       )}
 
@@ -158,8 +169,10 @@ export function AdaptedVersion({
         ) : (
           <div className="space-y-4">
             <p className="max-w-prose text-lg text-slate-800">
-              Nada le llega a un estudiante sin tu aprobación. Leé la versión y aprobala si mantiene el mismo pedido, los
-              mismos datos y la misma dificultad.
+              Nada le llega a un estudiante sin tu aprobación. Leé la versión y aprobala si{" "}
+              {modified
+                ? "mantiene el mismo pedido y los mismos datos, y si los apoyos son los que pide la adecuación del estudiante."
+                : "mantiene el mismo pedido, los mismos datos y la misma dificultad."}
             </p>
             {flagged > 0 && (
               <label className="flex min-h-11 items-center gap-3 text-lg">

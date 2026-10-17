@@ -47,6 +47,7 @@ const orig: Item = {
   math: [{ id: "m4", mathjs: "3*p = 150", latex: "3p = 150", role: "equation" }],
   figure: "",
   unsure: false,
+  block: "",
 };
 const good: AdaptedItem = { id: "3", text: "Ana compra 3 kilos de manzanas. Paga 150 pesos. Resolvé {{m4}}. ¿Cuánto cuesta un kilo?", steps: [], glossary: [], figure: "" };
 check("adaptación correcta", staticIssues(orig, good, "lectura_facil"), []);
@@ -99,6 +100,7 @@ const edades: Item = {
   math: [],
   figure: "",
   unsure: false,
+  block: "",
 };
 const edadesBien: AdaptedItem = { id: "5", text: "Juan tiene 5 años más que Ana. Entre los dos suman 35 años. ¿Qué edad tiene Ana?", steps: [], glossary: [], figure: "" };
 check("pistas: reformular sin cambiar relaciones pasa", staticIssues(edades, edadesBien, "lectura_facil"), []);
@@ -122,6 +124,7 @@ const racional: Item = {
   math: [{ id: "m1", mathjs: "3/(x-1) = 2/x", latex: "\\frac{3}{x-1} = \\frac{2}{x}", role: "equation" }],
   figure: "",
   unsure: false,
+  block: "",
 };
 const racionalBien: AdaptedItem = {
   id: "2a",

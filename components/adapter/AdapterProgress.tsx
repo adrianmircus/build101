@@ -3,7 +3,8 @@ import { FORMAT_LABELS, FORMATS, type Format } from "@/lib/adapter/adapt-schemas
 export type FormatStage = "esperando" | "adaptando" | "verificando" | "reintentando" | "lista";
 export type Progress = {
   reading: "active" | "done";
-  formats: Record<Format, { stage: FormatStage; ok?: number; total?: number }>;
+  // The base versions are always there; "razonamiento" shows up when the stream says it started.
+  formats: Partial<Record<Format, { stage: FormatStage; ok?: number; total?: number }>>;
 };
 
 export const INITIAL_PROGRESS: Progress = {
@@ -30,6 +31,7 @@ export function AdapterProgress({ progress }: { progress: Progress }) {
         <Row done={progress.reading === "done"} label="Leer el práctico" status={progress.reading === "done" ? "Listo" : "Leyendo…"} />
         {FORMATS.map((f) => {
           const p = progress.formats[f];
+          if (!p) return null;
           const status =
             p.stage === "lista" && p.total !== undefined ? `Lista: ${p.ok} de ${p.total} ejercicios verificados` : STAGE_TEXT[p.stage];
           return <Row key={f} done={p.stage === "lista"} label={FORMAT_LABELS[f]} status={status} />;

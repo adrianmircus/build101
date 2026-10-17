@@ -8,8 +8,9 @@ import { EXTRACT_SYSTEM, MODEL_SYSTEM, adaptSystem, needsSupport } from "./adapt
 import {
   AdaptationSchema,
   AdaptationWithSupportSchema,
+  BASE_FORMATS,
   ExtractionSchema,
-  FORMATS,
+  isReasoning,
   MathModelSchema,
   NO_ADJUSTMENTS,
   type AdaptOptions,
@@ -29,6 +30,9 @@ import {
   retryIssues,
   scopeIssue,
   textReadability,
+  withBlock,
+  withBlockMath,
+  blockInstruction,
   type ItemCheck,
   type NotApplied,
 } from "./verify";
@@ -48,15 +52,19 @@ export interface FormatResult {
   checks: ItemCheck[];
   header: { ok: boolean; issues: string[] }; // título e indicaciones generales; si no está ok, va a revisión
   retried: string[]; // ids que se regeneraron una vez
+  ajustes: Adjustment[]; // los de esta versión: los de razonamiento disminuido van solo donde los pidió el profe
+  dificultad_modificada: boolean; // la pantalla lo muestra en esta versión
   readability: { before: number | null; after: number | null }; // de toda la versión; null: no aplica
   ms: number;
 }
 
 export interface AdaptResult {
   extraction: Extraction; // con menos_items, solo los ejercicios que eligió el profe
-  ajustes: Adjustment[]; // los que se aplicaron
+  ajustes: Adjustment[]; // los que se aplicaron en alguna versión
   no_aplicados: NotApplied[]; // los que el profe pidió pero no cambian nada en este práctico
-  dificultad_modificada: boolean; // la pantalla tiene que mostrarlo en cada versión
+  dificultad_modificada: boolean; // alguna versión tiene la dificultad modificada (cada FormatResult dice cuál)
+  intereses: string[]; // temas del estudiante con los que se reescribieron los problemas con texto
+  razonamiento_en: Format[]; // versiones con los apoyos de razonamiento disminuido
   omitted: string[]; // ids que el profe sacó con menos_items
   answerKey: { id: string; solution: string; set: SolutionSet | null }[]; // calculada sin IA cuando se puede
   formats: FormatResult[];
@@ -115,6 +123,7 @@ async function adaptCall(
   ex: Extraction,
   format: Format,
   ajustes: Adjustment[],
+  intereses: string[],
   retry?: { previous: Adaptation; failures: { id: string; issues: string[] }[] },
 ): Promise<Adaptation> {
   let user = `Práctico:\n${practicoForPrompt(ex)}`;
@@ -129,7 +138,7 @@ async function adaptCall(
   const res = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 16000,
-    system: adaptSystem(format, ajustes),
+    system: adaptSystem(format, ajustes, intereses),
     output_config: { effort: "medium", format: zodOutputFormat(schema) },
     messages: [{ role: "user", content: user }],
   });
@@ -168,10 +177,12 @@ async function adaptFormat(
   originals: Map<string, Promise<MathModel>>,
   onEvent: (e: AdaptEvent) => void,
   ajustes: Adjustment[],
+  intereses: string[],
+  readabilityBefore: ReturnType<typeof textReadability>,
 ): Promise<FormatResult> {
   const t0 = Date.now();
   onEvent({ stage: "adaptando", format });
-  let adaptation = await adaptCall(ex, format, ajustes);
+  let adaptation = await adaptCall(ex, format, ajustes, intereses);
 
   onEvent({ stage: "verificando", format });
   let checks = await checkAll(ex, adaptation, format, originals, ajustes);
@@ -183,7 +194,7 @@ async function adaptFormat(
   if (failures.length > 0 || header.length > 0) {
     onEvent({ stage: "reintentando", format });
     const headerFailure = header.length > 0 ? [{ id: HEADER_ID, issues: header }] : [];
-    const fixed = await adaptCall(ex, format, ajustes, { previous: adaptation, failures: [...headerFailure, ...failures] });
+    const fixed = await adaptCall(ex, format, ajustes, intereses, { previous: adaptation, failures: [...headerFailure, ...failures] });
     adaptation = {
       ...adaptation,
       ...(header.length > 0 ? { title: fixed.title, general_instructions: fixed.general_instructions } : {}),
@@ -199,9 +210,11 @@ async function adaptFormat(
     checks,
     header: { ok: header.length === 0, issues: header },
     retried,
+    ajustes,
+    dificultad_modificada: ajustes.length > 0,
     // Sobre el texto de toda la versión, no un promedio por ejercicio: un inciso de tres palabras no da un índice que sirva.
     readability: {
-      before: textReadability(ex.items.map((it) => it.text)),
+      before: readabilityBefore,
       after: textReadability(adaptation.items.flatMap((it) => [it.text, ...it.steps])),
     },
     ms: Date.now() - t0,
@@ -243,9 +256,10 @@ export async function adaptPractico(
 
   // Menos ítems: el profe elige qué ejercicios quedan. Se filtra antes del tope de alcance,
   // así un práctico largo entra si el profe deja solo una parte.
-  const kept = ajustes.includes("menos_items") ? keepItems(extracted.items, options.keep_items) : extracted.items;
-  const omitted = extracted.items.filter((it) => !kept.includes(it)).map((it) => it.id);
-  if (extracted.items.length > 0 && kept.length === 0) {
+  const all = withBlockMath(extracted.items);
+  const kept = ajustes.includes("menos_items") ? keepItems(all, options.keep_items) : all;
+  const omitted = all.filter((it) => !kept.includes(it)).map((it) => it.id);
+  if (all.length > 0 && kept.length === 0) {
     onEvent({ stage: "fuera_de_alcance", reason: "Ninguno de los ejercicios elegidos está en el práctico. Revisá la numeración." });
     return null;
   }
@@ -261,22 +275,39 @@ export async function adaptPractico(
     return null;
   }
 
+  // Para adaptar y verificar, cada inciso lleva delante la consigna de su bloque: así se entiende solo y la adaptación
+  // puede repetirla sin que el verificador lo tome como texto nuevo. La pantalla muestra el original con el bloque aparte.
+  const work: Extraction = { ...ex, items: ex.items.map(withBlock) };
+
   // Planteo independiente de cada problema original, una sola vez para los 3 formatos.
   const originals = new Map<string, Promise<MathModel>>();
-  for (const it of ex.items) {
+  for (const it of work.items) {
     if (it.kind === "problema") originals.set(it.id, modelProblem(fillMath(it.text, it.math)).catch(() => NOT_SOLVABLE));
   }
 
   // Un ajuste que no cambia nada en este práctico (números más simples sin problemas con texto) no le llega al modelo
   // ni marca la versión como "dificultad modificada": la pantalla avisa que no se aplicó.
   const { applied, notApplied } = applicableAdjustments(ex.items, ajustes);
-  const formats = await Promise.all(FORMATS.map((f) => adaptFormat(ex, f, originals, onEvent, applied)));
+  // Legibilidad del original tal como se ve: cada consigna de bloque una sola vez, no repetida en cada inciso.
+  const blocks = [...new Set(ex.items.map((it) => blockInstruction(it.block)).filter(Boolean))];
+  const before = textReadability([...blocks, ...ex.items.map((it) => it.text)]);
+  // Razonamiento disminuido: sus apoyos van en la versión propia y en las versiones base que eligió el profe. La versión
+  // propia sale solo si se pidió y quedó algún apoyo para aplicar. "Menos ítems" cambia todas las versiones.
+  const reasoning = applied.filter(isReasoning);
+  const targets = reasoning.length > 0 ? (options.razonamiento_en ?? []) : [];
+  const run: Format[] = [...BASE_FORMATS, ...(targets.includes("razonamiento") ? (["razonamiento"] as const) : [])];
+  const forFormat = (f: Format) => applied.filter((a) => !isReasoning(a) || targets.includes(f));
+  const intereses = options.intereses ?? [];
+  const formats = await Promise.all(run.map((f) => adaptFormat(work, f, originals, onEvent, forFormat(f), intereses, before)));
   const answerKey = await buildAnswerKey(ex, originals);
+  const used = [...new Set(formats.flatMap((f) => f.ajustes))];
   const result: AdaptResult = {
     extraction: ex,
-    ajustes: applied,
+    ajustes: used,
     no_aplicados: notApplied,
-    dificultad_modificada: applied.length > 0,
+    dificultad_modificada: used.length > 0,
+    intereses,
+    razonamiento_en: targets,
     omitted,
     answerKey,
     formats,

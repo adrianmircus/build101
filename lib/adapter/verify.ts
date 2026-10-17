@@ -252,6 +252,34 @@ export function glossaryIssues(orig: Item, adapted: AdaptedItem, body: string, a
   return issues;
 }
 
+// Rótulos de numeración ("EJERCICIO 2-", "Ej. 3:", "Problema 1)"): no son datos, así que no entran en la comparación de números.
+const LABEL = /\b(?:ejercicio|ej\.|actividad|parte|problema|pregunta)\s*(?:n\s*)?[°º.]?\s*\d+[a-z]?\s*[-–—.:)]*\s*/gi;
+
+export function blockInstruction(block: string): string {
+  return block.replace(LABEL, "").trim();
+}
+
+// Un inciso con la consigna de su bloque adelante (sin el rótulo), para que se entienda solo. Se adapta y se verifica así.
+export function withBlock(it: Item): Item {
+  const block = blockInstruction(it.block);
+  return block ? { ...it, text: `${block}\n${it.text}` } : it;
+}
+
+// Las fórmulas que usa la consigna de un bloque pueden estar definidas en otro inciso. Se copian al inciso que las usa,
+// antes de filtrar con "menos ítems", para que no queden marcadores sin definición. Un marcador que no se define en
+// ningún lado manda el inciso a revisión (unsure) en lugar de pasar como verificado.
+export function withBlockMath(items: Item[]): Item[] {
+  const defs = new Map(items.flatMap((it) => it.math.map((m) => [m.id, m] as const)));
+  return items.map((it) => {
+    const refs = placeholders(`${it.block}\n${it.text}`);
+    const missing = refs.filter((id) => !it.math.some((m) => m.id === id));
+    const found = missing.map((id) => defs.get(id)).filter((m): m is MathObject => m !== undefined);
+    const undefinedRef = found.length < missing.length;
+    if (missing.length === 0) return it;
+    return { ...it, math: [...it.math, ...found], unsure: it.unsure || undefinedRef };
+  });
+}
+
 // Título e indicaciones generales del práctico: pasan por los mismos controles que una consigna
 // (marcadores, números, matemática suelta y pistas). Se comparan juntos porque la adaptación puede mover texto de uno al otro.
 export const HEADER_ID = "encabezado";
@@ -259,7 +287,7 @@ type Header = Pick<Extraction, "title" | "general_instructions">;
 
 export function headerIssues(orig: Header, adapted: Header): string[] {
   const text = (h: Header) => [h.title, h.general_instructions].join("\n");
-  const item: Item = { id: HEADER_ID, kind: "otro", text: text(orig), math: [], figure: "", unsure: false };
+  const item: Item = { id: HEADER_ID, kind: "otro", text: text(orig), math: [], figure: "", unsure: false, block: "" };
   return staticIssues(item, { id: HEADER_ID, text: text(adapted), steps: [], glossary: [], figure: "" }, "lectura_facil").map(
     (issue) => `En el título o las indicaciones: ${issue}`,
   );

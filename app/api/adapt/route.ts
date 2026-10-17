@@ -1,9 +1,10 @@
 // POST con FormData: files (PDF o fotos, hasta 4 y 4 MB entre todos) o text (práctico pegado).
-// Opcional: ajustes (preguntas_guia, recordatorio, ejemplo_resuelto, numeros_simples, menos_items) e items (con menos_items).
+// Opcional: ajustes (preguntas_guia, recordatorio, ejemplo_resuelto, numeros_simples, menos_items), items (con menos_items),
+// razonamiento_en (versiones con los apoyos de razonamiento disminuido; "razonamiento" es la versión propia) e intereses.
 // Responde NDJSON: un evento por etapa y por formato, para que la pantalla muestre cada versión apenas está lista.
 // Solo con sesión de profe: proxy.ts ya corta sin sesión, este es el control real en el servidor.
 import { adaptPractico, PipelineError, type InputFile } from "@/lib/adapter/adapt-pipeline";
-import { ADJUSTMENTS, type Adjustment } from "@/lib/adapter/adapt-schemas";
+import { ADJUSTMENTS, cleanInterests, FORMATS, isReasoning, type Adjustment, type Format } from "@/lib/adapter/adapt-schemas";
 import { uploadIssue } from "@/lib/adapter/upload";
 import { readSession } from "@/lib/auth/session";
 
@@ -41,7 +42,17 @@ export async function POST(req: Request) {
           .map((v) => v.trim())
           .filter(Boolean);
         if (ajustes.includes("menos_items") && keep_items.length === 0) throw new PipelineError("Elegí qué ejercicios quedan, por ejemplo: 1, 3, 4b.");
-        await adaptPractico(files, text, send, { ajustes: [...new Set(ajustes)], keep_items });
+        const list = (name: string) =>
+          form
+            .getAll(name)
+            .flatMap((v) => String(v).split(","))
+            .map((v) => v.trim())
+            .filter(Boolean);
+        // Sin destino, los apoyos de razonamiento disminuido van en su versión propia.
+        const targets = list("razonamiento_en").filter((v): v is Format => (FORMATS as readonly string[]).includes(v));
+        const razonamiento_en: Format[] = targets.length > 0 ? [...new Set(targets)] : ajustes.some(isReasoning) ? ["razonamiento"] : [];
+        const intereses = cleanInterests(form.getAll("intereses").map(String));
+        await adaptPractico(files, text, send, { ajustes: [...new Set(ajustes)], keep_items, razonamiento_en, intereses });
       } catch (err) {
         console.error(err);
         const message = err instanceof PipelineError ? err.message : "Algo falló del lado del servidor. Probá de nuevo.";

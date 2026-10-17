@@ -1,11 +1,11 @@
 // Helpers del navegador: mandar el práctico, leer el stream de eventos y armar el texto para escuchar.
 import type { AdaptEvent } from "./adapt-pipeline";
-import type { AdaptedItem, Adjustment, MathObject } from "./adapt-schemas";
+import type { AdaptedItem, Adjustment, Format, MathObject } from "./adapt-schemas";
 import { speakMath } from "./speech";
 import { uploadIssue } from "./upload";
 
 export async function runAdapt(
-  input: { files: File[]; text?: string; ajustes?: Adjustment[]; keepItems?: string[] },
+  input: { files: File[]; text?: string; ajustes?: Adjustment[]; keepItems?: string[]; razonamientoEn?: Format[]; intereses?: string[] },
   onEvent: (e: AdaptEvent) => void,
 ) {
   // Se controla antes de subir: pasado el tope, Vercel corta con un 413 sin mensaje para el profe.
@@ -19,6 +19,8 @@ export async function runAdapt(
   if (input.text) form.append("text", input.text);
   for (const a of input.ajustes ?? []) form.append("ajustes", a);
   for (const id of input.keepItems ?? []) form.append("items", id);
+  for (const f of input.razonamientoEn ?? []) form.append("razonamiento_en", f);
+  for (const i of input.intereses ?? []) form.append("intereses", i);
 
   const res = await fetch("/api/adapt", { method: "POST", body: form });
   if (res.status === 401) {

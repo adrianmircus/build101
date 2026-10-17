@@ -313,7 +313,23 @@ export function sameSet(a: SolutionSet, b: SolutionSet): boolean {
 export function fmt(s: SolutionSet): string {
   if (s === "all") return "todos los reales";
   if (s.length === 0) return "ninguna solución";
-  return `{${s.map((x) => String(+x.toFixed(4)).replace(".", ",")).join("; ")}}`;
+  return `{${s.map(fmtValue).join("; ")}}`;
+}
+
+// Un valor como lo escribiría el profe: entero, decimal corto con coma (0,5), fracción (-1/3) o aproximado (≈ 1,41421).
+// La tolerancia solo absorbe el error de la búsqueda numérica de raíces (del orden de 1e-8): no es un redondeo visual,
+// así que 999999,5 no pasa a 1000000 ni 0,0000001 a 0. Lo que no es exacto se muestra con ≈ y 6 cifras significativas.
+export function fmtValue(x: number): string {
+  const tol = 1e-8 * Math.max(1, Math.abs(x));
+  const comma = (v: number) => String(v).replace(".", ",");
+  if (Math.abs(x - Math.round(x)) < tol) return String(Math.round(x));
+  const short = Math.round(x * 100) / 100;
+  if (short !== 0 && Math.abs(x - short) < tol) return comma(short);
+  for (let q = 3; q <= 20; q++) {
+    const p = Math.round(x * q);
+    if (p !== 0 && Math.abs(x - p / q) < tol) return `${p}/${q}`;
+  }
+  return `≈ ${comma(Number(x.toPrecision(6)))}`;
 }
 
 function sameExpression(f: Fn, g: Fn): Verdict {
