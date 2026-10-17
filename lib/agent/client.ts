@@ -35,10 +35,14 @@ const DIRECT_EXTRA: Api["extra"] = { betas: ["server-side-fallback-2026-07-01"],
 // Calls the AI through Anthropic's API and, if that fails, retries once through OpenRouter.
 // A 404 isn't retried: it's a missing file, and changing provider doesn't fix it.
 export async function withFallback<T>(call: (api: Api) => Promise<T>): Promise<T> {
+  const backup = getOpenRouter();
+  // No Anthropic key at all: the SDK would fail with a plain Error on the request, so go straight to OpenRouter.
+  if (backup && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+    return call({ client: backup, model: OPEN_ROUTER_MODEL, extra: {}, files: false });
+  }
   try {
     return await call({ client: getClient(), model: MODEL, extra: DIRECT_EXTRA, files: true });
   } catch (e) {
-    const backup = getOpenRouter();
     const retryable =
       (e instanceof Anthropic.APIError && !(e instanceof Anthropic.NotFoundError)) || e instanceof Anthropic.APIConnectionError;
     if (!backup || !retryable) throw e;
