@@ -20,7 +20,8 @@ Rules:
 - Notation must be readable as plain text, without LaTeX: use Unicode (x², x³, √, ·, −, ≤, ≥, ≠, π, |x|), "/" for fractions with parentheses when needed, and "=" between steps. Put each step they dictate on its own line.
 - The exercise statement is only context to understand symbols and names (for example, if it uses f(x) or g). Never take an answer from it.
 - "readback": the answer as it should be read aloud in Rioplatense Spanish, so the student can confirm it by ear ("equis al cuadrado más tres equis menos cuatro igual a cero").
-- "doubts": when something can be written two ways and the dictation doesn't say which ("x más dos al cuadrado": (x + 2)² or x + 2²?), pick the most literal reading for "answer" and add a short question for the student in "doubts". Speech recognition errors you can't resolve go here too. Empty if there are none.
+- "doubts": when something can be written two ways and the dictation doesn't say which ("x más dos al cuadrado": (x + 2)² or x + 2²?), pick the most literal reading for "answer" and add a short question for the student in "doubts". Speech recognition errors you can't resolve go here too. A loose or cut-off phrase that isn't part of the answer (often at the end: "el procedimiento general en") stays out of "answer", and you ask about it here ("Al final se escuchó «…»: ¿querías agregar algo?"). Empty if there are none.
+- "doubts" are only about how to write what they said. Never point out missing steps, values or mistakes, and never hint at what's left to do: that would be helping with the exam.
 - If the dictation is empty or has nothing that answers anything, leave "answer" empty and explain it in "doubts".
 - Write in Rioplatense Spanish, addressed to the student ("vos").`;
 
