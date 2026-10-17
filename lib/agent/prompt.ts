@@ -13,6 +13,7 @@ Rules:
 - Keep formulas in LaTeX ($...$ inline, $$...$$ for blocks). The result is markdown.
 - Every change goes in "changes": "what" says what you changed and "why" explains why, citing the source listed in the profile data.
 - If several profiles are combined and two adaptations clash, prioritize the one that changes the assessment the least and explain it in "changes".
+- If we give you the students' interests, the teacher is asking you to theme the exercises around them to make them more engaging. This is not a profile adaptation and is the only change allowed outside the profile data: you may change ONLY the context or story of word problems (objects, characters, situations) so they relate to those interests. Never change numbers, operations, difficulty or what is assessed. Leave pure computation exercises as they are; don't force a theme where it doesn't fit. List each themed exercise in "changes", with a "why" like "Para hacerlo más atractivo según los gustos del grupo: fútbol". Don't claim pedagogical or clinical benefits for it.
 - Write the content and the changes in Rioplatense Spanish, clear and direct.`;
 
 function syllabusText(syllabus: SyllabusForAI): string {
@@ -38,11 +39,16 @@ export function buildMessage(request: GenerationRequest, profiles: ProfileData[]
   for (const p of profiles) {
     parts.push(`<profile id="${p.id}" name="${p.fullName}">\n${p.text}\n</profile>`);
   }
-  parts.push(
-    `Adapt this ${request.type === "exam" ? "exam" : "worksheet"} about "${request.topic}" for a student with: ${profiles
-      .map((p) => p.label)
-      .join(" + ")}.`,
-  );
+  const interests = request.interests ?? [];
+  if (interests.length > 0) {
+    parts.push(`<interests>\n${interests.map((i) => `- ${i}`).join("\n")}\n</interests>`);
+  }
+  const kind = request.type === "exam" ? "exam" : "worksheet";
+  const goals = [
+    profiles.length > 0 && `adapt it for a student with: ${profiles.map((p) => p.label).join(" + ")}`,
+    interests.length > 0 && "theme its word problems around the students' interests",
+  ].filter(Boolean);
+  parts.push(`For this ${kind} about "${request.topic}": ${goals.join(", and ")}.`);
   parts.push(`<original>\n${request.original}\n</original>`);
 
   blocks.push({ type: "text", text: parts.join("\n\n") });

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Loading } from "@/components/ui/States";
 import { field, secondaryButton } from "@/components/ui/styles";
+import { FORWARD } from "@/components/ui/transitions";
 import { createGroup, useData } from "@/lib/groups/store";
 import { GroupCard } from "./GroupCard";
 
@@ -16,7 +17,7 @@ export function GroupsPanel() {
 
   return (
     <>
-      <h1 className="text-4xl font-bold">Mis grupos</h1>
+      <h1 className="text-4xl font-bold tracking-tight">Mis grupos</h1>
       <p className="mt-2 text-xl text-slate-700">Elegí un grupo para ver a sus estudiantes o crear un práctico.</p>
       <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {data.groups.map((group) => (
@@ -37,12 +38,12 @@ function NewGroupForm() {
   const [name, setName] = useState("");
   return (
     <form
-      className="flex h-full flex-col justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-400 p-6"
+      className="flex h-full flex-col justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-500 bg-white/60 p-6"
       onSubmit={(e) => {
         e.preventDefault();
         const trimmed = name.trim();
         if (!trimmed) return;
-        router.push(`/groups/${createGroup(trimmed)}`);
+        router.push(`/grupos/${createGroup(trimmed)}`, { transitionTypes: FORWARD });
       }}
     >
       <label htmlFor="group-name" className="text-xl font-bold">

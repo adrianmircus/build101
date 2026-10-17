@@ -5,6 +5,8 @@ export type Student = {
   id: string;
   name: string;
   profiles: ProfileId[];
+  // Additional data the teacher loads. Optional so older localStorage data keeps working.
+  interests?: string[];
 };
 
 export type Group = {
@@ -19,6 +21,8 @@ export type VersionStatus = "pending" | "generating" | "ready" | "error";
 export type Version = {
   profiles: ProfileId[];
   studentIds: string[];
+  // Interests the version is themed around, fixed when it was created (empty or missing: none).
+  interests?: string[];
   status: VersionStatus;
   content?: string;
   changes?: Change[];

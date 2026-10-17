@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
+import { Lexend } from "next/font/google";
 import "./globals.css";
+
+// Wide, legible typeface for the projector. Not Atkinson Hyperlegible: its slashed zero reads like ∅
+// (empty set), which is confusing in a math worksheet. Exposed as --font-sans in globals.css.
+const lexend = Lexend({ subsets: ["latin", "latin-ext"], variable: "--font-lexend" });
 
 export const metadata: Metadata = {
   title: "Prácticos accesibles",
@@ -8,11 +13,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
+    <html lang="es" className={lexend.variable}>
       <body className="min-h-screen antialiased">
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-semibold"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:text-lg focus:font-semibold focus:text-slate-900 focus:shadow-lg"
         >
           Saltar al contenido
         </a>

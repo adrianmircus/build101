@@ -80,6 +80,13 @@ export function setProfiles(groupId: string, studentId: string, profiles: Profil
   }));
 }
 
+export function setInterests(groupId: string, studentId: string, interests: string[]) {
+  updateGroup(groupId, (g) => ({
+    ...g,
+    students: g.students.map((s) => (s.id === studentId ? { ...s, interests } : s)),
+  }));
+}
+
 export function removeStudent(groupId: string, studentId: string) {
   updateGroup(groupId, (g) => ({ ...g, students: g.students.filter((s) => s.id !== studentId) }));
 }

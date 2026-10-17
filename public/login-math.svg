@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" fill="none">
+  <!-- Notebook drawings with the topics of the course: functions, limits, trigonometry, geometry.
+       No grid texture or gradient vignette: flat lines only. -->
+
+  <g>
+
+    <!-- Axes -->
+    <g stroke="#e0e7ff" stroke-opacity="0.35" stroke-width="2" stroke-linecap="round">
+      <path d="M120 600H1320"/>
+      <path d="M1320 600l-12 -7M1320 600l-12 7"/>
+      <path d="M360 840V120"/>
+      <path d="M360 120l-7 12M360 120l7 12"/>
+    </g>
+    <g fill="#e0e7ff" fill-opacity="0.4" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="26">
+      <text x="1300" y="635">x</text>
+      <text x="375" y="135">y</text>
+    </g>
+
+    <!-- Parabola f(x) = x² − 4x + 3 -->
+    <path d="M200 160 Q 480 1040 760 160" stroke="#a5b4fc" stroke-opacity="0.45" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Sine wave -->
+    <path d="M120 470 C 200 390, 260 390, 340 470 S 480 550, 560 470 S 700 390, 780 470 S 920 550, 1000 470 S 1140 390, 1220 470 S 1320 520, 1360 500" stroke="#fcd34d" stroke-opacity="0.3" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Unit circle with angle θ -->
+    <g transform="translate(1110 250)" stroke="#e0e7ff" stroke-opacity="0.3" stroke-width="2">
+      <circle r="110"/>
+      <path d="M-130 0H130M0 -130V130" stroke-dasharray="4 8"/>
+      <path d="M0 0L78 -78" stroke="#fcd34d" stroke-opacity="0.45"/>
+      <path d="M78 -78V0" stroke-dasharray="5 6"/>
+      <path d="M32 0 A 32 32 0 0 0 22.6 -22.6" stroke="#fcd34d" stroke-opacity="0.5"/>
+    </g>
+
+    <!-- Right triangle -->
+    <g transform="translate(980 640)" stroke="#a5b4fc" stroke-opacity="0.35" stroke-width="2">
+      <path d="M0 160H220V0Z"/>
+      <path d="M196 160V136H220"/>
+    </g>
+
+    <!-- Formulas written in the notebook -->
+    <g fill="#e0e7ff" fill-opacity="0.32" font-family="Georgia, 'Times New Roman', serif" font-style="italic">
+      <text x="560" y="250" font-size="34">f(x) = x² − 4x + 3</text>
+      <text x="90" y="90" font-size="30">Δ = b² − 4ac</text>
+      <text x="820" y="560" font-size="30">lím   sen x / x = 1</text>
+      <text x="868" y="584" font-size="16">x→0</text>
+      <text x="1010" y="880" font-size="28">a² + b² = c²</text>
+      <text x="120" y="780" font-size="30">∫₀¹ x dx = ½</text>
+      <text x="1000" y="110" font-size="26">sen²θ + cos²θ = 1</text>
+      <text x="560" y="860" font-size="26">y = mx + n</text>
+    </g>
+
+    <!-- Plotted points -->
+    <g fill="#fcd34d" fill-opacity="0.55">
+      <circle cx="300" cy="600" r="6"/>
+      <circle cx="660" cy="600" r="6"/>
+      <circle cx="480" cy="660" r="6"/>
+    </g>
+  </g>
+</svg>

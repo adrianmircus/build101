@@ -22,14 +22,27 @@ async function requestVersion(request: GenerationRequest): Promise<GenerationRes
 async function mock(request: GenerationRequest): Promise<GenerationResponse> {
   await new Promise((resolve) => setTimeout(resolve, 1000 + request.profiles.length * 900));
   const label = versionLabel(request.profiles);
+  const interests = request.interests ?? [];
   return {
     profiles: request.profiles,
     content: `[Versión de ejemplo: ${label}]\n\n${request.original}`,
     changes: [
-      {
-        what: `Cambio de ejemplo para ${label}`,
-        why: "Acá va cada cambio que haga el agente del perfil, con su justificación y la fuente.",
-      },
+      ...(request.profiles.length > 0
+        ? [
+            {
+              what: `Cambio de ejemplo para ${label}`,
+              why: "Acá va cada cambio que haga el agente del perfil, con su justificación y la fuente.",
+            },
+          ]
+        : []),
+      ...(interests.length > 0
+        ? [
+            {
+              what: `Contexto de ejemplo ambientado en ${interests.join(", ")}`,
+              why: `Para hacerlo más atractivo según los gustos del grupo: ${interests.join(", ")}.`,
+            },
+          ]
+        : []),
     ],
   };
 }
@@ -55,6 +68,7 @@ export async function generatePending(assessmentId: string) {
           topic: assessment.topic,
           original: assessment.original,
           profiles: version.profiles,
+          interests: version.interests,
           syllabus,
         });
         updateVersion(assessmentId, index, { status: "ready", content, changes, approved: false });

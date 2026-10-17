@@ -1,5 +1,6 @@
 "use client";
 
+import { focusWithin } from "@/components/ui/styles";
 import { PROFILES, sortProfiles, type ProfileId } from "@/lib/profiles";
 
 // Native checkboxes shaped like chips: they work with the keyboard (Tab + Space) and with screen readers.
@@ -15,17 +16,17 @@ export function ProfileSelector({
   return (
     <fieldset>
       <legend className="sr-only">{legend}</legend>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {PROFILES.map((profile) => {
           const checked = selected.includes(profile.id);
           return (
             <label
               key={profile.id}
               title={profile.fullName}
-              className={`inline-flex cursor-pointer select-none items-center gap-2 rounded-full border-2 px-4 py-1.5 text-base font-semibold has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-amber-500 ${
+              className={`inline-flex min-h-11 cursor-pointer select-none items-center gap-2 rounded-full border-2 px-3 text-base font-semibold transition-colors sm:px-4 ${focusWithin} ${
                 checked
                   ? "border-indigo-700 bg-indigo-700 text-white"
-                  : "border-slate-400 bg-white text-slate-800 hover:border-slate-700"
+                  : "border-slate-500 bg-white text-slate-900 hover:border-slate-800 hover:bg-slate-50"
               }`}
             >
               <input

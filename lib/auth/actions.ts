@@ -7,7 +7,7 @@ import { createSession, deleteSession } from "./session";
 
 export type LoginState = { error?: string; username?: string };
 
-const DESTINATION: Record<Role, string> = { teacher: "/groups", student: "/student" };
+const DESTINATION: Record<Role, string> = { teacher: "/grupos", student: "/estudiante" };
 
 async function login(role: Role, formData: FormData): Promise<LoginState> {
   const username = String(formData.get("username") ?? "");

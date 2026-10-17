@@ -1,8 +1,13 @@
 import type { Data, Student } from "./types";
 
 // Sample data for the demo. All students are fictional.
-function students(groupId: string, list: [string, string[]][]): Student[] {
-  return list.map(([name, profiles], i) => ({ id: `${groupId}-s${i + 1}`, name, profiles }));
+function students(groupId: string, list: [string, string[], string[]?][]): Student[] {
+  return list.map(([name, profiles, interests], i) => ({
+    id: `${groupId}-s${i + 1}`,
+    name,
+    profiles,
+    ...(interests && { interests }),
+  }));
 }
 
 const SEED: Data = {
@@ -11,17 +16,17 @@ const SEED: Data = {
       id: "6a",
       name: "6.º A",
       students: students("6a", [
-        ["Ana P.", []],
-        ["Bruno M.", ["adhd"]],
-        ["Camila R.", []],
-        ["Diego S.", ["dyslexia"]],
-        ["Emilia G.", []],
-        ["Facundo L.", ["adhd", "dyslexia"]],
+        ["Ana P.", [], ["música", "fútbol"]],
+        ["Bruno M.", ["adhd"], ["fútbol", "videojuegos"]],
+        ["Camila R.", [], ["fútbol"]],
+        ["Diego S.", ["dyslexia"], ["básquetbol"]],
+        ["Emilia G.", [], ["música", "dibujo"]],
+        ["Facundo L.", ["adhd", "dyslexia"], ["videojuegos"]],
         ["Florencia V.", []],
-        ["Joaquín B.", ["adhd"]],
+        ["Joaquín B.", ["adhd"], ["fútbol"]],
         ["Lucía F.", []],
-        ["Martina C.", ["dyslexia"]],
-        ["Nicolás A.", []],
+        ["Martina C.", ["dyslexia"], ["música", "básquetbol"]],
+        ["Nicolás A.", [], ["fútbol"]],
         ["Valentina D.", []],
       ]),
     },
@@ -30,14 +35,14 @@ const SEED: Data = {
       name: "6.º B",
       students: students("6b", [
         ["Agustín H.", []],
-        ["Belén O.", ["asd"]],
+        ["Belén O.", ["asd"], ["astronomía"]],
         ["Carolina T.", []],
         ["Federico N.", []],
-        ["Julieta K.", ["dyslexia"]],
-        ["Mateo Z.", []],
-        ["Renata I.", ["adhd", "asd"]],
+        ["Julieta K.", ["dyslexia"], ["cocina"]],
+        ["Mateo Z.", [], ["skate", "música"]],
+        ["Renata I.", ["adhd", "asd"], ["dinosaurios"]],
         ["Santiago E.", []],
-        ["Sofía U.", []],
+        ["Sofía U.", [], ["música"]],
       ]),
     },
   ],

@@ -1,7 +1,9 @@
 // The teacher's course syllabus. Like the groups, it lives in the browser's localStorage.
 // Of the syllabus PDF only the id returned by /api/syllabus/pdf is stored, not the file.
+// The units come from the agent (one per section of the PDF); the teacher edits them and confirms.
+// Only a confirmed syllabus travels to the agent.
 import { useSyncExternalStore } from "react";
-import type { SyllabusForAI } from "@/lib/contract";
+import type { SyllabusForAI, SyllabusUnit } from "@/lib/contract";
 
 export type Unit = {
   id: string;
@@ -14,12 +16,13 @@ export type Syllabus = {
   course: string;
   units: Unit[];
   pdf?: { fileId: string; name: string };
+  confirmed: boolean;
 };
 
-const KEY = "build101:syllabus:v2";
+const KEY = "build101:syllabus:v3";
 
-// Starts with no units: the official syllabus is loaded by the teacher, we don't invent it.
-const EMPTY: Syllabus = { subject: "Matemática", course: "6.º de bachillerato", units: [] };
+// Starts with no units: they come from the official syllabus PDF, we don't invent them.
+const EMPTY: Syllabus = { subject: "Matemática", course: "6.º de bachillerato", units: [], confirmed: false };
 
 let cache: Syllabus | null = null;
 const listeners = new Set<() => void>();
@@ -62,40 +65,40 @@ export function useSyllabus(): Syllabus | null {
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
+// Any edit leaves the syllabus unconfirmed: the teacher has to look at it again before the agent uses it.
 export function setCourseInfo(changes: Partial<Pick<Syllabus, "subject" | "course">>) {
-  save((s) => ({ ...s, ...changes }));
-}
-
-export function addUnit(): string {
-  const id = newId();
-  save((s) => ({ ...s, units: [...s.units, { id, title: "", contents: "" }] }));
-  return id;
+  save((s) => ({ ...s, ...changes, confirmed: false }));
 }
 
 export function updateUnit(id: string, changes: Partial<Omit<Unit, "id">>) {
-  save((s) => ({ ...s, units: s.units.map((u) => (u.id === id ? { ...u, ...changes } : u)) }));
+  save((s) => ({
+    ...s,
+    units: s.units.map((u) => (u.id === id ? { ...u, ...changes } : u)),
+    confirmed: false,
+  }));
 }
 
-export function removeUnit(id: string) {
-  save((s) => ({ ...s, units: s.units.filter((u) => u.id !== id) }));
-}
-
+// A new PDF replaces everything generated from the previous one.
 export function setPdf(pdf: { fileId: string; name: string }) {
-  save((s) => ({ ...s, pdf }));
+  save((s) => ({ ...s, pdf, units: [], confirmed: false }));
 }
 
-export function removePdf() {
-  save((s) => ({ ...s, pdf: undefined }));
+export function setGeneratedUnits(units: SyllabusUnit[]) {
+  save((s) => ({ ...s, units: units.map((u) => ({ ...u, id: newId() })), confirmed: false }));
 }
 
-export function isSyllabusLoaded(syllabus: Syllabus): boolean {
-  return syllabus.pdf !== undefined || syllabus.units.some((u) => u.title.trim() || u.contents.trim());
+export function confirmSyllabus() {
+  save((s) => ({ ...s, confirmed: true }));
 }
 
-// What travels to the AI on each request. Without a loaded syllabus nothing is sent.
+export function isSyllabusConfirmed(syllabus: Syllabus): boolean {
+  return syllabus.confirmed && syllabus.pdf !== undefined && syllabus.units.length > 0;
+}
+
+// What travels to the AI on each request. Without a confirmed syllabus nothing is sent.
 export function syllabusForAI(): SyllabusForAI | undefined {
   const syllabus = read();
-  if (!isSyllabusLoaded(syllabus)) return undefined;
+  if (!isSyllabusConfirmed(syllabus)) return undefined;
   return {
     subject: syllabus.subject.trim(),
     course: syllabus.course.trim(),

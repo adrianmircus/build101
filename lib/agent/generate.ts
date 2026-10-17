@@ -28,7 +28,8 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
       why: `Todavía no hay datos cargados para ${profileLabel(id)}, así que no se aplicaron adaptaciones para ese perfil.`,
     }));
 
-  if (withData.length === 0) {
+  // Nothing to adapt and no interests to theme around: the original goes back as-is, without an AI call.
+  if (withData.length === 0 && !request.interests?.length) {
     return { profiles, content: request.original, changes: notices };
   }
 

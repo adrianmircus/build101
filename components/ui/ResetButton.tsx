@@ -9,11 +9,11 @@ export function ResetButton() {
   return (
     <button
       type="button"
-      className="text-sm text-slate-500 underline-offset-4 hover:underline"
+      className="inline-flex min-h-11 items-center rounded-lg px-3 text-base text-slate-700 underline underline-offset-4 transition-colors hover:bg-slate-100 hover:text-slate-900"
       onClick={() => {
         if (!confirm("¿Volver a los datos de ejemplo? Se borran los grupos y prácticos que creaste.")) return;
         resetDemo();
-        router.push("/groups");
+        router.push("/grupos");
       }}
     >
       Restaurar datos de ejemplo

@@ -1,50 +1,158 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Loading } from "@/components/ui/States";
-import { card, dangerButton, field, secondaryButton } from "@/components/ui/styles";
-import type { SyllabusPdfResponse } from "@/lib/contract";
+import { approveButton, card, field, focusWithin, secondaryButton } from "@/components/ui/styles";
+import type { SyllabusPdfResponse, SyllabusUnitsResponse } from "@/lib/contract";
 import {
-  addUnit,
-  removePdf,
-  removeUnit,
+  confirmSyllabus,
+  isSyllabusConfirmed,
   setCourseInfo,
+  setGeneratedUnits,
   setPdf,
   updateUnit,
   useSyllabus,
   type Syllabus,
 } from "@/lib/syllabus/store";
 
+// Flow: the teacher uploads the PDF (required) → the agent proposes one unit per section →
+// the teacher edits them and confirms. Only then does the agent use the syllabus.
+type Status =
+  | { kind: "idle" }
+  | { kind: "uploading"; name: string }
+  | { kind: "reading" }
+  | { kind: "error"; message: string };
+
+async function postJson<T>(url: string, init: RequestInit, fallback: string): Promise<T> {
+  const response = await fetch(url, init);
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.error ?? fallback);
+  return body as T;
+}
+
 export function SyllabusEditor() {
   const syllabus = useSyllabus();
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
   if (!syllabus) return <Loading />;
+
+  const busy = status.kind === "uploading" || status.kind === "reading";
+
+  async function generateUnits(fileId: string) {
+    setStatus({ kind: "reading" });
+    try {
+      const { units } = await postJson<SyllabusUnitsResponse>(
+        "/api/syllabus/units",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId }) },
+        "No pudimos leer el programa. Reintentá.",
+      );
+      setGeneratedUnits(units);
+      setStatus({ kind: "idle" });
+    } catch (e) {
+      setStatus({ kind: "error", message: e instanceof Error ? e.message : "No pudimos leer el programa. Reintentá." });
+    }
+  }
+
+  async function upload(file: File) {
+    setStatus({ kind: "uploading", name: file.name });
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const pdf = await postJson<SyllabusPdfResponse>(
+        "/api/syllabus/pdf",
+        { method: "POST", body: form },
+        "No pudimos subir el PDF. Reintentá.",
+      );
+      setPdf(pdf);
+      await generateUnits(pdf.fileId);
+    } catch (e) {
+      setStatus({ kind: "error", message: e instanceof Error ? e.message : "No pudimos subir el PDF. Reintentá." });
+    }
+  }
 
   return (
     <>
-      <h1 className="text-4xl font-bold">Mi materia</h1>
+      <h1 className="text-4xl font-bold tracking-tight">Mi materia</h1>
       <p className="mt-2 max-w-3xl text-xl text-slate-700">
-        Cargá el temario una vez. El agente lo usa como contexto para que cada versión adaptada respete el alcance, el
-        nivel y la notación de tu curso. Los cambios se guardan solos.
+        Subí el programa oficial de tu materia. El agente lo lee y arma las unidades, una por sección. Revisalas,
+        corregí lo que haga falta y confirmá: desde ahí el agente las usa como contexto para adaptar cada práctico.
       </p>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[3fr_2fr]">
-        <div className="space-y-8">
-          <CourseInfo syllabus={syllabus} />
-          <Units syllabus={syllabus} />
-        </div>
-        <SyllabusPdf syllabus={syllabus} />
+        <SyllabusPdf syllabus={syllabus} status={status} busy={busy} onUpload={upload} />
+        <CourseInfo syllabus={syllabus} />
       </div>
+
+      <Units syllabus={syllabus} status={status} busy={busy} onRegenerate={generateUnits} />
+
+      {syllabus.units.length > 0 && <Confirmation syllabus={syllabus} busy={busy} />}
     </>
+  );
+}
+
+function SyllabusPdf({
+  syllabus,
+  status,
+  busy,
+  onUpload,
+}: {
+  syllabus: Syllabus;
+  status: Status;
+  busy: boolean;
+  onUpload: (file: File) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+
+  return (
+    <section aria-labelledby="pdf-heading" className={`${card} h-fit`}>
+      <h2 id="pdf-heading" className="text-2xl font-bold">
+        1. Programa oficial
+      </h2>
+      <p className="mt-2 text-base text-slate-700">
+        El PDF del programa de tu materia, hasta 4 MB. Es obligatorio: las unidades salen de acá.
+      </p>
+
+      <div role="status" className="mt-4 text-lg">
+        {status.kind === "uploading" && <p className="text-slate-700">Subiendo {status.name}…</p>}
+        {status.kind !== "uploading" && syllabus.pdf && (
+          <p>
+            <span className="font-semibold">Cargado:</span> {syllabus.pdf.name}
+          </p>
+        )}
+      </div>
+
+      <label className={`${syllabus.pdf ? secondaryButton : approveButton} mt-4 cursor-pointer ${focusWithin}`}>
+        <input
+          ref={input}
+          type="file"
+          accept="application/pdf"
+          className="sr-only"
+          disabled={busy}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (input.current) input.current.value = "";
+            if (
+              syllabus.units.length > 0 &&
+              !confirm("Al cambiar el PDF se vuelven a armar las unidades y se pierden tus cambios. ¿Seguimos?")
+            ) {
+              return;
+            }
+            onUpload(file);
+          }}
+        />
+        {syllabus.pdf ? "Reemplazar PDF" : "Subir PDF"}
+      </label>
+    </section>
   );
 }
 
 function CourseInfo({ syllabus }: { syllabus: Syllabus }) {
   return (
-    <section aria-labelledby="subject-heading" className={card}>
+    <section aria-labelledby="subject-heading" className={`${card} h-fit`}>
       <h2 id="subject-heading" className="text-2xl font-bold">
         Materia y curso
       </h2>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="mt-4 grid gap-4">
         <div>
           <label htmlFor="subject" className="mb-2 block text-lg font-semibold">
             Materia
@@ -72,135 +180,123 @@ function CourseInfo({ syllabus }: { syllabus: Syllabus }) {
   );
 }
 
-function Units({ syllabus }: { syllabus: Syllabus }) {
-  // When a unit is added, focus goes to its title.
-  const [focusId, setFocusId] = useState<string | null>(null);
-  useEffect(() => {
-    if (focusId) document.getElementById(`title-${focusId}`)?.focus();
-  }, [focusId]);
+function Units({
+  syllabus,
+  status,
+  busy,
+  onRegenerate,
+}: {
+  syllabus: Syllabus;
+  status: Status;
+  busy: boolean;
+  onRegenerate: (fileId: string) => void;
+}) {
+  const pdf = syllabus.pdf;
 
   return (
-    <section aria-labelledby="units-heading" className="space-y-4">
-      <h2 id="units-heading" className="text-2xl font-bold">
-        Unidades
-      </h2>
-      {syllabus.units.length === 0 && (
-        <p className="text-lg text-slate-700">Todavía no cargaste unidades. Agregá la primera con el botón de abajo.</p>
+    <section aria-labelledby="units-heading" className="mt-10 space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 id="units-heading" className="text-2xl font-bold">
+            2. Unidades
+          </h2>
+          <p className="mt-1 text-base text-slate-700">
+            Las arma el agente a partir del programa. Podés corregir títulos y contenidos.
+          </p>
+        </div>
+        {pdf && syllabus.units.length > 0 && (
+          <button
+            type="button"
+            className={secondaryButton}
+            disabled={busy}
+            onClick={() => {
+              if (confirm("Se vuelven a armar las unidades desde el PDF y se pierden tus cambios. ¿Seguimos?")) {
+                onRegenerate(pdf.fileId);
+              }
+            }}
+          >
+            Volver a armar desde el PDF
+          </button>
+        )}
+      </div>
+
+      <div role="status" className="text-lg">
+        {status.kind === "reading" && (
+          <p className="font-semibold text-indigo-900">Leyendo el programa y armando las unidades… Puede tardar un minuto.</p>
+        )}
+      </div>
+      {status.kind === "error" && (
+        <p role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg font-semibold text-red-900">
+          {status.message}
+        </p>
       )}
-      <ol className="space-y-4">
-        {syllabus.units.map((unit, i) => (
-          <li key={unit.id} className={card}>
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="min-w-60 flex-1">
-                <label htmlFor={`title-${unit.id}`} className="mb-2 block text-lg font-semibold">
-                  Unidad {i + 1}
-                </label>
-                <input
-                  id={`title-${unit.id}`}
-                  className={field}
-                  placeholder="Título de la unidad"
-                  value={unit.title}
-                  onChange={(e) => updateUnit(unit.id, { title: e.target.value })}
-                />
-              </div>
-              <button
-                type="button"
-                className={dangerButton}
-                aria-label={`Quitar la unidad ${i + 1}`}
-                onClick={() => {
-                  if (confirm(`¿Quitar la unidad ${i + 1}${unit.title ? ` (${unit.title})` : ""}?`)) {
-                    removeUnit(unit.id);
-                  }
-                }}
-              >
-                Quitar
-              </button>
-            </div>
-            <label htmlFor={`contents-${unit.id}`} className="mb-2 mt-4 block text-lg font-semibold">
-              Contenidos
-            </label>
-            <textarea
-              id={`contents-${unit.id}`}
-              className={`${field} min-h-32 text-base`}
-              placeholder="Los temas de la unidad, como figuran en tu programa."
-              value={unit.contents}
-              onChange={(e) => updateUnit(unit.id, { contents: e.target.value })}
-            />
-          </li>
-        ))}
-      </ol>
-      <button type="button" className={secondaryButton} onClick={() => setFocusId(addUnit())}>
-        Agregar unidad
-      </button>
+
+      {!pdf && status.kind !== "uploading" && (
+        <p className="text-lg text-slate-700">Primero subí el programa: las unidades se arman a partir de él.</p>
+      )}
+
+      {pdf && syllabus.units.length === 0 && !busy && (
+        <button type="button" className={secondaryButton} onClick={() => onRegenerate(pdf.fileId)}>
+          Armar unidades desde el PDF
+        </button>
+      )}
+
+      {syllabus.units.length > 0 && (
+        <ol className="space-y-4">
+          {syllabus.units.map((unit, i) => (
+            <li key={unit.id} className={card}>
+              <label htmlFor={`title-${unit.id}`} className="mb-2 block text-lg font-semibold">
+                Unidad {i + 1}
+              </label>
+              <input
+                id={`title-${unit.id}`}
+                className={field}
+                value={unit.title}
+                disabled={busy}
+                onChange={(e) => updateUnit(unit.id, { title: e.target.value })}
+              />
+              <label htmlFor={`contents-${unit.id}`} className="mb-2 mt-4 block text-lg font-semibold">
+                Contenidos
+              </label>
+              <textarea
+                id={`contents-${unit.id}`}
+                className={`${field} min-h-40 text-base`}
+                value={unit.contents}
+                disabled={busy}
+                onChange={(e) => updateUnit(unit.id, { contents: e.target.value })}
+              />
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }
 
-type UploadState = { kind: "idle" } | { kind: "uploading"; name: string } | { kind: "error"; message: string };
-
-function SyllabusPdf({ syllabus }: { syllabus: Syllabus }) {
-  const [state, setState] = useState<UploadState>({ kind: "idle" });
-  const input = useRef<HTMLInputElement>(null);
-
-  async function upload(file: File) {
-    setState({ kind: "uploading", name: file.name });
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch("/api/syllabus/pdf", { method: "POST", body: form });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error ?? "No pudimos subir el PDF. Reintentá.");
-      setPdf(body as SyllabusPdfResponse);
-      setState({ kind: "idle" });
-    } catch (e) {
-      setState({ kind: "error", message: e instanceof Error ? e.message : "No pudimos subir el PDF. Reintentá." });
-    } finally {
-      if (input.current) input.current.value = "";
-    }
-  }
+function Confirmation({ syllabus, busy }: { syllabus: Syllabus; busy: boolean }) {
+  const confirmed = isSyllabusConfirmed(syllabus);
 
   return (
-    <section aria-labelledby="pdf-heading" className={`${card} h-fit`}>
-      <h2 id="pdf-heading" className="text-2xl font-bold">
-        Programa oficial (opcional)
+    <section aria-labelledby="confirm-heading" className={`${card} mt-8`}>
+      <h2 id="confirm-heading" className="text-2xl font-bold">
+        3. Confirmar
       </h2>
-      <p className="mt-2 text-base text-slate-700">
-        Si tenés el programa en PDF, subilo y el agente lo lee junto con tus unidades. Hasta 4 MB.
-      </p>
-
-      <div role="status" className="mt-4 text-lg">
-        {state.kind === "uploading" && <p className="text-slate-700">Subiendo {state.name}…</p>}
-        {state.kind === "error" && <p className="font-semibold text-red-800">{state.message}</p>}
-        {state.kind !== "uploading" && syllabus.pdf && (
-          <p>
-            <span className="font-semibold">Cargado:</span> {syllabus.pdf.name}
+      <div role="status" className="mt-2 text-lg">
+        {confirmed ? (
+          <p className="font-semibold text-emerald-800">
+            Temario confirmado. El agente ya lo usa como contexto para adaptar los prácticos.
+          </p>
+        ) : (
+          <p className="text-slate-700">
+            Revisá las unidades y confirmá que está todo bien. Mientras no lo confirmes, el agente no usa el temario.
           </p>
         )}
       </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <label
-          className={`${secondaryButton} cursor-pointer has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-amber-500`}
-        >
-          <input
-            ref={input}
-            type="file"
-            accept="application/pdf"
-            className="sr-only"
-            disabled={state.kind === "uploading"}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void upload(file);
-            }}
-          />
-          {syllabus.pdf ? "Reemplazar PDF" : "Subir PDF"}
-        </label>
-        {syllabus.pdf && state.kind !== "uploading" && (
-          <button type="button" className={dangerButton} onClick={removePdf}>
-            Quitar PDF
-          </button>
-        )}
-      </div>
+      {!confirmed && (
+        <button type="button" className={`${approveButton} mt-4`} disabled={busy} onClick={confirmSyllabus}>
+          Confirmar temario
+        </button>
+      )}
     </section>
   );
 }

@@ -7,6 +7,6 @@ import { readSession } from "./session";
 export async function requireStudent(): Promise<PublicStudent> {
   const session = await readSession();
   const student = session?.role === "student" ? getStudent(session.id) : null;
-  if (!student) redirect("/login/student");
+  if (!student) redirect("/ingresar/estudiante");
   return student;
 }

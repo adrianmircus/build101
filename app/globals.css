@@ -10,6 +10,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  /* Lexend (loaded in app/layout.tsx): wide letter spacing, plain zero that can't be mistaken for ∅. */
+  --font-sans: var(--font-lexend), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
 html {
@@ -19,14 +21,161 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Clearly visible focus for keyboard users. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p,
+li {
+  text-wrap: pretty;
+}
+
+/* Clearly visible focus for keyboard users. Indigo-950 against the light background is > 15:1
+   (amber-500 was 2.1:1 against white and failed WCAG 1.4.11). On dark backgrounds, use .focus-on-dark. */
 :focus-visible {
-  outline: 3px solid #f59e0b;
-  outline-offset: 2px;
+  outline: 3px solid #1e1b4b;
+  outline-offset: 3px;
+}
+.focus-on-dark:focus-visible {
+  outline-color: #fcd34d;
+}
+
+/* ---------- View transitions (React <ViewTransition>) ---------- */
+
+/* Clicks pass through to the live page while a transition runs. */
+::view-transition {
+  pointer-events: none;
+}
+
+/* Teacher header stays still while the content moves. */
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(site-header) {
+  display: none;
+}
+::view-transition-new(site-header) {
+  animation: none;
+}
+
+/* Between sections: soft fade with a small rise. */
+::view-transition-old(.page-fade) {
+  animation: 150ms ease-in both vt-fade reverse;
+}
+::view-transition-new(.page-fade) {
+  animation:
+    240ms ease-out 100ms both vt-fade,
+    320ms ease-out both vt-rise;
+}
+
+/* Going deeper slides left; coming back slides right. */
+::view-transition-old(.nav-forward) {
+  --slide-offset: -48px;
+  animation:
+    150ms ease-in both vt-fade reverse,
+    360ms ease-in-out both vt-slide reverse;
+}
+::view-transition-new(.nav-forward) {
+  --slide-offset: 48px;
+  animation:
+    220ms ease-out 120ms both vt-fade,
+    360ms ease-in-out both vt-slide;
+}
+::view-transition-old(.nav-back) {
+  --slide-offset: 48px;
+  animation:
+    150ms ease-in both vt-fade reverse,
+    360ms ease-in-out both vt-slide reverse;
+}
+::view-transition-new(.nav-back) {
+  --slide-offset: -48px;
+  animation:
+    220ms ease-out 120ms both vt-fade,
+    360ms ease-in-out both vt-slide;
+}
+
+/* Tabs within a page: same idea, shorter distance. */
+::view-transition-old(.tab-forward) {
+  --slide-offset: -24px;
+  animation:
+    120ms ease-in both vt-fade reverse,
+    280ms ease-in-out both vt-slide reverse;
+}
+::view-transition-new(.tab-forward) {
+  --slide-offset: 24px;
+  animation:
+    200ms ease-out 100ms both vt-fade,
+    280ms ease-in-out both vt-slide;
+}
+::view-transition-old(.tab-back) {
+  --slide-offset: 24px;
+  animation:
+    120ms ease-in both vt-fade reverse,
+    280ms ease-in-out both vt-slide reverse;
+}
+::view-transition-new(.tab-back) {
+  --slide-offset: -24px;
+  animation:
+    200ms ease-out 100ms both vt-fade,
+    280ms ease-in-out both vt-slide;
+}
+
+/* The active-tab indicator and the login card glide to their new place. */
+::view-transition-group(.tab-indicator),
+::view-transition-group(.login-card) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes vt-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes vt-rise {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes vt-slide {
+  from {
+    translate: var(--slide-offset);
+  }
+  to {
+    translate: 0;
+  }
+}
+
+/* With reduced motion everything swaps instantly: view transitions, hover transitions and pulses. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*) {
+    animation: none !important;
+  }
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @media print {

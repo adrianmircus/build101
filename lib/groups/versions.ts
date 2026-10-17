@@ -28,6 +28,24 @@ export function groupByProfiles(students: Student[]): VersionGroup[] {
   );
 }
 
+export function normalizeInterest(interest: string): string {
+  return interest.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
+}
+
+// The most common interests among the given students; ties go alphabetically.
+export function topInterests(students: Student[], max = 3): string[] {
+  const counts = new Map<string, number>();
+  for (const s of students) {
+    for (const interest of new Set((s.interests ?? []).map(normalizeInterest))) {
+      if (interest) counts.set(interest, (counts.get(interest) ?? 0) + 1);
+    }
+  }
+  return [...counts]
+    .sort(([a, ca], [b, cb]) => cb - ca || a.localeCompare(b, "es"))
+    .slice(0, max)
+    .map(([interest]) => interest);
+}
+
 export function versionLabel(profiles: ProfileId[]): string {
   return profiles.length === 0 ? "Sin adaptación" : profiles.map(profileLabel).join(" + ");
 }

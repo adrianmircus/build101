@@ -1,9 +1,10 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { addTransitionType, startTransition, useState, ViewTransition } from "react";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
+import { TAB_SLIDE } from "@/components/ui/transitions";
 import { generatePending } from "@/lib/groups/generate";
 import { updateVersion, useData } from "@/lib/groups/store";
 import type { Version } from "@/lib/groups/types";
@@ -14,6 +15,13 @@ const STATUS: Record<Version["status"], string> = {
   generating: "Generando…",
   ready: "Para revisar",
   error: "Falló",
+};
+
+const STATUS_COLOR: Record<Version["status"], string> = {
+  pending: "text-slate-700",
+  generating: "font-semibold text-indigo-800",
+  ready: "font-semibold text-amber-900",
+  error: "font-semibold text-red-800",
 };
 
 export function AssessmentDetail() {
@@ -40,24 +48,27 @@ export function AssessmentDetail() {
       <div className="print:hidden">
         <Breadcrumbs
           items={[
-            { text: "Mis grupos", href: "/groups" },
-            { text: group.name, href: `/groups/${group.id}` },
+            { text: "Mis grupos", href: "/grupos" },
+            { text: group.name, href: `/grupos/${group.id}` },
             { text: title },
           ]}
         />
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h1 className="text-4xl font-bold">{title}</h1>
+          <h1 className="text-4xl font-bold tracking-tight">{title}</h1>
           <p
-            className={`rounded-full px-4 py-2 text-lg font-semibold ${
-              approved === assessment.versions.length ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"
+            className={`rounded-lg border-2 px-4 py-2 text-lg font-semibold ${
+              approved === assessment.versions.length
+                ? "border-emerald-700 bg-emerald-50 text-emerald-900"
+                : "border-amber-600 bg-amber-50 text-amber-900"
             }`}
           >
+            {approved === assessment.versions.length && "✓ "}
             {approved} de {assessment.versions.length} versiones aprobadas
           </p>
         </div>
 
         <h2 className="sr-only">Versiones</h2>
-        <ul className="mt-8 flex flex-wrap gap-3">
+        <ul className="mt-8 grid gap-3 sm:flex sm:flex-wrap">
           {assessment.versions.map((v, i) => {
             const active = v === version;
             return (
@@ -66,17 +77,24 @@ export function AssessmentDetail() {
                   type="button"
                   aria-current={active ? "true" : undefined}
                   onClick={() => {
-                    setIndex(i);
-                    setDraft(null);
+                    if (i === index) return;
+                    // Inside a transition so the version content slides toward the chosen tab.
+                    startTransition(() => {
+                      addTransitionType(i > index ? "tab-forward" : "tab-back");
+                      setIndex(i);
+                      setDraft(null);
+                    });
                   }}
-                  className={`flex flex-col items-start rounded-xl border-2 px-4 py-3 text-left ${
-                    active ? "border-indigo-700 bg-indigo-50" : "border-slate-300 bg-white hover:border-slate-600"
+                  className={`flex w-full flex-col items-start rounded-xl border-2 px-4 py-3 text-left transition-colors sm:w-auto ${
+                    active
+                      ? "border-indigo-700 bg-indigo-50 ring-2 ring-indigo-700"
+                      : "border-slate-300 bg-white hover:border-slate-700 hover:bg-slate-50"
                   }`}
                 >
                   <span className="text-lg font-bold">{versionLabel(v.profiles)}</span>
                   <span className="text-base text-slate-700">
                     {v.studentIds.length} {v.studentIds.length === 1 ? "estudiante" : "estudiantes"} ·{" "}
-                    <span className={v.approved ? "font-semibold text-emerald-800" : v.status === "error" ? "text-red-800" : ""}>
+                    <span className={v.approved ? "font-semibold text-emerald-800" : STATUS_COLOR[v.status]}>
                       {v.approved ? "✓ Aprobada" : STATUS[v.status]}
                     </span>
                   </span>
@@ -86,135 +104,177 @@ export function AssessmentDetail() {
           })}
         </ul>
 
-        <p className="mt-6 text-lg text-slate-700">
-          <span className="font-semibold">Para:</span> {names.join(", ") || "nadie del grupo actual"}
-        </p>
-
-        <div className="mt-4 grid gap-6 lg:grid-cols-2">
-          <section aria-labelledby="original-heading" className="rounded-2xl border-2 border-slate-200 bg-white p-6">
-            <h3 id="original-heading" className="mb-3 text-xl font-bold text-slate-600">
-              Original
-            </h3>
-            <div className="whitespace-pre-wrap text-lg">{assessment.original}</div>
-          </section>
-
-          <section
-            aria-labelledby="adapted-heading"
-            aria-live="polite"
-            className="rounded-2xl border-2 border-indigo-300 bg-white p-6"
-          >
-            <h3 id="adapted-heading" className="mb-3 text-xl font-bold text-indigo-900">
-              Versión {versionLabel(version.profiles)}
-            </h3>
-            {version.status === "ready" && editing ? (
-              <>
-                <label htmlFor="draft" className="sr-only">
-                  Editar la versión {versionLabel(version.profiles)}
-                </label>
-                <textarea
-                  id="draft"
-                  className={`${field} min-h-72 font-mono text-base`}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                />
-              </>
-            ) : version.status === "ready" ? (
-              <div className="whitespace-pre-wrap text-lg">{version.content}</div>
-            ) : version.status === "error" || version.status === "pending" ? (
-              <div className="space-y-4">
-                <p className="text-lg">
-                  {version.status === "error" ? "No se pudo generar esta versión." : "Esta versión todavía no se generó."}
-                </p>
-                <button type="button" className={secondaryButton} onClick={() => void generatePending(assessment.id)}>
-                  Generar de nuevo
-                </button>
-              </div>
-            ) : (
-              <p className="text-lg text-slate-700 motion-safe:animate-pulse">
-                El agente está adaptando el práctico…
+        <ViewTransition key={index} enter={TAB_SLIDE} exit={TAB_SLIDE} default="none">
+          <div>
+            <p className="mt-6 text-lg text-slate-700">
+              <span className="font-semibold">Para:</span> {names.join(", ") || "nadie del grupo actual"}
+            </p>
+            {version.interests && version.interests.length > 0 && (
+              <p className="mt-1 text-lg text-slate-700">
+                <span className="font-semibold">Orientada a:</span> {version.interests.join(", ")}
               </p>
             )}
-          </section>
-        </div>
 
-        {version.status === "ready" && (
-          <section aria-labelledby="changes-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-6">
-            <h3 id="changes-heading" className="mb-3 text-xl font-bold">
-              Qué cambió y por qué
-            </h3>
-            {version.changes && version.changes.length > 0 ? (
-              <ol className="list-decimal space-y-3 pl-6 text-lg">
-                {version.changes.map((c, i) => (
-                  <li key={i}>
-                    <span className="font-semibold">{c.what}.</span> <span className="text-slate-700">{c.why}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="text-lg text-slate-700">Ninguno: es el práctico original.</p>
-            )}
-          </section>
-        )}
+            <div className="mt-4 grid gap-6 lg:grid-cols-2">
+              <section aria-labelledby="original-heading" className="rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
+                <h3 id="original-heading" className="mb-3 text-xl font-bold text-slate-700">
+                  Original
+                </h3>
+                <div className="whitespace-pre-wrap text-lg leading-relaxed">{assessment.original}</div>
+              </section>
 
-        {version.status === "ready" && (
-          <div className="mt-6 flex flex-wrap items-center gap-4">
-            {editing ? (
-              <>
-                <button
-                  type="button"
-                  className={primaryButton}
-                  onClick={() => {
-                    // Editing by hand invalidates the approval: the new text has to be approved again.
-                    updateVersion(assessment.id, index, { content: draft, approved: false });
-                    setDraft(null);
-                  }}
-                >
-                  Guardar cambios
-                </button>
-                <button type="button" className={secondaryButton} onClick={() => setDraft(null)}>
-                  Cancelar
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" className={secondaryButton} onClick={() => setDraft(version.content ?? "")}>
-                  Editar a mano
-                </button>
-                {version.approved ? (
-                  <button
-                    type="button"
-                    className={secondaryButton}
-                    onClick={() => updateVersion(assessment.id, index, { approved: false })}
-                  >
-                    Quitar aprobación
-                  </button>
+              <section
+                aria-labelledby="adapted-heading"
+                aria-live="polite"
+                className="rounded-2xl border-2 border-indigo-700 bg-white p-4 sm:p-6"
+              >
+                <h3 id="adapted-heading" className="mb-3 text-xl font-bold text-indigo-900">
+                  Versión {versionLabel(version.profiles)}
+                </h3>
+                {version.status === "ready" && editing ? (
+                  <>
+                    <label htmlFor="draft" className="sr-only">
+                      Editar la versión {versionLabel(version.profiles)}
+                    </label>
+                    <textarea
+                      id="draft"
+                      className={`${field} min-h-72 font-mono text-base`}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                    />
+                  </>
+                ) : version.status === "ready" ? (
+                  <div className="whitespace-pre-wrap text-lg leading-relaxed">{version.content}</div>
+                ) : version.status === "error" || version.status === "pending" ? (
+                  <div className="space-y-4">
+                    {version.status === "error" ? (
+                      <p role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg font-semibold text-red-900">
+                        No se pudo generar esta versión.
+                      </p>
+                    ) : (
+                      <p className="text-lg">Esta versión todavía no se generó.</p>
+                    )}
+                    <button type="button" className={secondaryButton} onClick={() => void generatePending(assessment.id)}>
+                      Generar de nuevo
+                    </button>
+                  </div>
                 ) : (
-                  <button
-                    type="button"
-                    className={approveButton}
-                    onClick={() => updateVersion(assessment.id, index, { approved: true })}
-                  >
-                    ✓ Aprobar esta versión
-                  </button>
+                  // Skeleton in the shape of the text that is coming. It only pulses without reduced motion.
+                  <div role="status" className="space-y-4">
+                    <p className="text-lg font-semibold text-indigo-900">El agente está adaptando el práctico…</p>
+                    <div aria-hidden="true" className="space-y-3 motion-safe:animate-pulse">
+                      <div className="h-4 w-11/12 rounded bg-slate-200" />
+                      <div className="h-4 w-9/12 rounded bg-slate-200" />
+                      <div className="h-4 w-10/12 rounded bg-slate-200" />
+                      <div className="h-4 w-7/12 rounded bg-slate-200" />
+                    </div>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  className={primaryButton}
-                  disabled={!version.approved}
-                  aria-describedby={version.approved ? undefined : "pdf-help"}
-                  onClick={() => window.print()}
+              </section>
+            </div>
+
+            {version.status === "ready" && (
+              <section aria-labelledby="changes-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
+                <h3 id="changes-heading" className="mb-3 text-xl font-bold">
+                  Qué cambió y por qué
+                </h3>
+                {version.changes && version.changes.length > 0 ? (
+                  <ol className="max-w-4xl list-decimal space-y-3 pl-6 text-lg leading-relaxed marker:font-bold">
+                    {version.changes.map((c, i) => (
+                      <li key={i}>
+                        <span className="font-semibold">{c.what}.</span> <span className="text-slate-700">{c.why}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-lg text-slate-700">Ninguno: es el práctico original.</p>
+                )}
+              </section>
+            )}
+
+            {version.status === "ready" && (
+              // The teacher's review: the only way to the PDF. It changes color with the state so it reads from far away.
+              <section
+                aria-labelledby="review-heading"
+                className={`mt-6 rounded-2xl border-2 p-4 sm:p-6 ${
+                  editing
+                    ? "border-indigo-700 bg-indigo-50"
+                    : version.approved
+                      ? "border-emerald-700 bg-emerald-50"
+                      : "border-amber-600 bg-amber-50"
+                }`}
+              >
+                <h3
+                  id="review-heading"
+                  className={`text-2xl font-bold ${
+                    editing ? "text-indigo-950" : version.approved ? "text-emerald-900" : "text-amber-950"
+                  }`}
                 >
-                  Descargar PDF
-                </button>
-                {!version.approved && (
-                  <span id="pdf-help" className="text-base text-slate-700">
-                    Aprobá la versión para habilitar el PDF.
-                  </span>
-                )}
-              </>
+                  {editing ? "Editando a mano" : version.approved ? "✓ Aprobaste esta versión" : "Falta tu aprobación"}
+                </h3>
+                <p id={!editing && !version.approved ? "pdf-help" : undefined} className="mt-1 text-lg text-slate-800">
+                  {editing
+                    ? "Al guardar, la versión vuelve a necesitar tu aprobación."
+                    : version.approved
+                      ? "Ya podés descargar el PDF para imprimir o compartir."
+                      : "Revisala y corregila si hace falta. Sin tu aprobación no hay PDF."}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {editing ? (
+                    <>
+                      <button
+                        type="button"
+                        className={primaryButton}
+                        onClick={() => {
+                          // Editing by hand invalidates the approval: the new text has to be approved again.
+                          updateVersion(assessment.id, index, { content: draft, approved: false });
+                          setDraft(null);
+                        }}
+                      >
+                        Guardar cambios
+                      </button>
+                      <button type="button" className={secondaryButton} onClick={() => setDraft(null)}>
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className={secondaryButton} onClick={() => setDraft(version.content ?? "")}>
+                        Editar a mano
+                      </button>
+                      {version.approved ? (
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          onClick={() => updateVersion(assessment.id, index, { approved: false })}
+                        >
+                          Quitar aprobación
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={approveButton}
+                          onClick={() => updateVersion(assessment.id, index, { approved: true })}
+                        >
+                          ✓ Aprobar esta versión
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={primaryButton}
+                        disabled={!version.approved}
+                        aria-describedby={version.approved ? undefined : "pdf-help"}
+                        onClick={() => window.print()}
+                      >
+                        Descargar PDF
+                      </button>
+                    </>
+                  )}
+                </div>
+              </section>
             )}
           </div>
-        )}
+        </ViewTransition>
       </div>
 
       {/* The only thing that gets printed: the approved version. The browser's "Save as PDF". */}

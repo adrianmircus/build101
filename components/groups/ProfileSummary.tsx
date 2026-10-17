@@ -9,12 +9,12 @@ export function ProfileSummary({ students }: { students: Student[] }) {
   })).filter((p) => p.count > 0);
 
   if (counts.length === 0) {
-    return <p className="text-base text-slate-600">Nadie con adaptaciones cargadas</p>;
+    return <p className="text-base text-slate-700">Nadie con adaptaciones cargadas</p>;
   }
   return (
     <ul className="flex flex-wrap gap-2" aria-label="Estudiantes por perfil">
       {counts.map((p) => (
-        <li key={p.id} className="rounded-full bg-indigo-50 px-3 py-1 text-base font-medium text-indigo-900">
+        <li key={p.id} className="rounded-md bg-indigo-50 px-3 py-1 text-base font-semibold text-indigo-900">
           {p.label} · {p.count}
         </li>
       ))}

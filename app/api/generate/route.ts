@@ -9,6 +9,7 @@ const RequestBody = z.object({
   topic: z.string().trim().min(1).max(300),
   original: z.string().trim().min(1).max(50_000),
   profiles: z.array(z.string().refine((id) => PROFILES.some((p) => p.id === id))).max(10),
+  interests: z.array(z.string().trim().min(1).max(40)).max(5).optional(),
   syllabus: z
     .object({
       subject: z.string().max(200),

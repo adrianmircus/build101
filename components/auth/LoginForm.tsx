@@ -11,7 +11,7 @@ type Props = {
 export function LoginForm({ action }: Props) {
   const [state, submit, submitting] = useActionState(action, {});
   return (
-    <form action={submit} className="space-y-5" noValidate>
+    <form action={submit} className="space-y-6" noValidate>
       <div className="space-y-2">
         <label htmlFor="username" className="block text-lg font-semibold">
           Usuario
@@ -24,6 +24,7 @@ export function LoginForm({ action }: Props) {
           autoCapitalize="none"
           defaultValue={state.username}
           aria-describedby={state.error ? "login-error" : undefined}
+          aria-invalid={state.error ? true : undefined}
           required
         />
       </div>
@@ -38,11 +39,12 @@ export function LoginForm({ action }: Props) {
           className={field}
           autoComplete="current-password"
           aria-describedby={state.error ? "login-error" : undefined}
+          aria-invalid={state.error ? true : undefined}
           required
         />
       </div>
       {state.error && (
-        <p id="login-error" role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg text-red-900">
+        <p id="login-error" role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg font-semibold text-red-900">
           {state.error}
         </p>
       )}

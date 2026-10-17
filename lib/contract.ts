@@ -29,12 +29,23 @@ export type GenerationRequest = {
   topic: string;
   original: string;
   profiles: ProfileId[];
+  // Most common interests among the version's students (at most 5). Only the interests, never names.
+  interests?: string[];
   syllabus?: SyllabusForAI;
 };
 
 export type SyllabusPdfResponse = {
   fileId: string;
   name: string;
+};
+
+// POST /api/syllabus/units: the agent reads the uploaded PDF and proposes one unit per section.
+export type SyllabusUnitsRequest = {
+  fileId: string;
+};
+
+export type SyllabusUnitsResponse = {
+  units: SyllabusUnit[];
 };
 
 export type GenerationResponse = {
