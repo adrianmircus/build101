@@ -11,9 +11,10 @@ import { generatePending } from "@/lib/groups/generate";
 import { readExercisesPdf } from "@/lib/groups/readPdf";
 import { createAssessment, useData } from "@/lib/groups/store";
 import { groupByProfiles, topInterests, TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
+import { ACCEPTED, uploadIssue } from "@/lib/adapter/upload";
+import { splitExercises } from "@/lib/results/exercises";
+import { supportLabel } from "@/lib/supports";
 import { isSyllabusConfirmed, useSyllabus } from "@/lib/syllabus/store";
-
-const MAX_PDF_BYTES = 4 * 1024 * 1024;
 
 // The same chip style for "Tipo" and for where the exercises come from.
 const chip = (active: boolean) =>
@@ -41,6 +42,8 @@ export function NewAssessment() {
   // By default the teacher uploads the PDF they already have; typing the exercises is the alternative.
   const [source, setSource] = useState<"pdf" | "text">("pdf");
   const [pdf, setPdf] = useState<PdfState>({ status: "idle" });
+  // "Menos ítems": by version, the exercise numbers the teacher left out. Empty: the version keeps them all.
+  const [dropped, setDropped] = useState<Record<string, number[]>>({});
 
   if (!data) return <Loading />;
   const group = data.groups.find((g) => g.id === groupId);
@@ -50,28 +53,36 @@ export function NewAssessment() {
   const themed = hasInterests && useInterests;
   const versions = groupByProfiles(group.students).map((v) => ({
     ...v,
+    key: [...v.profiles, ...v.supports].join("+") || "base",
     interests: themed ? topInterests(group.students.filter((s) => v.studentIds.includes(s.id))) : [],
   }));
+  // The original as-is: no profiles, supports or interests. It doesn't go through the AI and always keeps everything.
+  const isOriginal = (v: (typeof versions)[number]) =>
+    v.profiles.length === 0 && v.supports.length === 0 && v.interests.length === 0;
+  const exerciseNumbers = original.trim() ? splitExercises(original).map((e) => e.number) : [];
+  const keepOf = (key: string) => {
+    const out = dropped[key] ?? [];
+    const keep = exerciseNumbers.filter((n) => !out.includes(n));
+    return out.length > 0 && keep.length > 0 ? keep : undefined;
+  };
   const nameOf = (id: string) => group.students.find((s) => s.id === id)?.name ?? "";
   // With a PDF, there's nothing to generate until the AI read it and the teacher can review the text.
   const waitingPdf = source === "pdf" && pdf.status !== "done";
 
-  const readPdf = async (file: File) => {
-    if (file.type !== "application/pdf") {
-      setPdf({ status: "error", message: "El archivo tiene que ser un PDF." });
+  const readPdf = async (files: File[]) => {
+    const issue = uploadIssue(files);
+    if (issue) {
+      setPdf({ status: "error", message: issue });
       return;
     }
-    if (file.size > MAX_PDF_BYTES) {
-      setPdf({ status: "error", message: "El PDF pesa más de 4 MB. Probá con una versión más liviana." });
-      return;
-    }
-    setPdf({ status: "reading", name: file.name });
+    setPdf({ status: "reading", name: files.map((f) => f.name).join(", ") });
+    setDropped({});
     try {
-      const read = await readExercisesPdf(file);
+      const read = await readExercisesPdf(files);
       setOriginal(read.original);
       setPdf({ status: "done", name: read.name, doubts: read.doubts });
     } catch (e) {
-      setPdf({ status: "error", message: e instanceof Error ? e.message : "No pudimos leer el PDF. Reintentá." });
+      setPdf({ status: "error", message: e instanceof Error ? e.message : "No pudimos leer los archivos. Reintentá." });
     }
   };
 
@@ -98,10 +109,10 @@ export function NewAssessment() {
               topic: topic.trim(),
               original,
               // The unadapted version without interests is the original as-is: it doesn't go through the AI.
-              versions: versions.map((v) =>
-                v.profiles.length === 0 && v.interests.length === 0
+              versions: versions.map(({ key, ...v }) =>
+                isOriginal({ key, ...v })
                   ? { ...v, status: "ready", content: original, changes: [], approved: false }
-                  : { ...v, status: "pending", approved: false },
+                  : { ...v, keep: keepOf(key), status: "pending", approved: false },
               ),
             });
             void generatePending(id);
@@ -151,7 +162,7 @@ export function NewAssessment() {
                   checked={source === "pdf"}
                   onChange={() => setSource("pdf")}
                 />
-                Subir PDF
+                Subir PDF o fotos
               </label>
               <label className={chip(source === "text")}>
                 <input
@@ -172,23 +183,24 @@ export function NewAssessment() {
                 >
                   <input
                     type="file"
-                    accept="application/pdf"
+                    accept={ACCEPTED.join(",")}
+                    multiple
                     className="sr-only"
                     disabled={pdf.status === "reading"}
                     onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      // Empty again so choosing the same file reads it again.
+                      const files = [...(e.target.files ?? [])];
+                      // Empty again so choosing the same files reads them again.
                       e.target.value = "";
-                      if (file) void readPdf(file);
+                      if (files.length > 0) void readPdf(files);
                     }}
                   />
                   <span className="text-lg font-semibold">
-                    {pdf.status === "done" ? "Elegir otro PDF" : "Elegí el PDF del práctico o parcial"}
+                    {pdf.status === "done" ? "Elegir otros archivos" : "Elegí el PDF o las fotos del práctico o parcial"}
                   </span>
                   <span className="text-base text-slate-700">
                     {pdf.status === "done"
                       ? pdf.name
-                      : "Hasta 4 MB. La IA lee los ejercicios y vos los revisás antes de generar."}
+                      : "Hasta 4 archivos y 4 MB en total: PDF, JPG, PNG o WebP. La IA lee los ejercicios y vos los revisás antes de generar."}
                   </span>
                 </label>
 
@@ -268,7 +280,7 @@ export function NewAssessment() {
             </button>
             {waitingPdf && (
               <p id="pdf-needed" className="mt-2 text-base text-slate-700">
-                Primero subí el PDF y revisá lo que leyó la IA.
+                Primero subí el PDF o las fotos y revisá lo que leyó la IA.
               </p>
             )}
           </div>
@@ -283,16 +295,27 @@ export function NewAssessment() {
           ) : (
             <ul className="mt-4 space-y-4">
               {versions.map((v) => (
-                <li key={v.profiles.join("+") || "base"}>
+                <li key={v.key}>
                   <p className="text-lg font-semibold">
-                    {versionLabel(v.profiles)}
-                    {v.profiles.length === 0 && v.interests.length === 0 && (
-                      <span className="font-normal text-slate-700"> (el original)</span>
-                    )}
+                    {versionLabel(v.profiles, v.supports)}
+                    {isOriginal(v) && <span className="font-normal text-slate-700"> (el original)</span>}
                   </p>
                   <p className="text-base text-slate-700">{v.studentIds.map(nameOf).join(", ")}</p>
                   {v.interests.length > 0 && (
                     <p className="text-base text-indigo-900">Gustos: {v.interests.join(", ")}</p>
+                  )}
+                  {v.supports.length > 0 && (
+                    <p className="text-base text-amber-900">
+                      Dificultad modificada: {v.supports.map(supportLabel).join(", ").toLowerCase()}
+                    </p>
+                  )}
+                  {!isOriginal(v) && exerciseNumbers.length > 1 && (
+                    <LessItems
+                      label={versionLabel(v.profiles, v.supports)}
+                      numbers={exerciseNumbers}
+                      dropped={dropped[v.key] ?? []}
+                      onChange={(out) => setDropped((d) => ({ ...d, [v.key]: out }))}
+                    />
                   )}
                 </li>
               ))}
@@ -324,5 +347,47 @@ export function NewAssessment() {
         </aside>
       </div>
     </>
+  );
+}
+
+// "Menos ítems": the teacher unticks the exercises this version leaves out. At least one always stays.
+function LessItems({
+  label,
+  numbers,
+  dropped,
+  onChange,
+}: {
+  label: string;
+  numbers: number[];
+  dropped: number[];
+  onChange: (dropped: number[]) => void;
+}) {
+  const kept = numbers.filter((n) => !dropped.includes(n));
+  return (
+    <details className="mt-2 rounded-lg border-2 border-slate-200 px-3 py-2">
+      <summary className="min-h-11 cursor-pointer content-center text-base font-semibold text-indigo-800">
+        Menos ítems {dropped.length > 0 ? `(quedan ${kept.length} de ${numbers.length})` : "(todos los ejercicios)"}
+      </summary>
+      <fieldset className="mt-2 pb-1">
+        <legend className="text-base text-slate-700">Ejercicios que quedan en la versión {label}:</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {numbers.map((n) => {
+            const checked = !dropped.includes(n);
+            return (
+              <label key={n} className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border-2 border-slate-400 px-3 text-base ${focusWithin}`}>
+                <input
+                  type="checkbox"
+                  className="size-5 accent-indigo-700"
+                  checked={checked}
+                  disabled={checked && kept.length === 1}
+                  onChange={() => onChange(checked ? [...dropped, n] : dropped.filter((d) => d !== n))}
+                />
+                Ej. {n}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+    </details>
   );
 }

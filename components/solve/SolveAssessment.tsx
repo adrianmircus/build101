@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GazeChoice, GazeTargets, GazeYesNo } from "@/components/student/gaze/GazeChoice";
 import { useGazeZone } from "@/components/student/gaze/GazeSession";
+import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
 import { MathText } from "@/components/ui/MathText";
 import { Loading } from "@/components/ui/States";
 import { approveButton, primaryButton, secondaryButton, textLink, typeTag } from "@/components/ui/styles";
@@ -14,6 +15,10 @@ import { saveAnswer, saveChoice, submitAssessment, useData } from "@/lib/groups/
 import type { Submission } from "@/lib/groups/types";
 import { TYPE_LABEL } from "@/lib/groups/versions";
 import { isAnswered, stepsOf, type Step } from "@/lib/solve/steps";
+import { speechText } from "@/lib/speech/latexSpeech";
+import { speak } from "@/lib/speech/useDictation";
+import { speakAloud, stopSpeaking } from "@/lib/speech/voice";
+import type { VoiceCommand } from "@/lib/voice/commands";
 import { DictationAnswer } from "./DictationAnswer";
 import { TypedAnswer } from "./TypedAnswer";
 
@@ -63,6 +68,18 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
 
   const solving = (
     <>
+      {/* Students who navigate by voice: the buttons of this screen, said aloud. Nothing with eye gaze. */}
+      {!gaze && (
+        <SolveVoiceCommands
+          steps={steps}
+          index={index}
+          reviewing={reviewing}
+          go={go}
+          review={() => setReviewing(true)}
+          back={() => go(missing.length > 0 ? firstMissing : index)}
+          submit={submit}
+        />
+      )}
       <nav aria-label="Ejercicios" className="space-y-3">
         <p className="text-lg text-slate-700">
           Respondiste {answered} de {steps.length}. Se guarda solo: podés salir y seguir después.
@@ -151,9 +168,13 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
           <p className="text-base font-semibold text-slate-700">
             {index + 1} de {steps.length}
           </p>
-          <h2 id="step-heading" className="text-2xl font-bold">
-            {step.label}
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="step-heading" className="text-2xl font-bold">
+              {step.label}
+            </h2>
+            {/* Students who answer with eye gaze can't click: the button is for everyone else. */}
+            {!gaze && <ListenButton text={step.text} />}
+          </div>
           <MathText text={step.text} className="mt-3 mb-6 text-2xl leading-relaxed" />
           <StepAnswer
             step={step}
@@ -202,6 +223,68 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
         solving
       )}
     </div>
+  );
+}
+
+// Renders nothing: it only registers the commands (a hook can't go after SolveAssessment's early returns).
+function SolveVoiceCommands({
+  steps,
+  index,
+  reviewing,
+  go,
+  review,
+  back,
+  submit,
+}: {
+  steps: Step[];
+  index: number;
+  reviewing: boolean;
+  go: (i: number) => void;
+  review: () => void;
+  back: () => void;
+  submit: () => void;
+}) {
+  const step = steps[index];
+  // Going back to the list is a global command ("inicio", "volver a mis prácticos").
+  const commands: VoiceCommand[] = steps.map((s, i) => ({ id: `step-${i}`, label: s.label, phrases: [s.label], run: () => go(i) }));
+  if (reviewing) {
+    // Submitting by voice is the student's confirmation, like the "Sí, entregar" button: only while reviewing.
+    commands.push(
+      { id: "submit-yes", label: "Sí, entregar", phrases: ["si entregar", "si entrego", "confirmo", "si quiero entregar"], run: submit },
+      { id: "submit-no", label: "Revisar", phrases: ["revisar", "volver", "no entregar", "todavia no"], run: back },
+    );
+  } else {
+    if (index < steps.length - 1) commands.push({ id: "next", label: "Siguiente", phrases: ["siguiente", "proximo", "que sigue", "adelante"], run: () => go(index + 1) });
+    if (index > 0) commands.push({ id: "previous", label: "Anterior", phrases: ["anterior", "atras", "el de antes"], run: () => go(index - 1) });
+    if (step) commands.push({ id: "read", label: "Leer el ejercicio", phrases: ["leer el ejercicio", "leer", "leeme el ejercicio", "que dice"], run: () => speak(speechText(step.text)) });
+    commands.push({ id: "review", label: "Entregar", phrases: ["entregar", "revisar y entregar", "terminar el practico"], run: review });
+  }
+  useVoiceCommands(commands);
+  return null;
+}
+
+// "Escuchar": reads the exercise aloud, formulas in words (lib/speech/latexSpeech.ts), with the Rioplatense
+// ElevenLabs voice or, without it, the browser's. Changing exercise or leaving stops it.
+function ListenButton({ text }: { text: string }) {
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => () => stopSpeaking(), []);
+  return (
+    <button
+      type="button"
+      className={secondaryButton}
+      onClick={() => {
+        if (playing) {
+          stopSpeaking();
+          setPlaying(false);
+          return;
+        }
+        setPlaying(true);
+        speakAloud(speechText(text), () => setPlaying(false));
+      }}
+    >
+      <span aria-hidden="true">{playing ? "■" : "🔊"}</span>
+      {playing ? "Detener" : "Escuchar"}
+    </button>
   );
 }
 

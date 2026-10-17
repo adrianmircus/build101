@@ -2,12 +2,14 @@
 
 import { useRef, useState } from "react";
 import { dangerButton, field, secondaryButton } from "@/components/ui/styles";
-import { addStudent, removeStudent, setInterests, setProfiles } from "@/lib/groups/store";
+import { addStudent, removeStudent, setInterests, setProfiles, setSupports } from "@/lib/groups/store";
 import type { Group, Student } from "@/lib/groups/types";
 import { topInterests } from "@/lib/groups/versions";
 import type { ProfileId } from "@/lib/profiles";
+import { supportLabel } from "@/lib/supports";
 import { InterestsEditor } from "./InterestsEditor";
 import { ProfileSelector } from "./ProfileSelector";
+import { SupportsEditor } from "./SupportsEditor";
 
 export function Students({ group }: { group: Group }) {
   const suggestions = topInterests(group.students, Infinity);
@@ -33,6 +35,7 @@ function StudentRow({ group, student, suggestions }: { group: Group; student: St
   const [open, setOpen] = useState(false);
   const panelId = `extra-${student.id}`;
   const interests = student.interests ?? [];
+  const supports = student.supports ?? [];
 
   return (
     // Mobile: name and the buttons on the first row, chips below. From sm up: one row.
@@ -41,6 +44,9 @@ function StudentRow({ group, student, suggestions }: { group: Group; student: St
       <div className="min-w-40 sm:flex-1">
         <span className="text-lg font-semibold">{student.name}</span>
         {interests.length > 0 && <p className="text-base text-slate-700">Gustos: {interests.join(", ")}</p>}
+        {supports.length > 0 && (
+          <p className="text-base text-slate-700">Razonamiento disminuido: {supports.map(supportLabel).join(", ").toLowerCase()}</p>
+        )}
       </div>
       <div className="col-span-2 row-start-2">
         <ProfileSelector
@@ -75,12 +81,17 @@ function StudentRow({ group, student, suggestions }: { group: Group; student: St
         </button>
       </div>
       {open && (
-        <div id={panelId} className="col-span-2 rounded-xl bg-slate-50 p-4 sm:basis-full">
+        <div id={panelId} className="col-span-2 space-y-6 rounded-xl bg-slate-50 p-4 sm:basis-full">
           <InterestsEditor
             studentName={student.name}
             interests={interests}
             suggestions={suggestions}
             onChange={(next) => setInterests(group.id, student.id, next)}
+          />
+          <SupportsEditor
+            studentName={student.name}
+            supports={supports}
+            onChange={(next) => setSupports(group.id, student.id, next)}
           />
         </div>
       )}

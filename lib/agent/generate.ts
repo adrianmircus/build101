@@ -6,6 +6,8 @@ import type { Change, GenerationRequest, GenerationResponse, Question } from "@/
 import { GAZE_PROFILE, profileLabel, sortProfiles, usesGaze, usesVoice, VOICE_PROFILE } from "@/lib/profiles";
 import { type Api, withFallback } from "./client";
 import { describeGraph } from "@/lib/graphText";
+import { keepExercises } from "@/lib/results/exercises";
+import { sortSupports } from "@/lib/supports";
 import { GraphSchema, toGraph } from "./graph";
 import { loadProfile, type ProfileData } from "./profiles";
 import { buildMessage, GAZE_QUESTIONS, SYSTEM } from "./prompt";
@@ -58,8 +60,12 @@ function questionsText(questions: Question[]): string {
 // Error with a message that can be shown as-is in the UI.
 export class AgentError extends Error {}
 
-export async function generateVersion(request: GenerationRequest): Promise<GenerationResponse> {
-  const profiles = sortProfiles(request.profiles);
+export async function generateVersion(input: GenerationRequest): Promise<GenerationResponse> {
+  const profiles = sortProfiles(input.profiles);
+  const supports = sortSupports(input.supports);
+  // "Menos ítems" is decided by the teacher and applied by the code: the model never sees the dropped exercises.
+  const { original, omitted } = keepExercises(input.original, input.keep);
+  const request = { ...input, original };
   const loaded = await Promise.all(profiles.map(loadProfile));
   const withData = loaded.filter((p): p is ProfileData => p?.hasData === true);
   // Multiple choice is a requirement of the channel (the student can't write), not a pedagogical
@@ -88,12 +94,19 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
             },
     );
 
+  if (omitted.length > 0) {
+    notices.push({
+      what: `${omitted.length === 1 ? "Ejercicio" : "Ejercicios"} ${listNumbers(omitted)} sin incluir`,
+      why: "Menos ítems: el docente eligió qué ejercicios quedan en esta versión.",
+    });
+  }
+
   // Nothing to adapt and no interests to theme around: the original goes back as-is, without an AI call.
-  if (withData.length === 0 && !request.interests?.length && !gaze && !voice) {
+  if (withData.length === 0 && !request.interests?.length && supports.length === 0 && !gaze && !voice) {
     return { profiles, content: request.original, changes: notices };
   }
 
-  const blocks = buildMessage(request, withData, { gaze, voice });
+  const blocks = buildMessage(request, withData, { gaze, voice, supports });
   const params = (api: Api) => ({
     model: api.model,
     ...api.extra,
@@ -149,6 +162,11 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
 
   const { content, changes } = response.parsed_output;
   return { profiles, content, changes: [...changes, ...notices] };
+}
+
+// "3", "3 y 4", "2, 3 y 5".
+function listNumbers(numbers: number[]): string {
+  return numbers.length === 1 ? String(numbers[0]) : `${numbers.slice(0, -1).join(", ")} y ${numbers.at(-1)}`;
 }
 
 const INCOMPLETE = "La respuesta de la IA llegó incompleta. Probá generar de nuevo.";

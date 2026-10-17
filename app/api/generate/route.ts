@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { AgentError, generateVersion } from "@/lib/agent/generate";
 import { PROFILES } from "@/lib/profiles";
+import { isSupport } from "@/lib/supports";
 
 // Validates GenerationRequest (lib/contract.ts) before spending an AI call.
 const RequestBody = z.object({
@@ -10,6 +11,8 @@ const RequestBody = z.object({
   original: z.string().trim().min(1).max(50_000),
   profiles: z.array(z.string().refine((id) => PROFILES.some((p) => p.id === id))).max(10),
   interests: z.array(z.string().trim().min(1).max(40)).max(5).optional(),
+  supports: z.array(z.string().refine(isSupport)).max(4).optional(),
+  keep: z.array(z.number().int().min(1).max(99)).max(60).optional(),
   syllabus: z
     .object({
       subject: z.string().max(200),

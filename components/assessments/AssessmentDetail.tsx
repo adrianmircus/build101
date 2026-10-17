@@ -8,9 +8,11 @@ import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
 import { TAB_SLIDE } from "@/components/ui/transitions";
 import { generatePending } from "@/lib/groups/generate";
+import { checkNumbers, issueText } from "@/lib/groups/numberCheck";
 import { updateVersion, useData } from "@/lib/groups/store";
 import type { Version } from "@/lib/groups/types";
 import { TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
+import { supportLabel } from "@/lib/supports";
 import { Grades } from "./Grades";
 
 const STATUS: Record<Version["status"], string> = {
@@ -32,6 +34,8 @@ export function AssessmentDetail() {
   const data = useData();
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState<string | null>(null);
+  // If the number check flagged something, approving asks the teacher to confirm they reviewed it.
+  const [reviewed, setReviewed] = useState(false);
 
   if (!data) return <Loading />;
   const group = data.groups.find((g) => g.id === groupId);
@@ -45,6 +49,9 @@ export function AssessmentDetail() {
     .filter(Boolean);
   const title = `${TYPE_LABEL[assessment.type]}: ${assessment.topic}`;
   const editing = draft !== null;
+  const label = versionLabel(version.profiles, version.supports);
+  const numbers = version.status === "ready" ? checkNumbers(assessment.original, version) : { applies: false as const };
+  const flagged = numbers.applies && numbers.issues.length > 0;
 
   return (
     <>
@@ -75,7 +82,7 @@ export function AssessmentDetail() {
           {assessment.versions.map((v, i) => {
             const active = v === version;
             return (
-              <li key={v.profiles.join("+") || "base"}>
+              <li key={[...v.profiles, ...(v.supports ?? [])].join("+") || "base"}>
                 <button
                   type="button"
                   aria-current={active ? "true" : undefined}
@@ -86,6 +93,7 @@ export function AssessmentDetail() {
                       addTransitionType(i > index ? "tab-forward" : "tab-back");
                       setIndex(i);
                       setDraft(null);
+                      setReviewed(false);
                     });
                   }}
                   className={`flex w-full flex-col items-start rounded-xl border-2 px-4 py-3 text-left transition-colors sm:w-auto ${
@@ -94,7 +102,7 @@ export function AssessmentDetail() {
                       : "border-slate-300 bg-white hover:border-slate-700 hover:bg-slate-50"
                   }`}
                 >
-                  <span className="text-lg font-bold">{versionLabel(v.profiles)}</span>
+                  <span className="text-lg font-bold">{versionLabel(v.profiles, v.supports)}</span>
                   <span className="text-base text-slate-700">
                     {v.studentIds.length} {v.studentIds.length === 1 ? "estudiante" : "estudiantes"} ·{" "}
                     <span className={v.approved ? "font-semibold text-emerald-800" : STATUS_COLOR[v.status]}>
@@ -117,6 +125,17 @@ export function AssessmentDetail() {
                 <span className="font-semibold">Orientada a:</span> {version.interests.join(", ")}
               </p>
             )}
+            {version.supports && version.supports.length > 0 && (
+              <p className="mt-2 inline-block rounded-lg border-2 border-amber-600 bg-amber-50 px-3 py-1 text-lg text-amber-950">
+                <span className="font-semibold">Dificultad modificada:</span>{" "}
+                {version.supports.map(supportLabel).join(", ").toLowerCase()}
+              </p>
+            )}
+            {version.keep && (
+              <p className="mt-1 text-lg text-slate-700">
+                <span className="font-semibold">Menos ítems:</span> quedan los ejercicios {version.keep.join(", ")}
+              </p>
+            )}
 
             <div className="mt-4 grid gap-6 lg:grid-cols-2">
               <section aria-labelledby="original-heading" className="rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
@@ -132,12 +151,12 @@ export function AssessmentDetail() {
                 className="rounded-2xl border-2 border-indigo-700 bg-white p-4 sm:p-6"
               >
                 <h3 id="adapted-heading" className="mb-3 text-xl font-bold text-indigo-900">
-                  Versión {versionLabel(version.profiles)}
+                  Versión {label}
                 </h3>
                 {version.status === "ready" && editing ? (
                   <>
                     <label htmlFor="draft" className="sr-only">
-                      Editar la versión {versionLabel(version.profiles)}
+                      Editar la versión {label}
                     </label>
                     <textarea
                       id="draft"
@@ -218,6 +237,29 @@ export function AssessmentDetail() {
               </section>
             )}
 
+            {numbers.applies && (
+              <section
+                aria-labelledby="numbers-heading"
+                className={`mt-6 rounded-2xl border-2 p-4 sm:p-6 ${flagged ? "border-amber-600 bg-amber-50" : "border-emerald-700 bg-emerald-50"}`}
+              >
+                <h3 id="numbers-heading" className={`text-xl font-bold ${flagged ? "text-amber-950" : "text-emerald-900"}`}>
+                  {flagged
+                    ? `Revisá los números en ${numbers.issues.length} ${numbers.issues.length === 1 ? "ejercicio" : "ejercicios"}`
+                    : `✓ Mismos números en ${numbers.checked === 1 ? "el ejercicio" : `los ${numbers.checked} ejercicios`}`}
+                </h3>
+                <p className="mt-1 text-lg text-slate-800">
+                  Lo controla la plataforma, sin IA: cada número del original tiene que seguir en el mismo ejercicio.
+                </p>
+                {flagged && (
+                  <ul className="mt-2 list-disc space-y-1 pl-6 text-lg">
+                    {numbers.issues.map((issue) => (
+                      <li key={issue.exercise}>{issueText(issue)}</li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
             {version.status === "ready" && (
               <section aria-labelledby="changes-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
                 <h3 id="changes-heading" className="mb-3 text-xl font-bold">
@@ -275,6 +317,7 @@ export function AssessmentDetail() {
                           // Editing by hand invalidates the approval: the new text has to be approved again.
                           updateVersion(assessment.id, index, { content: draft, approved: false });
                           setDraft(null);
+                          setReviewed(false);
                         }}
                       >
                         Guardar cambios
@@ -297,13 +340,27 @@ export function AssessmentDetail() {
                           Quitar aprobación
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          className={approveButton}
-                          onClick={() => updateVersion(assessment.id, index, { approved: true })}
-                        >
-                          ✓ Aprobar y publicar
-                        </button>
+                        <>
+                          {flagged && (
+                            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
+                              <input
+                                type="checkbox"
+                                className="size-5 accent-emerald-700"
+                                checked={reviewed}
+                                onChange={(e) => setReviewed(e.target.checked)}
+                              />
+                              Revisé las diferencias de números
+                            </label>
+                          )}
+                          <button
+                            type="button"
+                            className={approveButton}
+                            disabled={flagged && !reviewed}
+                            onClick={() => updateVersion(assessment.id, index, { approved: true })}
+                          >
+                            ✓ Aprobar y publicar
+                          </button>
+                        </>
                       )}
                     </>
                   )}

@@ -2,6 +2,7 @@ import type { GenerationRequest, GenerationResponse, GraphSpec } from "@/lib/con
 import { usesGaze } from "@/lib/profiles";
 import { syllabusForAI } from "@/lib/syllabus/store";
 import { getData, updateVersion } from "./store";
+import { keepExercises } from "@/lib/results/exercises";
 import { versionLabel } from "./versions";
 
 // Until Dev B has POST /api/generate, the front uses sample responses.
@@ -25,12 +26,19 @@ async function requestVersion(request: GenerationRequest): Promise<GenerationRes
 // Does not invent adaptations: it only marks where each profile agent's output will go.
 async function mock(request: GenerationRequest): Promise<GenerationResponse> {
   await new Promise((resolve) => setTimeout(resolve, 1000 + request.profiles.length * 900));
-  const label = versionLabel(request.profiles);
+  const label = versionLabel(request.profiles, request.supports);
   const interests = request.interests ?? [];
+  const { original, omitted } = keepExercises(request.original, request.keep);
   return {
     profiles: request.profiles,
-    content: `[Versión de ejemplo: ${label}]\n\n${request.original}`,
+    content: `[Versión de ejemplo: ${label}]\n\n${original}`,
     changes: [
+      ...(omitted.length > 0
+        ? [{ what: `Ejercicios ${omitted.join(", ")} sin incluir`, why: "Menos ítems: el docente eligió qué ejercicios quedan." }]
+        : []),
+      ...((request.supports ?? []).length > 0
+        ? [{ what: "Apoyos de ejemplo", why: "Acá van los apoyos de razonamiento disminuido que habilitó el docente." }]
+        : []),
       ...(request.profiles.length > 0
         ? [
             {
@@ -109,6 +117,8 @@ export async function generatePending(assessmentId: string) {
           original: assessment.original,
           profiles: version.profiles,
           interests: version.interests,
+          supports: version.supports,
+          keep: version.keep,
           syllabus,
         });
         updateVersion(assessmentId, index, { status: "ready", content, changes, questions, approved: false });

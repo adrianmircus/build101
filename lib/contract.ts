@@ -2,6 +2,7 @@
 // Proposal: one call to POST /api/generate for each version of the assessment.
 // Student names never travel: only the exercises and the combination of profiles.
 import type { ProfileId } from "@/lib/profiles";
+import type { Support } from "@/lib/supports";
 
 export type AssessmentType = "worksheet" | "exam";
 
@@ -31,6 +32,10 @@ export type GenerationRequest = {
   profiles: ProfileId[];
   // Most common interests among the version's students (at most 5). Only the interests, never names.
   interests?: string[];
+  // Reasoning supports ("razonamiento disminuido") the teacher enabled: the only way the version may get easier.
+  supports?: Support[];
+  // "Menos ítems": numbers of the original's exercises that stay, chosen by the teacher. Missing: all of them.
+  keep?: number[];
   syllabus?: SyllabusForAI;
 };
 
@@ -96,6 +101,18 @@ export type TranscribeResponse = {
   graph?: GraphSpec; // the graph of what they said, when the exercise asks for one
 };
 
+// POST /api/voice/command: a student who navigates by voice said something that matches no fixed phrase,
+// and the agent picks one of the commands on screen. Only what was heard and the commands travel: never names.
+export type VoiceCommandRequest = {
+  heard: string; // what the browser heard
+  commands: { id: string; label: string }[]; // the commands available on the current screen
+};
+
+export type VoiceCommandResponse = {
+  commandId: string | null; // one of the given ids, or null if none fits
+  reply: string; // short sentence to show the student: the confirmation, or what wasn't understood
+};
+
 // POST /api/results/analyze: the agent reads a group's results and summarizes the difficulties.
 // Students travel as pseudonyms ("E1", "E2"…): never names, profiles or the teacher's feedback.
 export type ExerciseMark = {
@@ -116,16 +133,4 @@ export type ResultsAnalysisResponse = {
   summary: string;
   difficulties: { topic: string; evidence: string }[];
   students: { ref: string; summary: string }[];
-};
-
-// POST /api/voice/command: a student who navigates by voice said something that matches no fixed phrase,
-// and the agent picks one of the commands on screen. Only what was heard and the commands travel: never names.
-export type VoiceCommandRequest = {
-  heard: string; // what the browser heard
-  commands: { id: string; label: string }[]; // the commands available on the current screen
-};
-
-export type VoiceCommandResponse = {
-  commandId: string | null; // one of the given ids, or null if none fits
-  reply: string; // short sentence to show the student: the confirmation, or what wasn't understood
 };

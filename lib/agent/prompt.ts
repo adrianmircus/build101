@@ -2,6 +2,7 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { GenerationRequest, SyllabusForAI } from "@/lib/contract";
 import { GRAPH_FORMAT } from "./graph";
+import type { Support } from "@/lib/supports";
 import type { ProfileData } from "./profiles";
 
 // How many multiple choice questions the eye-gaze version has, whatever the original's length.
@@ -43,6 +44,14 @@ When we tell you the student answers with eye gaze (motor disability: they can't
 - The student can't draw, but can pick a graph. When the original asks to graph a function, a good question is "¿Cuál es la gráfica de $f(x)=…$?" with two options that ARE graphs: fill each option's "graph" (the correct one and the graph of the most typical mistake: the sign of a flipped, the vertex shifted, wrong roots), and give them a short "text" that doesn't reveal the answer ("Gráfica A", "Gráfica B"). ${GRAPH_FORMAT} Mark the roots and the vertex on each option, and use the same window for all the options of a question.
 - Don't write the version as text: the platform builds it from "questions". "changes" is still required.
 
+When we tell you to add reasoning supports, the teacher enabled them for a student whose adaptation asks for lower difficulty ("razonamiento disminuido"). They are the only way you may make the version easier. Add only the ones listed, inside the exercise they help with, right after its statement:
+- "preguntas_guia": a line "**Preguntas guía:**" and then 2 to 4 short questions, each on its own line, in order, that guide the reasoning: what data there is, what is asked, what relation links them, what to do first. They may name the exercise's data, but never give intermediate results, the answer or new numbers. Leave them out of exercises that don't need them.
+- "recordatorio": a line "**Recordatorio:**" with one or two sentences on the general procedure of the topic (for example, how to isolate the unknown, or what the discriminant is for), without the exercise's numbers.
+- "ejemplo_resuelto": a line "**Ejemplo resuelto:**" with an exercise of the same type with different numbers, already solved, one step per line in LaTeX, from the setup to the result. Its answer can't be the same as the exercise's. Only for equations and word problems.
+- "numeros_simples": only in word problems, you may change the data to smaller or rounder numbers that give a whole answer. Keep the same situation, the same relations between the data (more than, double, in total) and the same question.
+- These lines never start with a number or a letter and a parenthesis: those are only for exercises and sub-items.
+- List each support you added in "changes", for example what: "Preguntas guía en los ejercicios 1 y 3", why: "Razonamiento disminuido, habilitado por el docente".
+
 When we tell you the student answers by dictating (they can't write or draw; the platform turns what they say into notation and draws graphs from it), adapt the instructions so everything can be answered out loud:
 - Nothing can require drawing, graphing, completing a table by hand, or using GeoGebra or other software.
 - Instead of "graficá f", ask for the elements that define the graph, for example: "Decí las raíces, el vértice, la ordenada en el origen y hacia dónde abre la parábola de $f(x)=…$. Con lo que digas, la plataforma arma la gráfica." Instead of interpreting graphically, ask to say it ("Decí para qué valores de $x$ se cumple…").
@@ -61,7 +70,7 @@ function syllabusText(syllabus: SyllabusForAI): string {
 export function buildMessage(
   request: GenerationRequest,
   profiles: ProfileData[],
-  { gaze, voice }: { gaze: boolean; voice: boolean },
+  { gaze, voice, supports = [] }: { gaze: boolean; voice: boolean; supports?: Support[] },
 ): Anthropic.Beta.BetaContentBlockParam[] {
   const blocks: Anthropic.Beta.BetaContentBlockParam[] = [];
 
@@ -82,10 +91,12 @@ export function buildMessage(
   if (interests.length > 0) {
     parts.push(`<interests>\n${interests.map((i) => `- ${i}`).join("\n")}\n</interests>`);
   }
+  if (supports.length > 0) parts.push(`<supports>\n${supports.map((s) => `- ${s}`).join("\n")}\n</supports>`);
   const kind = request.type === "exam" ? "exam" : "worksheet";
   const goals = [
     profiles.length > 0 && `adapt it for a student with: ${profiles.map((p) => p.label).join(" + ")}`,
     interests.length > 0 && "theme its word problems around the students' interests",
+    supports.length > 0 && !gaze && "add the reasoning supports the teacher enabled",
     gaze && "convert it to multiple choice for a student who answers with eye gaze",
     voice && !gaze && "adapt it for a student who answers by dictating",
   ].filter(Boolean);

@@ -1,5 +1,6 @@
 import type { AssessmentType, Change, GraphSpec, OptionId, Question } from "@/lib/contract";
 import type { ProfileId } from "@/lib/profiles";
+import type { Support } from "@/lib/supports";
 
 export type Student = {
   id: string;
@@ -7,6 +8,8 @@ export type Student = {
   profiles: ProfileId[];
   // Additional data the teacher loads. Optional so older localStorage data keeps working.
   interests?: string[];
+  // Reasoning supports ("razonamiento disminuido") the teacher turned on for this student.
+  supports?: Support[];
 };
 
 export type Group = {
@@ -23,6 +26,9 @@ export type Version = {
   studentIds: string[];
   // Interests the version is themed around, fixed when it was created (empty or missing: none).
   interests?: string[];
+  // Reasoning supports the version adds (lower difficulty) and, with "menos ítems", the exercise numbers it keeps.
+  supports?: Support[];
+  keep?: number[];
   status: VersionStatus;
   // Why the last generation failed, as the agent said it. Only with status "error".
   error?: string;

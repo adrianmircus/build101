@@ -75,7 +75,7 @@ function GradeRow({
     <li className="grid gap-x-4 gap-y-2 px-4 py-4 sm:grid-cols-[minmax(10rem,1fr)_7rem_2fr] sm:items-start sm:px-6">
       <div>
         <p className="text-lg font-semibold">{student.name}</p>
-        <p className="text-base text-slate-700">Versión {versionLabel(version.profiles)}</p>
+        <p className="text-base text-slate-700">Versión {versionLabel(version.profiles, version.supports)}</p>
         {!version.approved && (
           <p className="text-base font-semibold text-amber-900">Todavía no ve este práctico: aprobá su versión.</p>
         )}

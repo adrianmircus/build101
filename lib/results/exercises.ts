@@ -41,6 +41,19 @@ export function splitExercises(original: string): Exercise[] {
   return [{ number: 1, label: "Ej. 1", text: lines.join("\n").trim() }];
 }
 
+// "Menos ítems": only the exercises whose numbers the teacher kept, with their own numbers, so the platform
+// still matches each one to the original. Without a choice (or if it keeps all or none), the original as is.
+export function keepExercises(original: string, keep?: number[]): { original: string; omitted: number[] } {
+  if (!keep?.length) return { original, omitted: [] };
+  const exercises = splitExercises(original);
+  const kept = exercises.filter((e) => keep.includes(e.number));
+  if (kept.length === 0 || kept.length === exercises.length) return { original, omitted: [] };
+  return {
+    original: kept.map((e) => `${e.number}) ${e.text}`).join("\n\n"),
+    omitted: exercises.filter((e) => !keep.includes(e.number)).map((e) => e.number),
+  };
+}
+
 // The exercises the teacher corrects: the detected ones, adjusted to the count the teacher set.
 export function exercisesOf(assessment: Assessment): Exercise[] {
   const detected = splitExercises(assessment.original);

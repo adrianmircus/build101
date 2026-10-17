@@ -2,6 +2,7 @@
 // the teacher's browser localStorage (the UI promises the data stays on their device).
 import { useSyncExternalStore } from "react";
 import type { ProfileId } from "@/lib/profiles";
+import type { Support } from "@/lib/supports";
 import { seed } from "./seed";
 import type { OptionId } from "@/lib/contract";
 import type { Answer, Assessment, Data, ExerciseResult, Grade, Group, GroupAnalysis, Submission, Version } from "./types";
@@ -85,6 +86,13 @@ export function setInterests(groupId: string, studentId: string, interests: stri
   updateGroup(groupId, (g) => ({
     ...g,
     students: g.students.map((s) => (s.id === studentId ? { ...s, interests } : s)),
+  }));
+}
+
+export function setSupports(groupId: string, studentId: string, supports: Support[]) {
+  updateGroup(groupId, (g) => ({
+    ...g,
+    students: g.students.map((s) => (s.id === studentId ? { ...s, supports } : s)),
   }));
 }
 

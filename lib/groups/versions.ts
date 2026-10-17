@@ -1,5 +1,6 @@
 import type { AssessmentType } from "@/lib/contract";
 import { profileLabel, sortProfiles, type ProfileId } from "@/lib/profiles";
+import { sortSupports, type Support } from "@/lib/supports";
 import type { Student } from "./types";
 
 export const TYPE_LABEL: Record<AssessmentType, string> = {
@@ -9,22 +10,27 @@ export const TYPE_LABEL: Record<AssessmentType, string> = {
 
 export type VersionGroup = {
   profiles: ProfileId[];
+  supports: Support[];
   studentIds: string[];
 };
 
-// Groups students by combination of profiles: 28 students can be just 4 versions.
-// The unadapted version goes first, then the single-profile ones and the combined ones last.
+const keyOf = (v: { profiles: ProfileId[]; supports: Support[] }) => [...v.profiles, ...v.supports].join("+");
+
+// Groups students by combination of profiles and reasoning supports: 28 students can be just 4 versions.
+// The unadapted version goes first, then the single-profile ones, the combined ones, and those with supports last.
 export function groupByProfiles(students: Student[]): VersionGroup[] {
   const byKey = new Map<string, VersionGroup>();
   for (const s of students) {
-    const profiles = sortProfiles(s.profiles);
-    const key = profiles.join("+");
-    const group = byKey.get(key) ?? { profiles, studentIds: [] };
+    const version = { profiles: sortProfiles(s.profiles), supports: sortSupports(s.supports) };
+    const group = byKey.get(keyOf(version)) ?? { ...version, studentIds: [] };
     group.studentIds.push(s.id);
-    byKey.set(key, group);
+    byKey.set(keyOf(version), group);
   }
   return [...byKey.values()].sort(
-    (a, b) => a.profiles.length - b.profiles.length || a.profiles.join("+").localeCompare(b.profiles.join("+")),
+    (a, b) =>
+      Number(a.supports.length > 0) - Number(b.supports.length > 0) ||
+      a.profiles.length - b.profiles.length ||
+      keyOf(a).localeCompare(keyOf(b)),
   );
 }
 
@@ -46,6 +52,7 @@ export function topInterests(students: Student[], max = 3): string[] {
     .map(([interest]) => interest);
 }
 
-export function versionLabel(profiles: ProfileId[]): string {
-  return profiles.length === 0 ? "Sin adaptación" : profiles.map(profileLabel).join(" + ");
+export function versionLabel(profiles: ProfileId[], supports: readonly Support[] = []): string {
+  const parts = [...profiles.map(profileLabel), ...(supports.length > 0 ? ["Razonamiento disminuido"] : [])];
+  return parts.length === 0 ? "Sin adaptación" : parts.join(" + ");
 }
