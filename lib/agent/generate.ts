@@ -8,7 +8,7 @@ import { type Api, withFallback } from "./client";
 import { describeGraph } from "@/lib/graphText";
 import { GraphSchema, toGraph } from "./graph";
 import { loadProfile, type ProfileData } from "./profiles";
-import { buildMessage, SYSTEM } from "./prompt";
+import { buildMessage, GAZE_QUESTIONS, SYSTEM } from "./prompt";
 
 const Output = z.object({
   content: z.string(),
@@ -124,7 +124,8 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
     checkStop(response.stop_reason);
     if (!response.parsed_output) throw new AgentError(INCOMPLETE);
     const { changes } = response.parsed_output;
-    const questions: Question[] = response.parsed_output.questions.map((q) => ({
+    // If it wrote more than asked, the first ones stay: failing would mean generating again, slower.
+    const questions: Question[] = response.parsed_output.questions.slice(0, GAZE_QUESTIONS).map((q) => ({
       ...q,
       options: q.options.map(({ graph, ...o }) => ({ ...o, ...(toGraph(graph) ? { graph: toGraph(graph) } : {}) })),
     }));
