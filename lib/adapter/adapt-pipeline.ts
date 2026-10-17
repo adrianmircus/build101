@@ -3,7 +3,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getClient, MODEL } from "@/lib/agent/client";
-import { fmt, stepSet, type MathStep, type SolutionSet } from "./equivalence";
+import { isSystem, stepSet, type MathStep, type SolutionSet } from "./equivalence";
+import { splitEven } from "./batches";
 import { EXTRACT_SYSTEM, MODEL_SYSTEM, adaptSystem, needsSupport } from "./adapt-prompts";
 import {
   AdaptationSchema,
@@ -21,11 +22,13 @@ import {
   type MathModel,
 } from "./adapt-schemas";
 import {
+  answerKey,
   applicableAdjustments,
   checkItem,
   fillMath,
   HEADER_ID,
   headerIssues,
+  itemEquation,
   keepItems,
   retryIssues,
   scopeIssue,
@@ -79,6 +82,34 @@ export type AdaptEvent =
   | { stage: "listo"; result: AdaptResult }
   | { stage: "error"; message: string };
 
+// Tokens de salida reservados a la vez, entre todas las adaptaciones del servidor. OpenRouter reserva saldo por cada
+// llamada en vuelo según su max_tokens y corta con un 402 si la suma pasa el saldo: los lotes en paralelo de las 4
+// versiones esperan su turno para no reservar más que antes de los lotes (4 llamadas de 16.000).
+const MAX_RESERVED_TOKENS = 64000;
+let reserved = 0;
+const waiting: { tokens: number; start: () => void }[] = [];
+
+function release(tokens: number) {
+  reserved -= tokens;
+  // En orden de llegada: el primero de la fila entra cuando hay lugar para él.
+  while (waiting.length > 0 && reserved + waiting[0].tokens <= MAX_RESERVED_TOKENS) {
+    const next = waiting.shift()!;
+    reserved += next.tokens;
+    next.start();
+  }
+}
+
+async function limited<T>(tokens: number, call: () => Promise<T>): Promise<T> {
+  if (waiting.length > 0 || reserved + tokens > MAX_RESERVED_TOKENS) {
+    await new Promise<void>((start) => waiting.push({ tokens, start }));
+  } else reserved += tokens;
+  try {
+    return await call();
+  } finally {
+    release(tokens);
+  }
+}
+
 const NOT_SOLVABLE: MathModel = { solvable: false, unknown: "", equation: "", asks_for: "" };
 
 export async function extract(files: InputFile[], text: string | null): Promise<Extraction> {
@@ -131,29 +162,29 @@ async function adaptCall(
     const list = retry.failures
       .map((f) => `- ${f.id === HEADER_ID ? "Título e indicaciones generales" : `Ejercicio ${f.id}`}: ${f.issues.join("; ")}`)
       .join("\n");
-    user += `\n\nTu versión anterior:\n${JSON.stringify(retry.previous)}\n\nEl verificador encontró estos problemas. Corregí solo estos ejercicios y devolvé la versión completa:\n${list}`;
+    user += `\n\nTu versión anterior de estos ejercicios:\n${JSON.stringify(retry.previous)}\n\nEl verificador encontró estos problemas. Corregilos y devolvé todos los ejercicios de este pedido:\n${list}`;
   }
   // Con ajustes de dificultad, cada ejercicio trae además sus apoyos (support).
   const schema = needsSupport(ajustes) ? AdaptationWithSupportSchema : AdaptationSchema;
-  const res = await getClient().messages.parse({
+  const res = await limited(8000, () => getClient().messages.parse({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 8000,
     system: adaptSystem(format, ajustes, intereses),
     output_config: { effort: "medium", format: zodOutputFormat(schema) },
     messages: [{ role: "user", content: user }],
-  });
+  }));
   if (res.stop_reason === "refusal" || !res.parsed_output) throw new PipelineError("No pudimos adaptar el práctico. Probá de nuevo.");
   return res.parsed_output;
 }
 
 export async function modelProblem(text: string): Promise<MathModel> {
-  const res = await getClient().messages.parse({
+  const res = await limited(4000, () => getClient().messages.parse({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 4000,
     system: MODEL_SYSTEM,
     output_config: { effort: "low", format: zodOutputFormat(MathModelSchema) },
     messages: [{ role: "user", content: text }],
-  });
+  }));
   return res.parsed_output ?? NOT_SOLVABLE;
 }
 
@@ -171,6 +202,38 @@ async function checkAll(
   );
 }
 
+// Adapta los ejercicios dados en lotes en paralelo y junta las partes. El título y las indicaciones generales salen del
+// primer lote; las notas para el profe, de todos. En un reintento, cada lote recibe solo sus ejercicios y sus fallas.
+async function adaptBatched(
+  ex: Extraction,
+  items: Extraction["items"],
+  format: Format,
+  ajustes: Adjustment[],
+  intereses: string[],
+  retry?: { previous: Adaptation; failures: { id: string; issues: string[] }[] },
+): Promise<Adaptation> {
+  const groups = splitEven(items);
+  const parts = await Promise.all(
+    groups.map((group, i) => {
+      const ids = new Set(group.map((it) => it.id));
+      const own = retry && {
+        previous: { ...retry.previous, items: retry.previous.items.filter((it) => ids.has(it.id)) },
+        failures: retry.failures.filter((f) => ids.has(f.id) || (f.id === HEADER_ID && i === 0)),
+      };
+      return adaptCall({ ...ex, items: group }, format, ajustes, intereses, own);
+    }),
+  );
+  return {
+    title: parts[0].title,
+    general_instructions: parts[0].general_instructions,
+    items: parts.flatMap((part) => part.items),
+    notes_for_teacher: parts
+      .map((part) => part.notes_for_teacher.trim())
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
 async function adaptFormat(
   ex: Extraction,
   format: Format,
@@ -182,7 +245,7 @@ async function adaptFormat(
 ): Promise<FormatResult> {
   const t0 = Date.now();
   onEvent({ stage: "adaptando", format });
-  let adaptation = await adaptCall(ex, format, ajustes, intereses);
+  let adaptation = await adaptBatched(ex, ex.items, format, ajustes, intereses);
 
   onEvent({ stage: "verificando", format });
   let checks = await checkAll(ex, adaptation, format, originals, ajustes);
@@ -194,7 +257,12 @@ async function adaptFormat(
   if (failures.length > 0 || header.length > 0) {
     onEvent({ stage: "reintentando", format });
     const headerFailure = header.length > 0 ? [{ id: HEADER_ID, issues: header }] : [];
-    const fixed = await adaptCall(ex, format, ajustes, intereses, { previous: adaptation, failures: [...headerFailure, ...failures] });
+    // Solo se vuelven a generar los ejercicios que fallaron (y el primero, si lo que falló es el título).
+    const redo = ex.items.filter((it) => retried.includes(it.id));
+    const fixed = await adaptBatched(ex, redo.length > 0 ? redo : ex.items.slice(0, 1), format, ajustes, intereses, {
+      previous: adaptation,
+      failures: [...headerFailure, ...failures],
+    });
     adaptation = {
       ...adaptation,
       ...(header.length > 0 ? { title: fixed.title, general_instructions: fixed.general_instructions } : {}),
@@ -229,15 +297,15 @@ async function buildAnswerKey(ex: Extraction, originals: Map<string, Promise<Mat
   return Promise.all(
     ex.items.map(async (it) => {
       let equation: string | null = null;
-      if (it.kind === "ecuacion") equation = it.math.find((m) => m.role === "equation")?.mathjs ?? null;
+      let model: MathModel | undefined;
+      if (it.kind === "ecuacion") equation = itemEquation(it);
       if (it.kind === "problema") {
-        const m = await originals.get(it.id);
-        if (m?.solvable) equation = m.equation;
+        model = await originals.get(it.id);
+        if (model?.solvable) equation = model.equation;
       }
-      // Sin raíces en el rango revisado no quiere decir "sin solución": puede estar fuera del rango. Se muestra "—".
-      const found = equation ? stepSet(eqStep(equation)) : null;
-      const set = found && (found === "all" || found.length > 0) ? found : null;
-      return { id: it.id, solution: set ? fmt(set) : "—", set };
+      // Ecuaciones de una incógnita y sistemas lineales; lo demás queda en "—".
+      const set = equation && !isSystem(equation) ? stepSet(eqStep(equation)) : null;
+      return { id: it.id, solution: answerKey(equation, model), set: set && (set === "all" || set.length > 0) ? set : null };
     }),
   );
 }

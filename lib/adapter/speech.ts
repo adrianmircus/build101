@@ -77,6 +77,12 @@ function speakNode(n: Node): string {
 }
 
 export function speakMath(mathjs: string): string {
+  // Sistema: "y = 2*x + 5; y = -x + 2" se lee ecuación por ecuación.
+  const parts = mathjs.split(";").map((s) => s.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const count = parts.length === 2 ? "dos" : parts.length === 3 ? "tres" : String(parts.length);
+    return `Sistema de ${count} ecuaciones. ${parts.map((p, i) => `Ecuación ${i + 1}: ${speakMath(p)}`).join(". ")}`;
+  }
   try {
     const sides = normalize(mathjs).split("=");
     return sides.map((s) => speakNode(parse(s) as unknown as Node)).join(" igual a ");

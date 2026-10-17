@@ -1,6 +1,6 @@
 // Verificación de que la adaptación no cambió la matemática. No importa el SDK:
 // la parte estática corre también en el navegador (sirve para la demo de "sabotaje" en vivo).
-import { checkSteps, compareSteps, fmt, stepSet, type MathStep, type Verdict } from "./equivalence";
+import { checkSteps, compareSteps, fmt, fmtSystem, isSystem, solvedForm, solveSystem, stepSet, type MathStep, type Verdict } from "./equivalence";
 import { readability } from "./readability";
 import type { AdaptedItem, Adjustment, Extraction, Format, Item, MathModel, MathObject } from "./adapt-schemas";
 
@@ -34,6 +34,8 @@ const has = (o: Record<string, number>, k: string) => Object.prototype.hasOwnPro
 
 // Número en cifras con signo pegado (-5), decimal con coma o punto, exponente (1e3) y fracción (1/2).
 // El signo solo cuenta si no viene pegado a otra cifra: en "3-4" el 4 es positivo.
+const COUNTING =
+  /(?<![\p{L}\p{N}])(?:(?:\d+|una?|dos|tres|cuatro|ambos|ambas)\s+(?:ecuaci(?:ón|ones)|incógnitas?|variables?|métodos?|rectas?|lados|miembros|pasos?|términos?)|cada\s+un[oa])(?![\p{L}\p{N}])/gu;
 const NUMBER = /(?<![\w.,])(-?)(\d+(?:[.,]\d+)?(?:e[+-]?\d+)?)(?:\/(\d+(?:[.,]\d+)?))?/g;
 
 export function placeholders(text: string): string[] {
@@ -44,9 +46,15 @@ function stripPlaceholders(text: string, replacement = " "): string {
   return text.replace(PLACEHOLDER, replacement);
 }
 
-// Números presentes en el texto (en cifras o en palabras), sin contar los marcadores.
-export function numbersIn(text: string): number[] {
-  const t = stripPlaceholders(text).toLowerCase().replace(/[−–]/g, "-");
+// Números presentes en el texto (en cifras o en palabras), sin contar los marcadores. Con words = false, solo en cifras.
+export function numbersIn(text: string, words = true): number[] {
+  // "Sistemas de 2x2" o "de 3×3" es el tamaño del sistema, no un dato.
+  const t = stripPlaceholders(text)
+    .toLowerCase()
+    .replace(/[−–]/g, "-")
+    .replace(/\b\d+\s*[x×]\s*\d+\b/g, " ")
+    // Cantidades que describen el ejercicio, no datos: "las dos ecuaciones", "los 2 métodos", "cada uno".
+    .replace(COUNTING, " ");
   const out = new Set<number>();
   for (const m of t.matchAll(NUMBER)) {
     const num = Number(m[2].replace(",", "."));
@@ -54,11 +62,12 @@ export function numbersIn(text: string): number[] {
     const value = ((m[1] ? -1 : 1) * num) / den;
     if (Number.isFinite(value)) out.add(value);
   }
-  const words = t.split(/[^a-záéíóúüñ]+/).filter(Boolean);
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    if (has(TENS, w) && words[i + 1] === "y" && has(UNITS, words[i + 2] ?? "")) {
-      out.add(TENS[w] + UNITS[words[i + 2]]); // treinta y dos -> 32
+  if (!words) return [...out].sort((a, b) => a - b);
+  const tokens = t.split(/[^a-záéíóúüñ]+/).filter(Boolean);
+  for (let i = 0; i < tokens.length; i++) {
+    const w = tokens[i];
+    if (has(TENS, w) && tokens[i + 1] === "y" && has(UNITS, tokens[i + 2] ?? "")) {
+      out.add(TENS[w] + UNITS[tokens[i + 2]]); // treinta y dos -> 32
       i += 2;
     } else if (has(NUMBER_WORDS, w)) {
       out.add(NUMBER_WORDS[w]);
@@ -120,8 +129,8 @@ const RELATIONS: [string, RegExp, Group][] = [
   ["menos que", word("menos\\s+(?:\\p{L}+\\s+)?que"), "relación"],
   ["más de", word("más\\s+de"), "relación"],
   ["menos de", word("menos\\s+de"), "relación"],
-  ["mayor", word("mayor(?:es)?"), "relación"],
-  ["menor", word("menor(?:es)?"), "relación"],
+  ["mayor", word("mayor(?:es)?|superior(?:es)?"), "relación"],
+  ["menor", word("menor(?:es)?|inferior(?:es)?"), "relación"],
   // "mínimo común múltiplo" y "máximo común divisor" son nombres, no cotas.
   ["como mínimo", word("al\\s+menos|por\\s+lo\\s+menos|como\\s+mínimo|mínimo(?!\\s+común)"), "relación"],
   ["como máximo", word("como\\s+máximo|a\\s+lo\\s+sumo|máximo(?!\\s+común)"), "relación"],
@@ -191,6 +200,14 @@ function instructionsIn(text: string, sentenceStart = true): Set<string> {
 
 const union = (...sets: Set<string>[]) => new Set(sets.flatMap((s) => [...s]));
 
+// Comparaciones que dicen lo mismo con otras palabras: "superiores al promedio" y "más que el promedio".
+const SAME_RELATION: [string, string][] = [
+  ["más que", "mayor"],
+  ["menos que", "menor"],
+];
+const sameAs = (r: string) => SAME_RELATION.flatMap(([a, b]) => (r === a ? [b] : r === b ? [a] : []));
+const covered = (r: string, set: Set<string>) => set.has(r) || sameAs(r).some((e) => set.has(e));
+
 // wordProblem: true para problemas con texto (cuentan todas las palabras). En los demás ejercicios, lo que se agrega
 // solo cuenta si es una comparación o una instrucción de método; lo que se saca del original cuenta siempre.
 export function hintIssues(origText: string, adaptedText: string, wordProblem = true): string[] {
@@ -198,8 +215,8 @@ export function hintIssues(origText: string, adaptedText: string, wordProblem = 
   const all = relationsIn(adaptedText);
   const after = wordProblem ? all : union(relationsIn(adaptedText, ["relación"]), instructionsIn(adaptedText));
   const issues: string[] = [];
-  for (const r of after) if (!before.has(r)) issues.push(`Agrega «${r}», que no está en el original: puede ser una pista o cambiar la relación`);
-  for (const r of before) if (!all.has(r)) issues.push(`Saca «${r}», que está en el original`);
+  for (const r of after) if (!covered(r, before)) issues.push(`Agrega «${r}», que no está en el original: puede ser una pista o cambiar la relación`);
+  for (const r of before) if (!covered(r, all)) issues.push(`Saca «${r}», que está en el original`);
   return issues;
 }
 
@@ -246,7 +263,8 @@ export function glossaryIssues(orig: Item, adapted: AdaptedItem, body: string, a
   const own = placeholders(orig.text);
   const meanings = adapted.glossary.map((g) => g.meaning).join("\n");
   for (const p of placeholders(glossary)) if (!own.includes(p)) issues.push(`El glosario usa {{${p}}}, que no es de este ejercicio`);
-  for (const n of numbersIn(glossary)) if (!allowed.some((d) => near(d, n))) issues.push(`El glosario agrega el número ${fmtNum(n)}`);
+  // Un número nuevo cuenta si está en cifras: "las dos cantidades" no agrega un dato.
+  for (const n of numbersIn(glossary, false)) if (!allowed.some((d) => near(d, n))) issues.push(`El glosario agrega el número ${fmtNum(n)}`);
   if (RAW_MATH.test(stripPlaceholders(glossary))) issues.push("El glosario tiene matemática escrita fuera de los marcadores");
   for (const r of glossaryHints(orig, meanings, body)) issues.push(`El glosario agrega «${r}», que no está en el original: puede ser una pista o cambiar la relación`);
   return issues;
@@ -369,7 +387,9 @@ export function supportIssues(orig: Item, adapted: AdaptedItem, ajustes: Adjustm
     if (RAW_MATH.test(stripPlaceholders(guide))) issues.push("Las preguntas guía tienen matemática escrita fuera de los marcadores");
     for (const p of placeholders(guide)) if (!own.includes(p)) issues.push(`Las preguntas guía usan {{${p}}}, que no es de este ejercicio`);
     const nums = numbersIn(guide);
-    for (const n of nums) if (!allowed.some((d) => near(d, n))) issues.push(`Las preguntas guía agregan el número ${fmtNum(n)}`);
+    // Un número nuevo cuenta si está en cifras ("¿cuáles son los dos tipos de entrada?" no agrega un dato); la respuesta
+    // se busca también en palabras.
+    for (const n of numbersIn(guide, false)) if (!allowed.some((d) => near(d, n))) issues.push(`Las preguntas guía agregan el número ${fmtNum(n)}`);
     for (const a of secret) if (nums.some((n) => near(n, a))) issues.push(`Las preguntas guía dan la respuesta del ejercicio (${fmtNum(a)})`);
   }
 
@@ -390,25 +410,118 @@ export function supportIssues(orig: Item, adapted: AdaptedItem, ajustes: Adjustm
       const steps = ex.steps.map((m, i) => eqStep(m, i + 1));
       const chain = checkSteps(steps);
       if (chain.firstError !== null) issues.push(`En el ejemplo resuelto, el paso ${chain.firstError} no sale del anterior`);
-      else if (!chain.allVerified) issues.push("No se pudo verificar la resolución del ejemplo: tiene que ser una ecuación de una incógnita por paso");
-      const last = stepSet(steps[steps.length - 1]);
-      if (answer && last && last !== "all" && last.some((v) => answer.some((a) => near(a, v)))) issues.push("El ejemplo da la misma respuesta que el ejercicio");
+      else if (!chain.allVerified) issues.push("No se pudo verificar la resolución del ejemplo: tiene que ser una ecuación por paso o, en un sistema, el sistema completo en cada paso");
+      const lastSrc = ex.steps[ex.steps.length - 1];
+      if (ex.steps.some(isSystem)) {
+        // Un sistema resuelto da el valor de cada incógnita, no solo de la primera que se despeja.
+        const first = solveSystem(ex.steps[0]);
+        if (first && !solvedForm(lastSrc, first.vars)) {
+          issues.push(`El ejemplo resuelto tiene que terminar con el valor de cada incógnita (${first.vars.map((v) => `${v} = …`).join("; ")})`);
+        }
+        const last = solveSystem(lastSrc);
+        if (answer && last?.kind === "unique" && sameValues(last.values, answer)) issues.push("El ejemplo da la misma respuesta que el ejercicio");
+      } else {
+        const last = stepSet(steps[steps.length - 1]);
+        if (answer && last && last !== "all" && last.some((v) => answer.some((a) => near(a, v)))) issues.push("El ejemplo da la misma respuesta que el ejercicio");
+      }
     }
   }
   return issues;
 }
 
-// Respuesta del ejercicio original, cuando se puede calcular sin IA (ecuaciones) o con el planteo independiente (problemas).
+// Respuesta del ejercicio original, cuando se puede calcular sin IA (ecuaciones y sistemas) o con el planteo
+// independiente (problemas). En un sistema, el valor de cada incógnita.
 async function originalAnswer(orig: Item, originalModel: Promise<MathModel> | undefined): Promise<number[] | null> {
-  let equation: string | null = null;
-  if (orig.kind === "ecuacion") equation = orig.math.find((m) => m.role === "equation")?.mathjs ?? null;
   if (orig.kind === "problema" && originalModel) {
     const m = await originalModel.catch(() => null);
-    if (m?.solvable) equation = m.equation;
+    return m ? (modelAnswer(m)?.all ?? null) : null;
   }
-  const set = equation ? stepSet(eqStep(equation)) : null;
+  const equation = orig.kind === "ecuacion" ? itemEquation(orig) : null;
+  if (!equation) return null;
+  if (isSystem(equation)) {
+    const sol = solveSystem(equation);
+    return sol?.kind === "unique" ? sol.values : null;
+  }
+  const set = stepSet(eqStep(equation));
   return set && set !== "all" && set.length > 0 ? set : null;
 }
+
+// La ecuación o el sistema que pide resolver un ejercicio. Un sistema puede venir en un solo marcador
+// ("y = 2*x + 5; y = -x + 2") o en un marcador por ecuación: si todas tienen dos o más incógnitas, se juntan.
+export function itemEquation(it: Item): string | null {
+  const eqs = it.math.filter((m) => m.role === "equation").map((m) => m.mathjs);
+  if (eqs.length === 0) return null;
+  if (eqs.length > 1 && eqs.every(isSystem) && !eqs.some((e) => e.includes(";"))) return eqs.join("; ");
+  return eqs[0];
+}
+
+const unknownNames = (m: MathModel) => m.unknown.split(/[\s,;]+/).filter(Boolean);
+
+// Lo que responde un planteo: los valores que pide la pregunta y todos los valores de la solución.
+// Un problema que pregunta por dos cantidades ("¿cuántos goles hizo cada uno?") se plantea con un sistema.
+export function modelAnswer(m: MathModel): { asked: number[]; all: number[] } | null {
+  if (!m.solvable || !m.equation.trim()) return null;
+  if (isSystem(m.equation)) {
+    const sol = solveSystem(m.equation);
+    if (sol?.kind !== "unique") return null;
+    const names = unknownNames(m);
+    const asked = sol.values.filter((_, i) => names.includes(sol.vars[i]));
+    return { asked: asked.length > 0 ? asked : sol.values, all: sol.values };
+  }
+  const set = stepSet(eqStep(m.equation));
+  return set && set !== "all" && set.length > 0 ? { asked: set, all: set } : null;
+}
+
+// Mismo problema, dos planteos (del original y de la adaptación). Con una ecuación de una incógnita en los dos, tienen que
+// tener el mismo conjunto solución. Si alguno es un sistema, las incógnitas pueden llamarse o elegirse distinto
+// (una ecuación para Cavani, un sistema para los dos): lo que pide uno tiene que estar en la solución del otro.
+// Si la respuesta cambió, ninguno de los dos valores coincide.
+export function compareModels(a: MathModel, b: MathModel): Verdict {
+  if (!a.solvable || !b.solvable) return "unchecked";
+  if (!isSystem(a.equation) && !isSystem(b.equation)) return compareSteps(eqStep(a.equation), eqStep(b.equation)).verdict;
+  const ra = modelAnswer(a);
+  const rb = modelAnswer(b);
+  if (!ra || !rb) return "unchecked";
+  const inside = (xs: number[], ys: number[]) => xs.every((x) => ys.some((y) => near(x, y)));
+  return inside(ra.asked, rb.all) || inside(rb.asked, ra.all) ? "ok" : "error";
+}
+
+// Clave de un ejercicio para la pestaña Original: la solución calculada sin IA, o "—" si no se puede.
+// En un problema planteado con un sistema, solo las incógnitas que pide la pregunta y qué representan.
+export function answerKey(equation: string | null, m?: MathModel): string {
+  if (!equation) return "—";
+  if (isSystem(equation)) {
+    const sol = solveSystem(equation);
+    if (!sol) return "—";
+    if (sol.kind !== "unique" || !m) return fmtSystem(sol);
+    const names = unknownNames(m);
+    const keep = sol.vars.map((v) => names.includes(v));
+    const asked = keep.some(Boolean)
+      ? { ...sol, vars: sol.vars.filter((_, i) => keep[i]), values: sol.values.filter((_, i) => keep[i]) }
+      : sol;
+    return m.asks_for ? `${fmtSystem(asked)} (${m.asks_for})` : fmtSystem(asked);
+  }
+  const found = stepSet(eqStep(equation));
+  // Sin raíces en el rango revisado no quiere decir "sin solución": puede estar fuera del rango. Se muestra "—".
+  if (!found || (found !== "all" && found.length === 0)) return "—";
+  return m?.asks_for ? `${fmt(found)} (${m.asks_for})` : fmt(found);
+}
+
+// El planteo independiente de la consigna del ejemplo contra su primer paso. En un sistema, las letras pueden ser otras
+// (c y g contra x e y): cuenta que tengan la misma solución.
+function examplePlanteoDiffers(planteo: string, first: string): boolean {
+  if (!isSystem(planteo)) return compareSteps(eqStep(planteo), eqStep(first)).verdict === "error";
+  const a = solveSystem(planteo);
+  const b = solveSystem(first);
+  if (a?.kind !== "unique" || b?.kind !== "unique") return false;
+  return !sameValues(a.values, b.values);
+}
+
+const sameValues = (a: number[], b: number[]) => {
+  const x = [...a].sort((p, q) => p - q);
+  const y = [...b].sort((p, q) => p - q);
+  return x.length === y.length && x.every((v, i) => near(v, y[i]));
+};
 
 export async function checkItem(
   orig: Item,
@@ -434,8 +547,17 @@ export async function checkItem(
     const adaptedText = fillMath([adapted.text, ...adapted.steps].join("\n"), orig.math);
     if (simpler) {
       const b = await model(adaptedText).catch(() => null);
-      const set = b?.solvable ? stepSet(eqStep(b.equation)) : null;
-      if (set === null) solution = "unchecked";
+      const sys = b?.solvable && isSystem(b.equation) ? solveSystem(b.equation) : null;
+      const set = b?.solvable && !isSystem(b.equation) ? stepSet(eqStep(b.equation)) : null;
+      if (sys) {
+        if (sys.kind !== "unique") {
+          solution = "error";
+          issues.push("Con los números nuevos el problema no tiene una respuesta única");
+        } else if (!sys.values.every((v) => near(v, Math.round(v)))) {
+          solution = "error";
+          issues.push(`Con los números nuevos la respuesta no es entera (${fmtSystem(sys)})`);
+        } else solution = "ok";
+      } else if (set === null) solution = "unchecked";
       else if (set === "all" || set.length !== 1) {
         solution = "error";
         issues.push("Con los números nuevos el problema no tiene una respuesta única");
@@ -445,7 +567,7 @@ export async function checkItem(
       } else solution = "ok";
     } else {
       const [a, b] = await Promise.all([originalModel, model(adaptedText).catch(() => null)]);
-      solution = a.solvable && b?.solvable ? compareSteps(eqStep(a.equation), eqStep(b.equation)).verdict : "unchecked";
+      solution = b ? compareModels(a, b) : "unchecked";
       if (solution === "error") issues.push("La respuesta del problema cambió con la adaptación");
     }
   }
@@ -454,7 +576,8 @@ export async function checkItem(
   const ex = adapted?.support?.example;
   if (ajustes.includes("ejemplo_resuelto") && ex && ex.statement.trim() && ex.steps.length > 0) {
     const m = await model(ex.statement).catch(() => null);
-    if (m?.solvable && compareSteps(eqStep(m.equation), eqStep(ex.steps[0])).verdict === "error") {
+    // Solo se comparan si son del mismo tipo: un planteo de una incógnita no se compara con un sistema.
+    if (m?.solvable && isSystem(m.equation) === isSystem(ex.steps[0]) && examplePlanteoDiffers(m.equation, ex.steps[0])) {
       issues.push("El planteo del ejemplo resuelto no coincide con su consigna");
     }
   }

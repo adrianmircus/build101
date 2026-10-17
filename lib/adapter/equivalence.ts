@@ -289,10 +289,191 @@ function setFromValues(step: MathStep): SolutionSet | null {
   return nums.filter((r, i) => i === 0 || Math.abs(r - nums[i - 1]) > 1e-9);
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Sistemas de ecuaciones lineales. Un sistema viaja como una sola cadena con las ecuaciones separadas por ";":
+// "y = 2*x + 5; y = -x + 2". Una sola ecuación con dos o más variables también se trata como sistema (de una ecuación).
+// La linealidad se comprueba numéricamente y los sistemas se resuelven por eliminación, sin rangos ni búsqueda de raíces:
+// el resultado es exacto (salvo redondeo) y distingue solución única, infinitas soluciones y ninguna.
+
+const MAX_SYSTEM_VARS = 4;
+const SYSTEM_PROBES = [
+  [1.3, -2.7, 0.6, 4.1],
+  [-3.9, 0.45, 2.2, -1.6],
+  [7.1, 5.3, -4.4, 0.8],
+  [-0.35, -6.2, 3.7, 2.9],
+];
+
+export type SystemSolution =
+  | { kind: "unique"; vars: string[]; values: number[] }
+  | { kind: "infinite"; vars: string[] }
+  | { kind: "none"; vars: string[] };
+
+interface LinearSystem {
+  vars: string[];
+  rows: number[][]; // una fila por ecuación: coeficientes de cada variable y, al final, el término independiente (a·v = b)
+}
+
+export function isSystem(src: string): boolean {
+  if (src.includes(";")) return true;
+  try {
+    const eq = equationFn(src);
+    return eq !== null && eq.vars.length > 1;
+  } catch {
+    return false;
+  }
+}
+
+function equationVars(src: string): string[] {
+  const vars = new Set<string>();
+  const sides = normalize(src).split("=");
+  parse(sides.map((s) => `(${s})`).join(" - ")).traverse((n, path) => {
+    if (isSymbolNode(n) && path !== "fn" && !CONSTANTS.has(n.name)) vars.add(n.name);
+  });
+  return [...vars];
+}
+
+// Filas del sistema sobre las variables dadas; null si alguna ecuación no es lineal o no se puede leer.
+function linearRows(parts: string[], vars: string[]): number[][] | null {
+  const rows: number[][] = [];
+  for (const part of parts) {
+    const sides = normalize(part).split("=");
+    if (sides.length !== 2 || !sides[0].trim() || !sides[1].trim()) return null;
+    const code = parse(`(${sides[0]}) - (${sides[1]})`).compile();
+    const g = (p: number[]) => {
+      const scope: Record<string, unknown> = { ln: Math.log };
+      vars.forEach((v, i) => (scope[v] = p[i]));
+      const r = code.evaluate(scope);
+      return typeof r === "number" ? r : NaN;
+    };
+    const zero = vars.map(() => 0);
+    const c = g(zero);
+    const a = vars.map((_, i) => g(vars.map((__, j) => (j === i ? 1 : 0))) - c);
+    if (![c, ...a].every(Number.isFinite)) return null;
+    for (const probe of SYSTEM_PROBES) {
+      const p = vars.map((_, i) => probe[i]);
+      const want = c + a.reduce((s, ai, i) => s + ai * p[i], 0);
+      const got = g(p);
+      const size = Math.max(1, Math.abs(c), ...a.map((ai, i) => Math.abs(ai * p[i])));
+      if (!Number.isFinite(got) || Math.abs(got - want) > 1e-9 * size) return null; // no es lineal
+    }
+    rows.push([...a, -c]);
+  }
+  return rows;
+}
+
+function linearSystem(src: string, extraVars: string[] = []): LinearSystem | null {
+  try {
+    const parts = normalize(src)
+      .split(";")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return null;
+    const vars = [...new Set([...parts.flatMap(equationVars), ...extraVars])].sort();
+    if (vars.length === 0 || vars.length > MAX_SYSTEM_VARS) return null;
+    const rows = linearRows(parts, vars);
+    return rows ? { vars, rows } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Forma escalonada reducida (Gauss-Jordan con pivoteo parcial). Devuelve las filas no nulas.
+function rref(matrix: number[][]): number[][] {
+  const m = matrix.map((r) => [...r]);
+  const cols = m[0]?.length ?? 0;
+  const scale = Math.max(1, ...m.flat().map(Math.abs));
+  const tol = 1e-9 * scale;
+  let lead = 0;
+  for (let c = 0; c < cols && lead < m.length; c++) {
+    let best = lead;
+    for (let r = lead + 1; r < m.length; r++) if (Math.abs(m[r][c]) > Math.abs(m[best][c])) best = r;
+    if (Math.abs(m[best][c]) <= tol) continue;
+    [m[lead], m[best]] = [m[best], m[lead]];
+    const p = m[lead][c];
+    m[lead] = m[lead].map((x) => x / p);
+    for (let r = 0; r < m.length; r++) {
+      if (r === lead) continue;
+      const f = m[r][c];
+      if (f !== 0) m[r] = m[r].map((x, j) => x - f * m[lead][j]);
+    }
+    lead++;
+  }
+  return m.slice(0, lead).map((r) => r.map((x) => (Math.abs(x) <= tol ? 0 : x)));
+}
+
+const consistent = (reduced: number[][]) => !reduced.some((r) => r.slice(0, -1).every((x) => x === 0) && r[r.length - 1] !== 0);
+
+function solveLinear(sys: LinearSystem): SystemSolution {
+  const reduced = rref(sys.rows);
+  if (!consistent(reduced)) return { kind: "none", vars: sys.vars };
+  if (reduced.length < sys.vars.length) return { kind: "infinite", vars: sys.vars };
+  const values = sys.vars.map((_, i) => reduced.find((r) => r[i] === 1 && r.slice(0, -1).every((x, j) => j === i || x === 0))?.[sys.vars.length] ?? NaN);
+  return values.every(Number.isFinite) ? { kind: "unique", vars: sys.vars, values } : { kind: "infinite", vars: sys.vars };
+}
+
+export function solveSystem(src: string): SystemSolution | null {
+  const sys = linearSystem(src);
+  return sys ? solveLinear(sys) : null;
+}
+
+// Dos sistemas son equivalentes si tienen el mismo conjunto solución. Si los dos tienen solución, eso pasa cuando las
+// filas de uno son combinación de las del otro (mismo rango por separado que juntos).
+export function compareSystems(srcA: string, srcB: string): { verdict: Verdict; detail: string } {
+  const a0 = linearSystem(srcA);
+  const b0 = linearSystem(srcB);
+  if (!a0 || !b0) return { verdict: "unchecked", detail: "No es un sistema de ecuaciones lineales que se pueda revisar" };
+  const vars = [...new Set([...a0.vars, ...b0.vars])].sort();
+  if (vars.length > MAX_SYSTEM_VARS) return { verdict: "unchecked", detail: "Tiene demasiadas incógnitas" };
+  const a = linearSystem(srcA, vars)!;
+  const b = linearSystem(srcB, vars)!;
+  const ra = rref(a.rows);
+  const rb = rref(b.rows);
+  const ca = consistent(ra);
+  const cb = consistent(rb);
+  if (!ca && !cb) return { verdict: "ok", detail: "Los dos sistemas no tienen solución" };
+  if (ca !== cb) return { verdict: "error", detail: ca ? "El paso nuevo no tiene solución y el anterior sí" : "El paso anterior no tenía solución y el nuevo sí" };
+  const joint = rref([...a.rows, ...b.rows]);
+  if (ra.length === rb.length && joint.length === ra.length) {
+    return { verdict: "ok", detail: `Mismas soluciones: ${fmtSystem(solveLinear(a))}` };
+  }
+  return { verdict: "error", detail: `Antes: ${fmtSystem(solveLinear(a))} · Después: ${fmtSystem(solveLinear(b))}` };
+}
+
+export function fmtSystem(s: SystemSolution): string {
+  if (s.kind === "none") return "ninguna solución (sistema incompatible)";
+  if (s.kind === "infinite") return "infinitas soluciones (sistema compatible indeterminado)";
+  return s.vars.map((v, i) => `${v} = ${fmtValue(s.values[i])}`).join("; ");
+}
+
+// El último paso de un ejemplo resuelto tiene que dar el valor de cada incógnita: "x = 4; y = 5".
+export function solvedForm(src: string, vars: string[]): boolean {
+  const parts = normalize(src)
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const found = new Set<string>();
+  for (const part of parts) {
+    const sides = part.split("=").map((s) => s.trim());
+    if (sides.length !== 2) return false;
+    const [l, r] = sides;
+    const name = /^[A-Za-z]$/.test(l) ? l : /^[A-Za-z]$/.test(r) ? r : null;
+    if (!name) return false;
+    try {
+      const value = compile(name === l ? r : l);
+      if (value.vars.length > 0 || !Number.isFinite(value.fn(0))) return false;
+    } catch {
+      return false;
+    }
+    found.add(name);
+  }
+  return vars.every((v) => found.has(v));
+}
+
 export function stepSet(step: MathStep): SolutionSet | null {
   try {
     if (step.kind === "solution_set") return setFromValues(step);
     if (step.kind === "equation") {
+      if (step.math.includes(";")) return null; // sistema: se resuelve con solveSystem
       const eq = equationFn(step.math);
       if (!eq || eq.vars.length > 1) return null;
       return solutionSet(eq);
@@ -386,6 +567,7 @@ export function compareSteps(a: MathStep, b: MathStep): { verdict: Verdict; deta
     if (da && db && da.name === db.name && da.v === db.v) return compareExpressions(da.rhs, db.rhs, `Las dos definiciones de ${da.name}(${da.v})`);
     return { verdict: "unchecked", detail: "Es la definición de una función, no una ecuación para resolver" };
   }
+  if (a.kind === "equation" && b.kind === "equation" && (isSystem(a.math) || isSystem(b.math))) return compareSystems(a.math, b.math);
   const sa = stepSet(a);
   const sb = stepSet(b);
   if (sa === null || sb === null) {
