@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { addTransitionType, startTransition, useState, ViewTransition } from "react";
+import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { MathText } from "@/components/ui/MathText";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
@@ -201,6 +202,11 @@ export function AssessmentDetail() {
                               }`}
                             >
                               <span className="font-bold">{o.id})</span> <MathText text={o.text} inline />
+                              {o.graph && (
+                                <span className="mt-2 block">
+                                  <FunctionGraph spec={o.graph} size="sm" />
+                                </span>
+                              )}
                               {correct && <span className="block text-base">✓ Respuesta correcta</span>}
                             </li>
                           );

@@ -3,8 +3,9 @@ import { AnthropicError, APIError } from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Change, GenerationRequest, GenerationResponse, Question } from "@/lib/contract";
-import { GAZE_PROFILE, profileLabel, sortProfiles, usesGaze, VOICE_PROFILE } from "@/lib/profiles";
+import { GAZE_PROFILE, profileLabel, sortProfiles, usesGaze, usesVoice, VOICE_PROFILE } from "@/lib/profiles";
 import { type Api, withFallback } from "./client";
+import { GraphSchema, toGraph } from "./graph";
 import { loadProfile, type ProfileData } from "./profiles";
 import { buildMessage, SYSTEM } from "./prompt";
 
@@ -19,7 +20,10 @@ const GazeOutput = Output.extend({
     z.object({
       exercise: z.number().int(),
       stem: z.string(),
-      options: z.array(z.object({ id: z.enum(["A", "B", "C", "D"]), text: z.string() })).min(2).max(4),
+      options: z
+        .array(z.object({ id: z.enum(["A", "B", "C", "D"]), text: z.string(), graph: GraphSchema.nullable() }))
+        .min(2)
+        .max(4),
       answer: z.enum(["A", "B", "C", "D"]),
     }),
   ),
@@ -46,6 +50,8 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
   // Multiple choice is a requirement of the channel (the student can't write), not a pedagogical
   // adaptation: the code decides it, even if the profile has no data.
   const gaze = usesGaze(profiles);
+  // Same for answering by voice: whatever asks to draw has to be said instead.
+  const voice = usesVoice(profiles);
 
   // Profiles without data are not adapted: the code decides it, not the model, so we don't invent pedagogy.
   const notices: Change[] = profiles
@@ -68,11 +74,11 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
     );
 
   // Nothing to adapt and no interests to theme around: the original goes back as-is, without an AI call.
-  if (withData.length === 0 && !request.interests?.length && !gaze) {
+  if (withData.length === 0 && !request.interests?.length && !gaze && !voice) {
     return { profiles, content: request.original, changes: notices };
   }
 
-  const blocks = buildMessage(request, withData, gaze);
+  const blocks = buildMessage(request, withData, { gaze, voice });
   const params = (api: Api) => ({
     model: api.model,
     ...api.extra,
@@ -102,7 +108,11 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
     );
     checkStop(response.stop_reason);
     if (!response.parsed_output) throw new AgentError(INCOMPLETE);
-    const { content, changes, questions } = response.parsed_output;
+    const { content, changes } = response.parsed_output;
+    const questions: Question[] = response.parsed_output.questions.map((q) => ({
+      ...q,
+      options: q.options.map(({ graph, ...o }) => ({ ...o, ...(toGraph(graph) ? { graph: toGraph(graph) } : {}) })),
+    }));
     if (!validQuestions(questions)) {
       throw new AgentError("La IA armó mal las opciones. Probá generar de nuevo.");
     }

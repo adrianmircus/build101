@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { describeGraph, FunctionGraph } from "@/components/ui/FunctionGraph";
 import { MathText } from "@/components/ui/MathText";
 import type { OptionId, Question } from "@/lib/contract";
 import { targetOf, zoneOf, type Zone } from "./calibration";
@@ -45,6 +46,11 @@ export function GazeChoice({
         prompt={
           <>
             ¿Confirmás la opción <span className="font-bold">{option.id})</span> <MathText text={option.text} inline />?
+            {option.graph && (
+              <span className="mt-3 block w-[min(100%,40vh)]">
+                <FunctionGraph spec={option.graph} />
+              </span>
+            )}
           </>
         }
         onYes={() => {
@@ -61,11 +67,17 @@ export function GazeChoice({
       label="Opciones"
       items={question.options.map((o) => ({
         key: o.id,
-        spoken: `opción ${o.id}: ${o.text}`,
+        spoken: `opción ${o.id}: ${o.text}${o.graph ? `. ${describeGraph(o.graph)}` : ""}`,
         content: (
           <>
             <span className="text-3xl font-bold">{o.id})</span>
             <MathText text={o.text} inline className="text-2xl" />
+            {o.graph && (
+              // Sized by the screen height so the graph fits in a quarter of it.
+              <span className="block w-[min(100%,24vh)]">
+                <FunctionGraph spec={o.graph} />
+              </span>
+            )}
             {o.id === value && <span className="text-lg font-semibold">✓ Tu respuesta</span>}
           </>
         ),

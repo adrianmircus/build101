@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { field, focusWithin, secondaryButton } from "@/components/ui/styles";
 import type { OptionId, Question } from "@/lib/contract";
@@ -354,6 +355,11 @@ function StudentAnswer({
                   <span className={`ml-2 font-semibold ${correct ? "text-emerald-800" : "text-red-800"}`}>
                     {correct ? "· es la correcta" : `· la correcta es ${question.answer}`}
                   </span>
+                  {option.graph && (
+                    <div className="mt-2">
+                      <FunctionGraph spec={option.graph} size="sm" />
+                    </div>
+                  )}
                 </>
               ) : (
                 <span className="text-slate-700">Sin responder</span>
@@ -371,6 +377,12 @@ function StudentAnswer({
         {answer.mode === "voice" ? "Dictada" : "Escrita"}
       </span>
       <p className="mt-2 whitespace-pre-wrap text-xl leading-relaxed">{answer.text}</p>
+      {answer.graph && (
+        <div className="mt-2">
+          <p className="text-base font-semibold text-slate-700">Gráfica armada con lo que dictó</p>
+          <FunctionGraph spec={answer.graph} size="sm" />
+        </div>
+      )}
       {answer.transcript && (
         <details className="mt-2 text-base text-slate-700">
           <summary className="min-h-11 cursor-pointer py-2 font-semibold">Ver lo que dictó, tal cual</summary>

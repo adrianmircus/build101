@@ -56,13 +56,21 @@ export type ReadPdfResponse = {
   doubts: string[]; // what it couldn't read well; empty if none
 };
 
+// A graph the platform draws: functions of x and marked points. The AI describes it; the code draws it
+// (components/ui/FunctionGraph.tsx). Used where a student can't draw: options to choose and dictated answers.
+export type GraphSpec = {
+  functions: { expr: string; label?: string }[]; // in x, with explicit "*": "x^2 - 2*x", "-(x - 1)^2 + 1"
+  points: { x: number; y: number; label?: string }[]; // roots, vertex, intercepts
+  window?: { xMin: number; xMax: number; yMin: number; yMax: number }; // if absent, computed from the points
+};
+
 // Multiple choice for students who answer with eye gaze (profile "motor"): one option per screen quadrant.
 export type OptionId = "A" | "B" | "C" | "D";
 
 export type Question = {
   exercise: number; // number of the exercise in the original (1, 2, …)
   stem: string; // self-contained statement, markdown + LaTeX
-  options: { id: OptionId; text: string }[]; // 2 to 4
+  options: { id: OptionId; text: string; graph?: GraphSpec }[]; // 2 to 4; graph: the option is a graph to pick
   answer: OptionId; // answer key: for the teacher only, never shown to the student
 };
 
@@ -85,6 +93,7 @@ export type TranscribeResponse = {
   answer: string; // the answer in readable notation (Unicode: x², √, ·, −), exactly what was said
   readback: string; // how the answer reads aloud, so the student can confirm it by ear
   doubts: string[]; // what could be read two ways, as questions for the student; empty if none
+  graph?: GraphSpec; // the graph of what they said, when the exercise asks for one
 };
 
 // POST /api/results/analyze: the agent reads a group's results and summarizes the difficulties.

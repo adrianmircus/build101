@@ -1,4 +1,4 @@
-import type { GenerationRequest, GenerationResponse } from "@/lib/contract";
+import type { GenerationRequest, GenerationResponse, GraphSpec } from "@/lib/contract";
 import { usesGaze } from "@/lib/profiles";
 import { syllabusForAI } from "@/lib/syllabus/store";
 import { getData, updateVersion } from "./store";
@@ -70,9 +70,25 @@ async function mock(request: GenerationRequest): Promise<GenerationResponse> {
           ],
           answer: "B",
         },
+        {
+          exercise: 3,
+          stem: "[Pregunta de ejemplo] ¿Cuál es la gráfica de $f(x)=x^2-2x$?",
+          options: [
+            { id: "A", text: "Gráfica A", graph: sampleParabola("x^2 - 2*x", 1, -1) },
+            { id: "B", text: "Gráfica B", graph: sampleParabola("-(x^2 - 2*x)", 1, 1) },
+            { id: "C", text: "Gráfica C", graph: sampleParabola("x^2 + 2*x", -1, -1) },
+            { id: "D", text: "Gráfica D", graph: sampleParabola("x^2 - 2*x + 2", 1, 1) },
+          ],
+          answer: "A",
+        },
       ],
     }),
   };
+}
+
+// A parabola with its vertex marked, for the sample graph options.
+function sampleParabola(expr: string, x: number, y: number): GraphSpec {
+  return { functions: [{ expr }], points: [{ x, y, label: "Vértice" }], window: { xMin: -4, xMax: 4, yMin: -4, yMax: 4 } };
 }
 
 const inFlight = new Set<string>();

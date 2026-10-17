@@ -3,12 +3,14 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { TranscribeRequest, TranscribeResponse } from "@/lib/contract";
 import { withFallback } from "./client";
+import { GRAPH_FORMAT, GraphSchema, toGraph } from "./graph";
 import { AgentError } from "./generate";
 
 const Output = z.object({
   answer: z.string(),
   readback: z.string(),
   doubts: z.array(z.string()),
+  graph: GraphSchema.nullable(),
 });
 
 // Fixed so it gets cached across requests: the exercise and the dictation go in the user message.
@@ -23,7 +25,8 @@ Rules:
 - "doubts": when something can be written two ways and the dictation doesn't say which ("x más dos al cuadrado": (x + 2)² or x + 2²?), pick the most literal reading for "answer" and add a short question for the student in "doubts". Speech recognition errors you can't resolve go here too. A loose or cut-off phrase that isn't part of the answer (often at the end: "el procedimiento general en") stays out of "answer", and you ask about it here ("Al final se escuchó «…»: ¿querías agregar algo?"). Empty if there are none.
 - "doubts" are only about how to write what they said. Never point out missing steps, values or mistakes, and never hint at what's left to do: that would be helping with the exam.
 - If the dictation is empty or has nothing that answers anything, leave "answer" empty and explain it in "doubts".
-- Write in Rioplatense Spanish, addressed to the student ("vos").`;
+- Write in Rioplatense Spanish, addressed to the student ("vos").
+- "graph": the student can't draw, so when the exercise asks for a graph or for its elements (roots, vertex, intercepts, where it opens), the platform draws one from what they said. Build it ONLY from their words: mark the points they said, and draw a curve only if what they said determines it (they dictated the function, or for a parabola a vertex and a root, or three points). Never use the exercise's function or your own solution to fill in, move or add anything: if what they said is wrong, the graph shows it wrong. If what they said isn't enough for a curve, mark only their points and don't mention what's missing. null when the exercise doesn't ask for a graph or they said nothing to draw. ${GRAPH_FORMAT}`;
 
 export async function transcribeAnswer(request: TranscribeRequest): Promise<TranscribeResponse> {
   const response = await withFallback(({ client, model, extra }) =>
@@ -49,5 +52,7 @@ export async function transcribeAnswer(request: TranscribeRequest): Promise<Tran
   if (response.stop_reason === "max_tokens" || !response.parsed_output) {
     throw new AgentError("La respuesta llegó incompleta. Probá de nuevo.");
   }
-  return response.parsed_output;
+  const { graph, ...rest } = response.parsed_output;
+  const drawn = toGraph(graph);
+  return drawn ? { ...rest, graph: drawn } : rest;
 }

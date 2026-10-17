@@ -1,4 +1,4 @@
-import type { AssessmentType, Change, OptionId, Question } from "@/lib/contract";
+import type { AssessmentType, Change, GraphSpec, OptionId, Question } from "@/lib/contract";
 import type { ProfileId } from "@/lib/profiles";
 
 export type Student = {
@@ -54,6 +54,8 @@ export type Answer = {
   text: string;
   mode: "typed" | "voice";
   transcript?: string;
+  // The graph built from what they dictated, when the exercise asks for one. They confirmed it with the text.
+  graph?: GraphSpec;
 };
 
 // What a student solves on the platform. Once submittedAt is set it can't change.

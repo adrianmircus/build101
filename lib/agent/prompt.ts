@@ -1,6 +1,7 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { GenerationRequest, SyllabusForAI } from "@/lib/contract";
+import { GRAPH_FORMAT } from "./graph";
 import type { ProfileData } from "./profiles";
 
 // Fixed so it gets cached across requests: whatever changes goes in the user message.
@@ -25,8 +26,16 @@ When we tell you the student answers with eye gaze (motor disability: they can't
 - Keep the same topics, numbers and difficulty whenever you can.
 - Never leave an exercise out. If it is open-ended (draw a graph, complete a table, prove, justify, explain), rewrite it as one or more multiple choice questions that assess the same topic and skill, using the same functions and numbers when possible. For example: "Graficá $f(x)=x^2$" can become "¿Cuánto vale $f(-2)$?" and "¿Hacia dónde abre la parábola de $f$?"; a table to complete can become questions about specific values; "Justificá…" can become "¿Cuál de estas razones explica…?".
 - Add one change per converted exercise. If only the answer format changed, for example what: "Ejercicio 3 pasó a opción múltiple", why: "El estudiante responde con la mirada y no puede escribir el desarrollo". If you had to rewrite it, what: "Ejercicio 1 reformulado a opción múltiple", and the why says what the original assessed that the new questions no longer cover, so the teacher can check it.
-- Options are short text and may use LaTeX, but never markdown tables.
-- "content" is the full multiple choice version in text (each question with its options), not the original exercises: it's what the teacher reads and reviews.`;
+- Options are short text and may use LaTeX, but never markdown tables. "graph" is null for options that aren't graphs.
+- The student can't draw, but can pick a graph. When the original asks to graph a function, one good question is "¿Cuál es la gráfica de $f(x)=…$?" with options that ARE graphs: fill each option's "graph" (the correct one and the graphs of typical mistakes: the sign of a flipped, the vertex shifted, wrong roots), and give them a short "text" that doesn't reveal the answer ("Gráfica A", "Gráfica B"…). ${GRAPH_FORMAT} Mark the roots and the vertex on each option, and use the same window for all the options of a question.
+- "content" is the full multiple choice version in text (each question with its options), not the original exercises: it's what the teacher reads and reviews.
+
+When we tell you the student answers by dictating (they can't write or draw; the platform turns what they say into notation and draws graphs from it), adapt the instructions so everything can be answered out loud:
+- Nothing can require drawing, graphing, completing a table by hand, or using GeoGebra or other software.
+- Instead of "graficá f", ask for the elements that define the graph, for example: "Decí las raíces, el vértice, la ordenada en el origen y hacia dónde abre la parábola de $f(x)=…$. Con lo que digas, la plataforma arma la gráfica." Instead of interpreting graphically, ask to say it ("Decí para qué valores de $x$ se cumple…").
+- Same functions, numbers and difficulty: only how they answer changes. Drop suggestions that need a computer or drawing ("podés verificar en GeoGebra").
+- A long exercise with many items can be split into numbered sub-items so each one is dictated on its own.
+- Add one change per adapted exercise, for example what: "Ejercicio 2: graficar pasó a decir raíces y vértice", why: "El estudiante responde dictando y no puede graficar; la plataforma arma la gráfica con lo que dice".`;
 
 function syllabusText(syllabus: SyllabusForAI): string {
   const units = syllabus.units
@@ -38,7 +47,7 @@ function syllabusText(syllabus: SyllabusForAI): string {
 export function buildMessage(
   request: GenerationRequest,
   profiles: ProfileData[],
-  gaze: boolean,
+  { gaze, voice }: { gaze: boolean; voice: boolean },
 ): Anthropic.Beta.BetaContentBlockParam[] {
   const blocks: Anthropic.Beta.BetaContentBlockParam[] = [];
 
@@ -64,6 +73,7 @@ export function buildMessage(
     profiles.length > 0 && `adapt it for a student with: ${profiles.map((p) => p.label).join(" + ")}`,
     interests.length > 0 && "theme its word problems around the students' interests",
     gaze && "convert it to multiple choice for a student who answers with eye gaze",
+    voice && !gaze && "adapt it for a student who answers by dictating",
   ].filter(Boolean);
   parts.push(`For this ${kind} about "${request.topic}": ${goals.join(", and ")}.`);
   parts.push(`<original>\n${request.original}\n</original>`);

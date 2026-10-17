@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
 import type { TranscribeResponse } from "@/lib/contract";
 import type { Answer } from "@/lib/groups/types";
@@ -56,7 +57,9 @@ export function DictationAnswer({
     if (!proposal) return;
     const text = (edited ?? proposal.answer).trim();
     if (!text) return;
-    onSave({ text, mode: "voice", transcript: dictation.transcript });
+    // The graph comes from what they dictated: if they fixed the text by keyboard it may not match anymore, so it's left out.
+    const graph = edited === null ? proposal.graph : undefined;
+    onSave({ text, mode: "voice", transcript: dictation.transcript, ...(graph ? { graph } : {}) });
     discard();
   }
 
@@ -88,6 +91,11 @@ export function DictationAnswer({
             ✓ Tu respuesta guardada
           </h3>
           <p className="mt-2 whitespace-pre-wrap text-2xl leading-relaxed">{saved.text}</p>
+          {saved.graph && (
+            <div className="mt-3">
+              <FunctionGraph spec={saved.graph} />
+            </div>
+          )}
           {!disabled && (
             <div className="mt-3 flex flex-wrap gap-3">
               <button type="button" className={secondaryButton} onClick={() => speak(saved.text)}>
@@ -184,6 +192,17 @@ export function DictationAnswer({
           ) : (
             <p className="mt-3 text-lg">No encontramos una respuesta en lo que dictaste.</p>
           )}
+          {proposal.graph &&
+            (edited === null ? (
+              <div className="mt-4">
+                <p className="mb-2 text-lg font-semibold">Así queda tu gráfica</p>
+                <FunctionGraph spec={proposal.graph} />
+              </div>
+            ) : (
+              <p className="mt-4 text-lg">
+                La gráfica se arma con lo que dictás: si corregís con el teclado, no se guarda. Para tenerla, volvé a dictar.
+              </p>
+            ))}
           {proposal.doubts.length > 0 && (
             <div className="mt-4">
               <p className="text-lg font-semibold">Fijate en esto:</p>
