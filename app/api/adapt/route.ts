@@ -8,7 +8,8 @@ import { ADJUSTMENTS, cleanInterests, FORMATS, isReasoning, type Adjustment, typ
 import { uploadIssue } from "@/lib/adapter/upload";
 import { readSession } from "@/lib/auth/session";
 
-export const maxDuration = 120; // ajustar al máximo del plan de Vercel
+// Máximo de Vercel Hobby con Fluid compute. Con 4 versiones y reintentos, una corrida real llegó a 3,7 minutos.
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   if ((await readSession())?.role !== "teacher") {
