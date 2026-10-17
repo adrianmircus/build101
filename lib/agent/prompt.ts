@@ -7,6 +7,8 @@ import type { ProfileData } from "./profiles";
 // How many multiple choice questions the eye-gaze version has, whatever the original's length.
 // A limit for the demo, so it generates fast; it can go up later.
 export const GAZE_QUESTIONS = 3;
+// Same for the dictation version: how many of the original's exercises it keeps.
+export const VOICE_EXERCISES = 3;
 
 // Fixed so it gets cached across requests: whatever changes goes in the user message.
 export const SYSTEM = `You are an assistant that adapts high school (bachillerato) math worksheets and exams from Uruguay for students with different profiles (for example ADHD, dyslexia or autism). You work for a teacher who reviews and approves each version before publishing it; students solve it on the platform.
@@ -40,6 +42,7 @@ When we tell you the student answers by dictating (they can't write or draw; the
 - Nothing can require drawing, graphing, completing a table by hand, or using GeoGebra or other software.
 - Instead of "graficá f", ask for the elements that define the graph, for example: "Decí las raíces, el vértice, la ordenada en el origen y hacia dónde abre la parábola de $f(x)=…$. Con lo que digas, la plataforma arma la gráfica." Instead of interpreting graphically, ask to say it ("Decí para qué valores de $x$ se cumple…").
 - Same functions, numbers and difficulty: only how they answer changes. Drop suggestions that need a computer or drawing ("podés verificar en GeoGebra").
+- Keep only ${VOICE_EXERCISES} of the original's exercises, whatever its length: the ones that best cover what it assesses, with their original numbers and in order (if the original asks to graph, one of them is that one). Leave the rest out of the content and list them in ONE change, for example what: "Ejercicios 3 y 4 sin incluir", why: "La versión por voz tiene ${VOICE_EXERCISES} ejercicios: estos no se evalúan en ella".
 - A long exercise with many items can be split into sub-items so each one is dictated on its own. Name sub-items with letters or roman numerals ("a)", "i)"), never with numbers: numbers are only for the exercises.
 - Add one change per adapted exercise, for example what: "Ejercicio 2: graficar pasó a decir raíces y vértice", why: "El estudiante responde dictando y no puede graficar; la plataforma arma la gráfica con lo que dice".`;
 
