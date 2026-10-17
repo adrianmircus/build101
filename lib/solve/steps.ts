@@ -23,14 +23,26 @@ export function stepsOf(version: Version, original: string): Step[] {
   }
   const kind = usesVoice(version.profiles) ? "voice" : "typed";
   // The index is the position of the same exercise in the original, which is what the teacher corrects
-  // (exercisesOf). An original numbered 2 and 5 gives 0 and 1, not 1 and 4.
+  // (exercisesOf). An original numbered 2 and 5 gives 0 and 1, not 1 and 4. An exercise the original doesn't
+  // have joins the previous one: a slot of its own could collide with another's or fall outside what's corrected.
   const numbers = splitExercises(original).map((e) => e.number);
-  return splitExercises(version.content ?? "").map((e, i) => ({
-    kind,
-    index: numbers.includes(e.number) ? numbers.indexOf(e.number) : i,
-    label: `Ejercicio ${e.number}`,
-    text: e.text,
-  }));
+  const steps: Step[] = [];
+  for (const e of splitExercises(version.content ?? "")) {
+    const at = numbers.indexOf(e.number);
+    const last = steps[steps.length - 1];
+    if (at === -1 && last) {
+      last.text += `\n\n${e.text}`;
+      continue;
+    }
+    const used = new Set(steps.map((s) => s.index));
+    const index = at !== -1 && !used.has(at) ? at : numbers.findIndex((_, i) => !used.has(i));
+    if (index === -1) {
+      if (last) last.text += `\n\n${e.text}`;
+      continue;
+    }
+    steps.push({ kind, index, label: `Ejercicio ${e.number}`, text: e.text });
+  }
+  return steps;
 }
 
 export function isAnswered(step: Step, submission: Submission | undefined): boolean {
