@@ -2,7 +2,7 @@ import "server-only";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { TranscribeRequest, TranscribeResponse } from "@/lib/contract";
-import { getClient, MODEL } from "./client";
+import { withFallback } from "./client";
 import { AgentError } from "./generate";
 
 const Output = z.object({
@@ -26,21 +26,22 @@ Rules:
 - Write in Rioplatense Spanish, addressed to the student ("vos").`;
 
 export async function transcribeAnswer(request: TranscribeRequest): Promise<TranscribeResponse> {
-  const response = await getClient().beta.messages.parse({
-    model: MODEL,
-    max_tokens: 4000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    // Low: it's a transcription and the student is waiting for it.
-    output_config: { effort: "low", format: betaZodOutputFormat(Output) },
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `<exercise>\n${request.exercise}\n</exercise>\n<dictation>\n${request.transcript}\n</dictation>\n\nEscribí en notación lo que dictó el estudiante.`,
-      },
-    ],
-  });
+  const response = await withFallback(({ client, model, extra }) =>
+    client.beta.messages.parse({
+      model,
+      ...extra,
+      max_tokens: 4000,
+      // Low: it's a transcription and the student is waiting for it.
+      output_config: { effort: "low", format: betaZodOutputFormat(Output) },
+      system: SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: `<exercise>\n${request.exercise}\n</exercise>\n<dictation>\n${request.transcript}\n</dictation>\n\nEscribí en notación lo que dictó el estudiante.`,
+        },
+      ],
+    }),
+  );
 
   if (response.stop_reason === "refusal") {
     throw new AgentError("No pudimos pasar tu respuesta a notación. Probá dictarla de nuevo.");

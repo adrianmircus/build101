@@ -2,7 +2,7 @@ import "server-only";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { ResultsAnalysisRequest, ResultsAnalysisResponse } from "@/lib/contract";
-import { getClient, MODEL } from "./client";
+import { withFallback } from "./client";
 import { AgentError } from "./generate";
 
 const Output = z.object({
@@ -47,15 +47,16 @@ function resultsText(request: ResultsAnalysisRequest): string {
 }
 
 export async function analyzeResults(request: ResultsAnalysisRequest): Promise<ResultsAnalysisResponse> {
-  const response = await getClient().beta.messages.parse({
-    model: MODEL,
-    max_tokens: 8000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
-    system: SYSTEM,
-    messages: [{ role: "user", content: `${resultsText(request)}\n\nAnalizá los resultados de este grupo.` }],
-  });
+  const response = await withFallback(({ client, model, extra }) =>
+    client.beta.messages.parse({
+      model,
+      ...extra,
+      max_tokens: 8000,
+      output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
+      system: SYSTEM,
+      messages: [{ role: "user", content: `${resultsText(request)}\n\nAnalizá los resultados de este grupo.` }],
+    }),
+  );
 
   if (response.stop_reason === "refusal") {
     throw new AgentError("La IA no pudo analizar estos resultados. Probá de nuevo.");

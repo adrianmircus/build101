@@ -1,7 +1,7 @@
 import "server-only";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { getClient, MODEL } from "./client";
+import { withFallback } from "./client";
 import { AgentError } from "./generate";
 
 const Output = z.object({
@@ -22,27 +22,28 @@ Rules:
 - Write in Spanish, as the document does.`;
 
 export async function readExercisesPdf(base64: string): Promise<{ original: string; doubts: string[] }> {
-  const response = await getClient().beta.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: base64 },
-            title: "Práctico o parcial del docente",
-          },
-          { type: "text", text: "Transcribí los ejercicios de este documento." },
-        ],
-      },
-    ],
-  });
+  const response = await withFallback(({ client, model, extra }) =>
+    client.beta.messages.parse({
+      model,
+      ...extra,
+      max_tokens: 16000,
+      output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
+      system: SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: base64 },
+              title: "Práctico o parcial del docente",
+            },
+            { type: "text", text: "Transcribí los ejercicios de este documento." },
+          ],
+        },
+      ],
+    }),
+  );
 
   if (response.stop_reason === "refusal") {
     throw new AgentError("La IA no pudo leer este PDF. Probá con otro archivo o escribí los ejercicios a mano.");

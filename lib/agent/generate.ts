@@ -4,7 +4,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Change, GenerationRequest, GenerationResponse, Question } from "@/lib/contract";
 import { GAZE_PROFILE, profileLabel, sortProfiles, usesGaze, VOICE_PROFILE } from "@/lib/profiles";
-import { getClient, MODEL } from "./client";
+import { type Api, withFallback } from "./client";
 import { loadProfile, type ProfileData } from "./profiles";
 import { buildMessage, SYSTEM } from "./prompt";
 
@@ -72,25 +72,33 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
     return { profiles, content: request.original, changes: notices };
   }
 
-  const params = {
-    model: MODEL,
+  const blocks = buildMessage(request, withData, gaze);
+  const params = (api: Api) => ({
+    model: api.model,
+    ...api.extra,
     max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default" as const,
     system: SYSTEM,
-    messages: [{ role: "user" as const, content: buildMessage(request, withData, gaze) }],
-  };
+    // Without the Files API (through OpenRouter) the syllabus PDF can't go; its units still go as text.
+    messages: [
+      {
+        role: "user" as const,
+        content: api.files ? blocks : blocks.filter((b) => !(b.type === "document" && b.source.type === "file")),
+      },
+    ],
+  });
 
   if (gaze) {
     // Streaming: rewriting a whole assessment as multiple choice can go past what the SDK allows without it.
     const response = await parseOrFail(() =>
-      getClient()
-        .beta.messages.stream({
-          ...params,
-          max_tokens: 64000,
-          output_config: { effort: "medium", format: betaZodOutputFormat(GazeOutput) },
-        })
-        .finalMessage(),
+      withFallback((api) =>
+        api.client.beta.messages
+          .stream({
+            ...params(api),
+            max_tokens: 64000,
+            output_config: { effort: "medium", format: betaZodOutputFormat(GazeOutput) },
+          })
+          .finalMessage(),
+      ),
     );
     checkStop(response.stop_reason);
     if (!response.parsed_output) throw new AgentError(INCOMPLETE);
@@ -102,10 +110,12 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
   }
 
   const response = await parseOrFail(() =>
-    getClient().beta.messages.parse({
-      ...params,
-      output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
-    }),
+    withFallback((api) =>
+      api.client.beta.messages.parse({
+        ...params(api),
+        output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
+      }),
+    ),
   );
 
   checkStop(response.stop_reason);
