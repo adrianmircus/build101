@@ -1,4 +1,4 @@
-import type { AssessmentType, Change } from "@/lib/contract";
+import type { AssessmentType, Change, OptionId, Question } from "@/lib/contract";
 import type { ProfileId } from "@/lib/profiles";
 
 export type Student = {
@@ -26,6 +26,8 @@ export type Version = {
   status: VersionStatus;
   content?: string;
   changes?: Change[];
+  // Multiple choice to answer with eye gaze, only for versions with the "motor" profile.
+  questions?: Question[];
   approved: boolean;
 };
 
@@ -44,6 +46,23 @@ export type ExerciseResult = {
   errors: string[];
 };
 
+// A student's answer to one exercise. "voice": dictated, and text is what the student confirmed
+// after the AI turned the dictation into notation; transcript is what the browser heard, as-is.
+export type Answer = {
+  text: string;
+  mode: "typed" | "voice";
+  transcript?: string;
+};
+
+// What a student solves on the platform. Once submittedAt is set it can't change.
+export type Submission = {
+  // By exercise index (its number in the original − 1), the same as exerciseResults.
+  answers: (Answer | null)[];
+  // By question index, only for versions with multiple choice (eye gaze).
+  choices?: (OptionId | null)[];
+  submittedAt?: string;
+};
+
 export type Assessment = {
   id: string;
   groupId: string;
@@ -57,6 +76,8 @@ export type Assessment = {
   exerciseCount?: number;
   // By student id, one entry per exercise; null means not marked yet.
   exerciseResults?: Record<string, (ExerciseResult | null)[]>;
+  // By student id. Optional so older localStorage data keeps working.
+  submissions?: Record<string, Submission>;
   createdAt: string;
 };
 

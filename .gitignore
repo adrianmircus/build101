@@ -44,3 +44,6 @@ CLAUDE.local.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# MediaPipe WASM, copied from node_modules on install (scripts/copy-mediapipe.mjs)
+/public/mediapipe/wasm/

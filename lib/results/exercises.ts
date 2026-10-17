@@ -1,6 +1,7 @@
 import type { Assessment } from "@/lib/groups/types";
 
 export type Exercise = {
+  number: number;
   label: string;
   text: string;
 };
@@ -15,19 +16,19 @@ export function splitExercises(original: string): Exercise[] {
   for (const line of original.split("\n")) {
     const match = line.match(START);
     if (match) {
-      exercises.push({ label: `Ej. ${match[1]}`, text: line.slice(match[0].length).trim() });
+      exercises.push({ number: Number(match[1]), label: `Ej. ${match[1]}`, text: line.slice(match[0].length).trim() });
     } else if (exercises.length > 0 && line.trim()) {
       exercises[exercises.length - 1].text += `\n${line.trim()}`;
     }
   }
-  return exercises.length > 0 ? exercises : [{ label: "Ej. 1", text: original.trim() }];
+  return exercises.length > 0 ? exercises : [{ number: 1, label: "Ej. 1", text: original.trim() }];
 }
 
 // The exercises the teacher corrects: the detected ones, adjusted to the count the teacher set.
 export function exercisesOf(assessment: Assessment): Exercise[] {
   const detected = splitExercises(assessment.original);
   const count = assessment.exerciseCount ?? detected.length;
-  return Array.from({ length: count }, (_, i) => detected[i] ?? { label: `Ej. ${i + 1}`, text: "" });
+  return Array.from({ length: count }, (_, i) => detected[i] ?? { number: i + 1, label: `Ej. ${i + 1}`, text: "" });
 }
 
 export function shorten(text: string, max = 70): string {

@@ -174,6 +174,42 @@ export function AssessmentDetail() {
               </section>
             </div>
 
+            {version.status === "ready" && version.questions && version.questions.length > 0 && (
+              // What the student will answer with eye gaze. The key is only shown here, so the teacher can check it.
+              <section aria-labelledby="questions-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
+                <h3 id="questions-heading" className="text-xl font-bold">
+                  Opción múltiple para responder con la mirada
+                </h3>
+                <p className="mt-1 text-lg text-slate-700">
+                  Revisá que la respuesta correcta esté bien: la calculó la IA. El estudiante no la ve.
+                </p>
+                <ol className="mt-4 grid gap-4 lg:grid-cols-2">
+                  {version.questions.map((q, i) => (
+                    <li key={i} className="rounded-xl border-2 border-slate-200 p-4">
+                      <p className="text-base font-semibold text-slate-700">Ejercicio {q.exercise}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-lg leading-relaxed">{q.stem}</p>
+                      <ul className="mt-3 grid grid-cols-2 gap-2">
+                        {q.options.map((o) => {
+                          const correct = o.id === q.answer;
+                          return (
+                            <li
+                              key={o.id}
+                              className={`rounded-lg border-2 px-3 py-2 text-lg ${
+                                correct ? "border-emerald-700 bg-emerald-50 font-semibold text-emerald-900" : "border-slate-300"
+                              }`}
+                            >
+                              <span className="font-bold">{o.id})</span> {o.text}
+                              {correct && <span className="block text-base">✓ Respuesta correcta</span>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+
             {version.status === "ready" && (
               <section aria-labelledby="changes-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
                 <h3 id="changes-heading" className="mb-3 text-xl font-bold">
@@ -194,7 +230,7 @@ export function AssessmentDetail() {
             )}
 
             {version.status === "ready" && (
-              // The teacher's review: the only way to the PDF. It changes color with the state so it reads from far away.
+              // The teacher's review: only approved versions reach the students. It changes color with the state so it reads from far away.
               <section
                 aria-labelledby="review-heading"
                 className={`mt-6 rounded-2xl border-2 p-4 sm:p-6 ${
@@ -213,12 +249,12 @@ export function AssessmentDetail() {
                 >
                   {editing ? "Editando a mano" : version.approved ? "✓ Aprobaste esta versión" : "Falta tu aprobación"}
                 </h3>
-                <p id={!editing && !version.approved ? "pdf-help" : undefined} className="mt-1 text-lg text-slate-800">
+                <p className="mt-1 text-lg text-slate-800">
                   {editing
                     ? "Al guardar, la versión vuelve a necesitar tu aprobación."
                     : version.approved
-                      ? "Ya podés descargar el PDF para imprimir o compartir."
-                      : "Revisala y corregila si hace falta. Sin tu aprobación no hay PDF."}
+                      ? "Tus estudiantes ya la ven y la pueden resolver en la plataforma."
+                      : "Revisala y corregila si hace falta. Tus estudiantes no la ven hasta que la apruebes."}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {editing ? (
@@ -257,18 +293,9 @@ export function AssessmentDetail() {
                           className={approveButton}
                           onClick={() => updateVersion(assessment.id, index, { approved: true })}
                         >
-                          ✓ Aprobar esta versión
+                          ✓ Aprobar y publicar
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className={primaryButton}
-                        disabled={!version.approved}
-                        aria-describedby={version.approved ? undefined : "pdf-help"}
-                        onClick={() => window.print()}
-                      >
-                        Descargar PDF
-                      </button>
                     </>
                   )}
                 </div>
@@ -279,15 +306,6 @@ export function AssessmentDetail() {
 
         <Grades assessment={assessment} group={group} />
       </div>
-
-      {/* The only thing that gets printed: the approved version. The browser's "Save as PDF". */}
-      {version.approved && (
-        <article className="hidden print:block">
-          <h1 className="mb-1 text-2xl font-bold">{title}</h1>
-          <p className="mb-6 text-base">{group.name}</p>
-          <div className="whitespace-pre-wrap">{version.content}</div>
-        </article>
-      )}
     </>
   );
 }

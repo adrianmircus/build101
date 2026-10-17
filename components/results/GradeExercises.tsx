@@ -4,15 +4,16 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { field, focusWithin, secondaryButton } from "@/components/ui/styles";
+import type { OptionId, Question } from "@/lib/contract";
 import { GRADE_MAX, GRADE_MIN, parseScore } from "@/lib/groups/grades";
 import { setExerciseCount, setExerciseResult, setGrade, useData } from "@/lib/groups/store";
-import type { Assessment, ExerciseResult, ExerciseStatus, Student } from "@/lib/groups/types";
+import type { Answer, Assessment, ExerciseResult, ExerciseStatus, Student } from "@/lib/groups/types";
 import { TYPE_LABEL } from "@/lib/groups/versions";
 import { canHaveErrors, ERROR_TAGS, STATUS_CHIP, STATUSES } from "@/lib/results/catalog";
 import { exercisesOf, shorten, splitExercises, type Exercise } from "@/lib/results/exercises";
 import { studentsWithVersion } from "@/lib/results/metrics";
 
-// After correcting on paper, the teacher marks each exercise of each student. It saves on every change.
+// The teacher reads what each student answered on the platform and marks each exercise. It saves on every change.
 export function GradeExercises() {
   const { groupId, assessmentId } = useParams<{ groupId: string; assessmentId: string }>();
   const data = useData();
@@ -44,8 +45,8 @@ export function GradeExercises() {
       />
       <h1 className="text-4xl font-bold tracking-tight">Corregir por ejercicio</h1>
       <p className="mt-2 max-w-3xl text-xl text-slate-700">
-        {title}. Marcá cómo le fue a cada estudiante en cada ejercicio. Se guarda solo. Los estudiantes ven la nota,
-        no esta corrección.
+        {title}. Leé lo que respondió cada estudiante y marcá cómo le fue en cada ejercicio. Se guarda solo. Los
+        estudiantes ven la nota, no esta corrección.
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-3 text-lg">
@@ -145,6 +146,8 @@ function StudentCorrection({
   const [text, setText] = useState(grade ? String(grade.score) : "");
   const invalid = text.trim() !== "" && parseScore(text) === null;
   const missing = exercises.some((_, i) => !row[i]);
+  const submission = assessment.submissions?.[student.id];
+  const questions = assessment.versions.find((v) => v.studentIds.includes(student.id))?.questions ?? [];
 
   return (
     <section aria-labelledby="student-heading" className="space-y-6">
@@ -176,6 +179,13 @@ function StudentCorrection({
           />
         </div>
       </div>
+      <p className="text-lg text-slate-700">
+        {submission?.submittedAt
+          ? `Entregó el ${new Date(submission.submittedAt).toLocaleDateString("es-UY", { day: "numeric", month: "long" })}.`
+          : submission
+            ? "Todavía no entregó: ves lo que lleva respondido."
+            : "Todavía no respondió en la plataforma."}
+      </p>
       {invalid && (
         <p id="score-error" role="alert" className="text-base font-semibold text-red-800">
           Tiene que ser un número entero del {GRADE_MIN} al {GRADE_MAX}.
@@ -187,6 +197,10 @@ function StudentCorrection({
           <li key={i}>
             <ExerciseMark
               exercise={exercise}
+              answer={submission?.answers[i] ?? null}
+              choices={questions
+                .map((q, qi) => ({ question: q, choice: submission?.choices?.[qi] ?? null }))
+                .filter(({ question }) => question.exercise === exercise.number)}
               result={row[i] ?? null}
               onChange={(result) => setExerciseResult(assessment.id, student.id, i, result)}
             />
@@ -227,10 +241,14 @@ function StudentCorrection({
 // Native radios and checkboxes shaped like chips: keyboard (Tab, arrows, Space) and screen readers work.
 function ExerciseMark({
   exercise,
+  answer,
+  choices,
   result,
   onChange,
 }: {
   exercise: Exercise;
+  answer: Answer | null;
+  choices: { question: Question; choice: OptionId | null }[];
   result: ExerciseResult | null;
   onChange: (result: ExerciseResult | null) => void;
 }) {
@@ -247,6 +265,7 @@ function ExerciseMark({
         <span className="font-bold">{exercise.label}</span>
         {exercise.text && <span className="text-slate-700"> · {shorten(exercise.text)}</span>}
       </p>
+      <StudentAnswer answer={answer} choices={choices} />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {STATUSES.map((s) => {
           const checked = result?.status === s.id;
@@ -307,5 +326,57 @@ function ExerciseMark({
         </fieldset>
       )}
     </fieldset>
+  );
+}
+
+// What the student answered on the platform. The teacher decides whether it's right: the AI doesn't grade.
+function StudentAnswer({
+  answer,
+  choices,
+}: {
+  answer: Answer | null;
+  choices: { question: Question; choice: OptionId | null }[];
+}) {
+  if (choices.length > 0) {
+    return (
+      <ul className="mt-3 space-y-2">
+        {choices.map(({ question, choice }, i) => {
+          const option = question.options.find((o) => o.id === choice);
+          const correct = choice === question.answer;
+          return (
+            <li key={i} className="rounded-lg bg-slate-50 px-4 py-3 text-lg">
+              <span className="mr-2 rounded-md bg-slate-200 px-2 py-0.5 text-base font-semibold text-slate-800">
+                Opción múltiple
+              </span>
+              {option ? (
+                <>
+                  Eligió <span className="font-bold">{option.id}) {option.text}</span>
+                  <span className={`ml-2 font-semibold ${correct ? "text-emerald-800" : "text-red-800"}`}>
+                    {correct ? "· es la correcta" : `· la correcta es ${question.answer}`}
+                  </span>
+                </>
+              ) : (
+                <span className="text-slate-700">Sin responder</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+  if (!answer) return <p className="mt-3 rounded-lg bg-slate-50 px-4 py-3 text-lg text-slate-700">Sin responder</p>;
+  return (
+    <div className="mt-3 rounded-lg bg-slate-50 px-4 py-3">
+      <span className="rounded-md bg-slate-200 px-2 py-0.5 text-base font-semibold text-slate-800">
+        {answer.mode === "voice" ? "Dictada" : "Escrita"}
+      </span>
+      <p className="mt-2 whitespace-pre-wrap text-xl leading-relaxed">{answer.text}</p>
+      {answer.transcript && (
+        <details className="mt-2 text-base text-slate-700">
+          <summary className="min-h-11 cursor-pointer py-2 font-semibold">Ver lo que dictó, tal cual</summary>
+          <p className="whitespace-pre-wrap">{answer.transcript}</p>
+        </details>
+      )}
+    </div>
   );
 }

@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Third-party agent skills (npx skills add), not app code.
     ".agents/**",
+    // MediaPipe's WASM loaders, copied from node_modules on install (scripts/copy-mediapipe.mjs).
+    "public/mediapipe/**",
   ]),
 ]);
 

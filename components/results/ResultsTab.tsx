@@ -421,12 +421,12 @@ function Empty({ group, data }: { group: Group; data: Data }) {
       <p className="text-xl font-semibold">Todavía no cargaste resultados de este grupo.</p>
       {ready.length === 0 ? (
         <p className="mt-2 text-lg text-slate-700">
-          Primero creá un práctico y aprobá sus versiones. Después de corregirlo en papel, cargás cómo le fue a cada
-          estudiante.
+          Primero creá un práctico y aprobá sus versiones. Cuando los estudiantes lo resuelvan en la plataforma, corregís
+          cómo le fue a cada uno.
         </p>
       ) : (
         <>
-          <p className="mt-2 text-lg text-slate-700">Después de corregir en papel, cargá cómo le fue a cada estudiante:</p>
+          <p className="mt-2 text-lg text-slate-700">Leé lo que respondió cada estudiante y corregí cómo le fue:</p>
           <ul className="mt-3 space-y-1 text-lg">
             {ready.map((a) => (
               <li key={a.id}>

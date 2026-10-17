@@ -8,6 +8,7 @@ const ACCOUNTS: { username: string; password: string; role: Role; id: string }[]
   { username: "profe", password: "demo123", role: "teacher", id: "teacher" },
   { username: "ana", password: "demo123", role: "student", id: "6a-s1" },
   { username: "bruno", password: "demo123", role: "student", id: "6a-s2" },
+  { username: "camila", password: "demo123", role: "student", id: "6a-s3" },
   { username: "facundo", password: "demo123", role: "student", id: "6a-s6" },
   { username: "belen", password: "demo123", role: "student", id: "6b-s2" },
 ];

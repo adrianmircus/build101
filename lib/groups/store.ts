@@ -3,7 +3,8 @@
 import { useSyncExternalStore } from "react";
 import type { ProfileId } from "@/lib/profiles";
 import { seed } from "./seed";
-import type { Assessment, Data, ExerciseResult, Grade, Group, GroupAnalysis, Version } from "./types";
+import type { OptionId } from "@/lib/contract";
+import type { Answer, Assessment, Data, ExerciseResult, Grade, Group, GroupAnalysis, Submission, Version } from "./types";
 
 const KEY = "build101:data:v2";
 
@@ -146,6 +147,35 @@ export function setExerciseResult(
     row[index] = result;
     return { ...a, exerciseResults: { ...a.exerciseResults, [studentId]: row } };
   });
+}
+
+// Changes a student's submission. Once submitted it doesn't change anymore.
+function updateSubmission(assessmentId: string, studentId: string, update: (submission: Submission) => Submission) {
+  updateAssessment(assessmentId, (a) => {
+    const current = a.submissions?.[studentId] ?? { answers: [] };
+    if (current.submittedAt) return a;
+    return { ...a, submissions: { ...a.submissions, [studentId]: update(current) } };
+  });
+}
+
+function setAt<T>(row: (T | null)[], index: number, value: T | null): (T | null)[] {
+  const next = [...row];
+  while (next.length <= index) next.push(null);
+  next[index] = value;
+  return next;
+}
+
+// null clears the answer. It saves on every change: there is no "save" button.
+export function saveAnswer(assessmentId: string, studentId: string, index: number, answer: Answer | null) {
+  updateSubmission(assessmentId, studentId, (s) => ({ ...s, answers: setAt(s.answers, index, answer) }));
+}
+
+export function saveChoice(assessmentId: string, studentId: string, index: number, choice: OptionId | null) {
+  updateSubmission(assessmentId, studentId, (s) => ({ ...s, choices: setAt(s.choices ?? [], index, choice) }));
+}
+
+export function submitAssessment(assessmentId: string, studentId: string) {
+  updateSubmission(assessmentId, studentId, (s) => ({ ...s, submittedAt: new Date().toISOString() }));
 }
 
 export function saveAnalysis(groupId: string, analysis: GroupAnalysis) {

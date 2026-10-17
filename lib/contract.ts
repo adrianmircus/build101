@@ -48,10 +48,35 @@ export type SyllabusUnitsResponse = {
   units: SyllabusUnit[];
 };
 
+// Multiple choice for students who answer with eye gaze (profile "motor"): one option per screen quadrant.
+export type OptionId = "A" | "B" | "C" | "D";
+
+export type Question = {
+  exercise: number; // number of the exercise in the original (1, 2, …)
+  stem: string; // self-contained statement, markdown + LaTeX
+  options: { id: OptionId; text: string }[]; // 2 to 4
+  answer: OptionId; // answer key: for the teacher only, never shown to the student
+};
+
 export type GenerationResponse = {
   profiles: ProfileId[];
   content: string; // markdown + LaTeX
   changes: Change[];
+  questions?: Question[]; // only when the version includes the "motor" profile
+};
+
+// POST /api/answers/transcribe: a student with writing difficulties dictates an answer and the agent
+// writes it in math notation, without correcting it. The student confirms it before it's saved.
+// Only the exercise and what the browser heard travel: never names or profiles.
+export type TranscribeRequest = {
+  exercise: string; // statement of the exercise, for context
+  transcript: string; // what the student said, as the browser heard it
+};
+
+export type TranscribeResponse = {
+  answer: string; // the answer in readable notation (Unicode: x², √, ·, −), exactly what was said
+  readback: string; // how the answer reads aloud, so the student can confirm it by ear
+  doubts: string[]; // what could be read two ways, as questions for the student; empty if none
 };
 
 // POST /api/results/analyze: the agent reads a group's results and summarizes the difficulties.

@@ -1,4 +1,5 @@
 import type { GenerationRequest, GenerationResponse } from "@/lib/contract";
+import { usesGaze } from "@/lib/profiles";
 import { syllabusForAI } from "@/lib/syllabus/store";
 import { getData, updateVersion } from "./store";
 import { versionLabel } from "./versions";
@@ -44,6 +45,30 @@ async function mock(request: GenerationRequest): Promise<GenerationResponse> {
           ]
         : []),
     ],
+    ...(usesGaze(request.profiles) && {
+      questions: [
+        {
+          exercise: 1,
+          stem: "[Pregunta de ejemplo] Acá va el ejercicio 1, para responder con la mirada.",
+          options: [
+            { id: "A", text: "Opción correcta" },
+            { id: "B", text: "Error de signo" },
+            { id: "C", text: "Error de operación" },
+            { id: "D", text: "Paso salteado" },
+          ],
+          answer: "A",
+        },
+        {
+          exercise: 2,
+          stem: "[Pregunta de ejemplo] Acá va el ejercicio 2.",
+          options: [
+            { id: "A", text: "Error de cálculo" },
+            { id: "B", text: "Opción correcta" },
+          ],
+          answer: "B",
+        },
+      ],
+    }),
   };
 }
 
@@ -63,7 +88,7 @@ export async function generatePending(assessmentId: string) {
       inFlight.add(key);
       updateVersion(assessmentId, index, { status: "generating" });
       try {
-        const { content, changes } = await requestVersion({
+        const { content, changes, questions } = await requestVersion({
           type: assessment.type,
           topic: assessment.topic,
           original: assessment.original,
@@ -71,7 +96,7 @@ export async function generatePending(assessmentId: string) {
           interests: version.interests,
           syllabus,
         });
-        updateVersion(assessmentId, index, { status: "ready", content, changes, approved: false });
+        updateVersion(assessmentId, index, { status: "ready", content, changes, questions, approved: false });
       } catch {
         updateVersion(assessmentId, index, { status: "error" });
       } finally {

@@ -14,7 +14,7 @@ function students(groupId: string, list: [string, string[], string[]?][]): Stude
 const STUDENTS_6A = students("6a", [
   ["Ana P.", [], ["música", "fútbol"]],
   ["Bruno M.", ["adhd"], ["fútbol", "videojuegos"]],
-  ["Camila R.", [], ["fútbol"]],
+  ["Camila R.", ["dysgraphia"], ["fútbol"]],
   ["Diego S.", ["dyslexia"], ["básquetbol"]],
   ["Emilia G.", [], ["música", "dibujo"]],
   ["Facundo L.", ["adhd", "dyslexia"], ["videojuegos"]],

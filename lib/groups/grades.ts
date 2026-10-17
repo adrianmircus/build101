@@ -1,4 +1,4 @@
-import type { Assessment, Data } from "./types";
+import type { Assessment, Data, Version } from "./types";
 
 export const GRADE_MIN = 1;
 export const GRADE_MAX = 10;
@@ -20,4 +20,9 @@ export function assignedTo(data: Data, studentId: string, groupId: string): Asse
     .filter((a) => a.groupId === groupId)
     .filter((a) => a.versions.some((v) => v.approved && v.studentIds.includes(studentId)))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// The approved version a student solves. undefined if theirs isn't approved yet.
+export function versionOf(assessment: Assessment, studentId: string): Version | undefined {
+  return assessment.versions.find((v) => v.approved && v.studentIds.includes(studentId));
 }

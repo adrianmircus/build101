@@ -12,7 +12,23 @@ export const PROFILES: Profile[] = [
   { id: "adhd", label: "TDAH", fullName: "Trastorno por déficit de atención e hiperactividad" },
   { id: "dyslexia", label: "Dislexia", fullName: "Dislexia" },
   { id: "asd", label: "TEA", fullName: "Trastorno del espectro autista" },
+  { id: "motor", label: "Motriz", fullName: "Discapacidad motriz: responde con la mirada" },
+  { id: "dysgraphia", label: "Disgrafía", fullName: "Dificultades de escritura: responde dictando" },
 ];
+
+// Students with this profile can't write: their version also comes as multiple choice to answer with eye gaze.
+export const GAZE_PROFILE: ProfileId = "motor";
+
+export function usesGaze(profiles: ProfileId[]): boolean {
+  return profiles.includes(GAZE_PROFILE);
+}
+
+// Students with this profile have trouble writing: they answer by dictating, and confirm what the AI understood.
+export const VOICE_PROFILE: ProfileId = "dysgraphia";
+
+export function usesVoice(profiles: ProfileId[]): boolean {
+  return profiles.includes(VOICE_PROFILE);
+}
 
 export function profileLabel(id: ProfileId): string {
   return PROFILES.find((p) => p.id === id)?.label ?? id;
