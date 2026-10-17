@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { AiProgress } from "@/components/ui/AiProgress";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { field, focusWithin, inlineLink, primaryButton } from "@/components/ui/styles";
 import { FORWARD } from "@/components/ui/transitions";
@@ -205,9 +206,16 @@ export function NewAssessment() {
                 </label>
 
                 {pdf.status === "reading" && (
-                  <p role="status" className="text-lg font-semibold text-indigo-900">
-                    Leyendo {pdf.name}…
-                  </p>
+                  <AiProgress
+                    title={`Leyendo ${pdf.name}`}
+                    seconds={40}
+                    steps={[
+                      "Subiendo los archivos",
+                      "Leyendo las páginas",
+                      "Transcribiendo los ejercicios y las fórmulas",
+                      "Revisando lo que no quedó claro",
+                    ]}
+                  />
                 )}
                 {pdf.status === "error" && (
                   <p role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg text-red-900">

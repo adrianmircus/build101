@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AiProgress } from "@/components/ui/AiProgress";
 import { primaryButton, secondaryButton } from "@/components/ui/styles";
 import type { Group, GroupAnalysis } from "@/lib/groups/types";
 import { analyzeGroup } from "@/lib/results/analyze";
@@ -43,10 +44,16 @@ export function AiAnalysis({ group, analysis }: { group: Group; analysis?: Group
         </button>
       </div>
 
+      {state.kind === "loading" && (
+        <div className="mt-4">
+          <AiProgress
+            title="La IA está leyendo las correcciones"
+            seconds={25}
+            steps={["Juntando las correcciones del grupo", "Buscando los errores que se repiten", "Escribiendo el resumen"]}
+          />
+        </div>
+      )}
       <div role="status" aria-live="polite">
-        {state.kind === "loading" && (
-          <p className="mt-4 text-lg text-slate-700 motion-safe:animate-pulse">La IA está leyendo las correcciones…</p>
-        )}
         {state.kind === "error" && <p className="mt-4 text-lg font-semibold text-red-800">{state.message}</p>}
       </div>
 

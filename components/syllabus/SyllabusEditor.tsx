@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { AiProgress } from "@/components/ui/AiProgress";
 import { Loading } from "@/components/ui/States";
 import { approveButton, card, field, focusWithin, secondaryButton } from "@/components/ui/styles";
 import type { SyllabusPdfResponse, SyllabusUnitsResponse } from "@/lib/contract";
@@ -111,8 +112,12 @@ function SyllabusPdf({
         El PDF del programa de tu materia, hasta 4 MB. Es obligatorio: las unidades salen de acá.
       </p>
 
+      {status.kind === "uploading" && (
+        <div className="mt-4">
+          <AiProgress title={`Subiendo ${status.name}`} seconds={5} steps={["Subiendo el programa"]} compact />
+        </div>
+      )}
       <div role="status" className="mt-4 text-lg">
-        {status.kind === "uploading" && <p className="text-slate-700">Subiendo {status.name}…</p>}
         {status.kind !== "uploading" && syllabus.pdf && (
           <p>
             <span className="font-semibold">Cargado:</span> {syllabus.pdf.name}
@@ -220,11 +225,13 @@ function Units({
         )}
       </div>
 
-      <div role="status" className="text-lg">
-        {status.kind === "reading" && (
-          <p className="font-semibold text-indigo-900">Leyendo el programa y armando las unidades… Puede tardar un minuto.</p>
-        )}
-      </div>
+      {status.kind === "reading" && (
+        <AiProgress
+          title="Leyendo el programa y armando las unidades"
+          seconds={45}
+          steps={["Leyendo el programa", "Separando las secciones", "Armando las unidades"]}
+        />
+      )}
       {status.kind === "error" && (
         <p role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg font-semibold text-red-900">
           {status.message}

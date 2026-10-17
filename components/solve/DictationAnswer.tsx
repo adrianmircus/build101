@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
+import { AiProgress } from "@/components/ui/AiProgress";
 import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
 import type { TranscribeResponse } from "@/lib/contract";
@@ -195,9 +196,12 @@ export function DictationAnswer({
           </div>
 
           {status.kind === "converting" && (
-            <p role="status" className="text-lg font-semibold text-indigo-900">
-              Pasando tu respuesta a notación…
-            </p>
+            <AiProgress
+              title="Pasando tu respuesta a notación"
+              seconds={6}
+              steps={["Escuchando lo que dijiste", "Pasándolo a notación matemática"]}
+              compact
+            />
           )}
           {dictation.error && (
             <p role="alert" className="text-lg font-semibold text-red-800">

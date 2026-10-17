@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { addTransitionType, startTransition, useState, ViewTransition } from "react";
+import { AiProgress } from "@/components/ui/AiProgress";
 import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { MathText } from "@/components/ui/MathText";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
@@ -12,6 +13,7 @@ import { checkNumbers, issueText } from "@/lib/groups/numberCheck";
 import { updateVersion, useData } from "@/lib/groups/store";
 import type { Version } from "@/lib/groups/types";
 import { TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
+import { usesGaze, usesVoice } from "@/lib/profiles";
 import { supportLabel } from "@/lib/supports";
 import { Grades } from "./Grades";
 
@@ -76,6 +78,23 @@ export function AssessmentDetail() {
             {approved} de {assessment.versions.length} versiones aprobadas
           </p>
         </div>
+
+        {assessment.versions.some((v) => v.status === "pending" || v.status === "generating") && (
+          // Real progress: each version arrives on its own.
+          <div className="mt-6">
+            <AiProgress
+              title={`Generando ${assessment.versions.length} ${assessment.versions.length === 1 ? "versión" : "versiones"}`}
+              seconds={60}
+              rows={assessment.versions.map((v) => ({
+                label: versionLabel(v.profiles, v.supports),
+                status:
+                  v.status === "ready" ? "Lista" : v.status === "error" ? "Falló" : v.status === "generating" ? "Adaptando…" : "En espera",
+                done: v.status === "ready",
+                failed: v.status === "error",
+              }))}
+            />
+          </div>
+        )}
 
         <h2 className="sr-only">Versiones</h2>
         <ul className="mt-8 grid gap-3 sm:flex sm:flex-wrap">
@@ -182,16 +201,19 @@ export function AssessmentDetail() {
                     </button>
                   </div>
                 ) : (
-                  // Skeleton in the shape of the text that is coming. It only pulses without reduced motion.
-                  <div role="status" className="space-y-4">
-                    <p className="text-lg font-semibold text-indigo-900">El agente está adaptando el práctico…</p>
-                    <div aria-hidden="true" className="space-y-3 motion-safe:animate-pulse">
-                      <div className="h-4 w-11/12 rounded bg-slate-200" />
-                      <div className="h-4 w-9/12 rounded bg-slate-200" />
-                      <div className="h-4 w-10/12 rounded bg-slate-200" />
-                      <div className="h-4 w-7/12 rounded bg-slate-200" />
-                    </div>
-                  </div>
+                  <AiProgress
+                    title="El agente está adaptando el práctico"
+                    seconds={usesGaze(version.profiles) ? 60 : 45}
+                    steps={[
+                      "Cargando los datos del perfil y el temario",
+                      ...(usesGaze(version.profiles)
+                        ? ["Armando las preguntas de dos opciones"]
+                        : usesVoice(version.profiles)
+                          ? ["Pasando las consignas a respuestas habladas"]
+                          : ["Adaptando los ejercicios"]),
+                      "Anotando qué cambió y por qué",
+                    ]}
+                  />
                 )}
               </section>
             </div>
