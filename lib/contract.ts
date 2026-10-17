@@ -64,13 +64,13 @@ export type GraphSpec = {
   window?: { xMin: number; xMax: number; yMin: number; yMax: number }; // if absent, computed from the points
 };
 
-// Multiple choice for students who answer with eye gaze (profile "motor"): one option per screen quadrant.
+// Multiple choice for students who answer with eye gaze (profile "motor"): two options, one per half of the screen.
 export type OptionId = "A" | "B" | "C" | "D";
 
 export type Question = {
   exercise: number; // number of the exercise in the original (1, 2, …)
   stem: string; // self-contained statement, markdown + LaTeX
-  options: { id: OptionId; text: string; graph?: GraphSpec }[]; // 2 to 4; graph: the option is a graph to pick
+  options: { id: OptionId; text: string; graph?: GraphSpec }[]; // exactly 2, one per half of the screen; graph: the option is a graph to pick
   answer: OptionId; // answer key: for the teacher only, never shown to the student
 };
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { MyAssignments } from "@/components/student/MyAssignments";
+import { Assignments } from "@/components/student/GazeAssignments";
 import { MyGrades } from "@/components/student/MyGrades";
 import { Logo } from "@/components/ui/Logo";
 import { Loading } from "@/components/ui/States";
@@ -41,7 +41,7 @@ async function Content() {
         </form>
       </div>
       <h2 className="mt-10 mb-4 text-2xl font-bold">Tus prácticos y parciales</h2>
-      <MyAssignments studentId={student.id} groupId={student.groupId} />
+      <Assignments studentId={student.id} groupId={student.groupId} />
       <h2 className="mt-12 mb-4 text-2xl font-bold">Calificaciones</h2>
       <MyGrades studentId={student.id} groupId={student.groupId} />
     </>

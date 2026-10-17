@@ -56,8 +56,6 @@ async function mock(request: GenerationRequest): Promise<GenerationResponse> {
           options: [
             { id: "A", text: "Opción correcta" },
             { id: "B", text: "Error de signo" },
-            { id: "C", text: "Error de operación" },
-            { id: "D", text: "Paso salteado" },
           ],
           answer: "A",
         },
@@ -76,8 +74,6 @@ async function mock(request: GenerationRequest): Promise<GenerationResponse> {
           options: [
             { id: "A", text: "Gráfica A", graph: sampleParabola("x^2 - 2*x", 1, -1) },
             { id: "B", text: "Gráfica B", graph: sampleParabola("-(x^2 - 2*x)", 1, 1) },
-            { id: "C", text: "Gráfica C", graph: sampleParabola("x^2 + 2*x", -1, -1) },
-            { id: "D", text: "Gráfica D", graph: sampleParabola("x^2 - 2*x + 2", 1, 1) },
           ],
           answer: "A",
         },

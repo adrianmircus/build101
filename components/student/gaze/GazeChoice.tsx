@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { MathText } from "@/components/ui/MathText";
 import type { OptionId, Question } from "@/lib/contract";
@@ -9,9 +9,9 @@ import { targetOf, zoneOf, type Zone } from "./calibration";
 import { useGazeZone } from "./GazeSession";
 import { useDwell } from "./useDwell";
 
-// Multiple choice answered with eye gaze. Same props as ChoiceAnswer (components/solve) so they swap in one line.
+// A two-option choice answered with eye gaze: one option per half of the screen.
 // Looking at an option until the ring fills asks for confirmation; looking at "Sí" saves it. Clicking also works,
-// for whoever is helping the student. The answer key (question.answer) is never read here.
+// for whoever is helping the student. The answer key (question.answer) is only read to keep it in old versions.
 export function GazeChoice({
   question,
   value,
@@ -24,6 +24,13 @@ export function GazeChoice({
   disabled?: boolean;
 }) {
   const [pending, setPending] = useState<OptionId | null>(null);
+  // Versions generated before the two-option rule may have more: two fit the two halves, and the right one must be
+  // among them. Without saying which: they keep their order.
+  const wrong = question.options.find((o) => o.id !== question.answer);
+  const options =
+    question.options.length <= 2
+      ? question.options
+      : question.options.filter((o) => o.id === question.answer || o === wrong);
 
   if (disabled) {
     const chosen = question.options.find((o) => o.id === value);
@@ -40,7 +47,7 @@ export function GazeChoice({
     );
   }
 
-  const option = question.options.find((o) => o.id === pending);
+  const option = options.find((o) => o.id === pending);
   if (option) {
     return (
       <GazeYesNo
@@ -63,28 +70,30 @@ export function GazeChoice({
     );
   }
 
+  const target = (o: Question["options"][number]): GazeTarget => ({
+    key: o.id,
+    spoken: `opción ${o.id}: ${o.text}${o.graph ? `. ${describeGraph(o.graph)}` : ""}`,
+    content: (
+      <>
+        <span className="text-3xl font-bold">{o.id})</span>
+        <MathText text={o.text} inline className="text-2xl" />
+        {o.graph && (
+          // Sized by the screen height so the graph fits in its half.
+          <span className="block w-[min(100%,40vh)]">
+            <FunctionGraph spec={o.graph} />
+          </span>
+        )}
+        {o.id === value && <span className="text-lg font-semibold">✓ Tu respuesta</span>}
+      </>
+    ),
+    selected: o.id === value,
+  });
+
   return (
     <GazeTargets
       label="Opciones"
-      items={question.options.map((o) => ({
-        key: o.id,
-        spoken: `opción ${o.id}: ${o.text}${o.graph ? `. ${describeGraph(o.graph)}` : ""}`,
-        content: (
-          <>
-            <span className="text-3xl font-bold">{o.id})</span>
-            <MathText text={o.text} inline className="text-2xl" />
-            {o.graph && (
-              // Sized by the screen height so the graph fits in a quarter of it.
-              <span className="block w-[min(100%,24vh)]">
-                <FunctionGraph spec={o.graph} />
-              </span>
-            )}
-            {o.id === value && <span className="text-lg font-semibold">✓ Tu respuesta</span>}
-          </>
-        ),
-        selected: o.id === value,
-      }))}
-      onSelect={(i) => setPending(question.options[i].id)}
+      items={[target(options[0]), target(options[1])]}
+      onSelect={(i) => setPending(options[i].id)}
     />
   );
 }
@@ -119,7 +128,7 @@ export function GazeYesNo({
   );
 }
 
-type Target = { key: string; spoken: string; content: ReactNode; selected?: boolean; tone?: "yes" | "no" };
+export type GazeTarget = { key: string; spoken: string; content: ReactNode; selected?: boolean; tone?: "yes" | "no" };
 
 const TONE = {
   default: "border-slate-300 bg-white",
@@ -127,22 +136,40 @@ const TONE = {
   no: "border-slate-500 bg-slate-50",
 };
 
-// Big targets in the screen quadrants (or halves, with 2). The one being looked at is highlighted and fills
-// a ring; when it fills, it's selected.
-function GazeTargets({ label, items, onSelect }: { label: string; items: Target[]; onSelect: (i: number) => void }) {
+const KEY_ZONE: Record<string, Zone> = { ArrowLeft: "left", "1": "left", ArrowRight: "right", "2": "right" };
+
+// Every choice in the gaze flow: two big targets, the left and right halves of the screen. The one being looked
+// at is highlighted and fills a ring; when it fills, it's selected.
+export function GazeTargets({
+  label,
+  items,
+  onSelect,
+}: {
+  label: string;
+  items: [GazeTarget, GazeTarget];
+  onSelect: (i: number) => void;
+}) {
   const session = useGazeZone();
   const camera = session?.mode === "camera";
   const [pointer, setPointer] = useState<Zone | null>(null);
   const zone = camera ? session.zone : pointer;
-  const n = items.length;
-  const { target, progress } = useDwell(targetOf(zone, n), onSelect);
+  const { target, progress } = useDwell(targetOf(zone), onSelect);
+  const list = useRef<HTMLUListElement>(null);
 
-  // Practice mode: holding 1–4 counts as looking at that target.
+  // Whoever answers with eye gaze can't scroll: when the two targets show up, the page moves so they fit on screen.
+  useEffect(() => {
+    list.current?.scrollIntoView({ block: "nearest" });
+  }, []);
+
+  // Practice mode: holding ← or → (or 1 or 2) counts as looking at that half.
   useEffect(() => {
     if (camera) return;
     const down = (e: KeyboardEvent) => {
-      const i = Number(e.key) - 1;
-      if (Number.isInteger(i) && i >= 0 && i < n) setPointer(zoneOf(i, n));
+      const next = KEY_ZONE[e.key];
+      if (next) {
+        e.preventDefault();
+        setPointer(next);
+      }
     };
     const up = () => setPointer(null);
     window.addEventListener("keydown", down);
@@ -151,7 +178,7 @@ function GazeTargets({ label, items, onSelect }: { label: string; items: Target[
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [camera, n]);
+  }, [camera]);
 
   const looked = target !== null ? items[target] : null;
   return (
@@ -159,7 +186,7 @@ function GazeTargets({ label, items, onSelect }: { label: string; items: Target[
       <p aria-live="polite" className="sr-only">
         {looked ? `Mirando: ${looked.spoken}` : ""}
       </p>
-      <ul aria-label={label} className={`grid min-h-[60vh] grid-cols-2 gap-4 ${n > 2 ? "grid-rows-2" : ""}`}>
+      <ul ref={list} aria-label={label} className="grid min-h-[60vh] grid-cols-2 gap-4">
         {items.map((item, i) => {
           const active = target === i;
           return (
@@ -167,7 +194,7 @@ function GazeTargets({ label, items, onSelect }: { label: string; items: Target[
               <button
                 type="button"
                 onClick={() => onSelect(i)}
-                onPointerEnter={() => !camera && setPointer(zoneOf(i, n))}
+                onPointerEnter={() => !camera && setPointer(zoneOf(i))}
                 onPointerLeave={() => !camera && setPointer(null)}
                 className={`relative flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-4 p-6 text-center transition-colors ${
                   active

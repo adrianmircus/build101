@@ -11,7 +11,7 @@ import { TYPE_LABEL } from "@/lib/groups/versions";
 import { isAnswered, stepsOf } from "@/lib/solve/steps";
 
 // Where the student is with an assessment: not started, how many they answered, or submitted.
-function progress(assessment: Assessment, studentId: string): { text: string; className: string } {
+export function progress(assessment: Assessment, studentId: string): { text: string; className: string } {
   const submission = assessment.submissions?.[studentId];
   if (assessment.grades?.[studentId]) return { text: "✓ Corregido", className: "text-emerald-800" };
   if (submission?.submittedAt) return { text: "✓ Entregado", className: "text-emerald-800" };

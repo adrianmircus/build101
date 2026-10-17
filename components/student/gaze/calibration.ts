@@ -1,12 +1,9 @@
-import type { OptionId } from "@/lib/contract";
-
-// Where the student can look: the four screen quadrants (A top left, B top right,
-// C bottom left, D bottom right) or the center, which means "not choosing".
-export type Zone = OptionId;
+// Where the student can look: the left or right half of the screen, or the center, which means "not choosing".
+// Every choice is between two big targets, one per half: fewer zones are faster and harder to confuse.
+export type Zone = "left" | "right";
 export type CalibrationPoint = Zone | "center";
 
-export const ZONES: Zone[] = ["A", "B", "C", "D"];
-export const CALIBRATION_POINTS: CalibrationPoint[] = ["A", "B", "C", "D", "center"];
+export const CALIBRATION_POINTS: CalibrationPoint[] = ["left", "right", "center"];
 
 // The average eye features while looking at each point. It absorbs the mirroring, the camera
 // position and each face, so nothing needs training.
@@ -32,16 +29,11 @@ export function classify(features: number[], calibration: Calibration): Zone | n
   return first.point;
 }
 
-// Which target a zone points at when there are n targets. With 2 they split the screen in left and right halves;
-// with 3 or 4, one per quadrant.
-export function targetOf(zone: Zone | null, n: number): number | null {
-  if (zone === null) return null;
-  if (n <= 2) return zone === "A" || zone === "C" ? 0 : 1;
-  const i = ZONES.indexOf(zone);
-  return i < n ? i : null;
+// Target 0 is the left half, target 1 the right half.
+export function targetOf(zone: Zone | null): number | null {
+  return zone === null ? null : zone === "left" ? 0 : 1;
 }
 
-// The zone that stands for target i, for the keyboard (keys 1–4) in practice mode.
-export function zoneOf(target: number, n: number): Zone {
-  return n <= 2 ? (target === 0 ? "A" : "B") : ZONES[target];
+export function zoneOf(target: number): Zone {
+  return target === 0 ? "left" : "right";
 }

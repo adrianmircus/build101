@@ -24,21 +24,21 @@ const GazeOutput = z.object({
       exercise: z.number().int(),
       stem: z.string(),
       options: z
-        .array(z.object({ id: z.enum(["A", "B", "C", "D"]), text: z.string(), graph: GraphSchema.nullable() }))
+        .array(z.object({ id: z.enum(["A", "B"]), text: z.string(), graph: GraphSchema.nullable() }))
         .min(2)
-        .max(4),
-      answer: z.enum(["A", "B", "C", "D"]),
+        .max(2),
+      answer: z.enum(["A", "B"]),
     }),
   ),
 });
 
-// One key per question and options that don't repeat: the student picks by quadrant.
+// Two different options per question and the key among them: the student picks the left or the right half.
 function validQuestions(questions: Question[]): boolean {
   return (
     questions.length > 0 &&
     questions.every((q) => {
       const ids = q.options.map((o) => o.id);
-      return new Set(ids).size === ids.length && ids.includes(q.answer);
+      return ids.length === 2 && new Set(ids).size === 2 && ids.includes(q.answer);
     })
   );
 }

@@ -5,8 +5,9 @@ import { primaryButton, secondaryButton } from "@/components/ui/styles";
 import { CALIBRATION_POINTS, centroid, classify, type Calibration, type CalibrationPoint, type Zone } from "./calibration";
 import { useGaze } from "./useGaze";
 
-// Wraps an assessment answered with eye gaze: turns the camera on, calibrates, and tells
-// GazeChoice where the student is looking. Only mount it for versions with the "motor" profile.
+// Wraps the student area for students who answer with eye gaze: turns the camera on right after login,
+// calibrates, and tells the gaze targets which half of the screen the student is looking at.
+// It's mounted in app/estudiante/layout.tsx, so the calibration survives moving between screens.
 
 type GazeMode = "camera" | "pointer";
 
@@ -17,15 +18,20 @@ export function useGazeZone() {
   return useContext(GazeContext);
 }
 
-export function GazeSession({ children }: { children: ReactNode }) {
+export function GazeSession({ children, autoStart = false }: { children: ReactNode; autoStart?: boolean }) {
   const gaze = useGaze();
-  const [phase, setPhase] = useState<"intro" | "calibrating" | "active">("intro");
+  // With autoStart the camera turns on by itself: the student may not be able to press a button.
+  const [phase, setPhase] = useState<"intro" | "calibrating" | "active">(autoStart ? "calibrating" : "intro");
   const [mode, setMode] = useState<GazeMode>("camera");
   const [calibration, setCalibration] = useState<Calibration | null>(null);
   const [zone, setZone] = useState<Zone | null>(null);
-  const { read, stop } = gaze;
+  const { read, stop, start } = gaze;
 
-  // Once calibrated, every frame turns the eye features into a quadrant.
+  useEffect(() => {
+    if (autoStart) void start();
+  }, [autoStart, start]);
+
+  // Once calibrated, every frame turns the eye features into a half of the screen.
   useEffect(() => {
     if (phase !== "active" || mode !== "camera" || !calibration) return;
     let frame = 0;
@@ -48,14 +54,17 @@ export function GazeSession({ children }: { children: ReactNode }) {
 
   if (phase === "intro") {
     return (
-      <section aria-labelledby="gaze-intro" className="rounded-2xl border-2 border-indigo-700 bg-white p-6 sm:p-8">
+      <section
+        aria-labelledby="gaze-intro"
+        className="mx-auto mt-6 w-[calc(100%-2rem)] max-w-4xl rounded-2xl border-2 border-indigo-700 bg-white p-6 sm:p-8"
+      >
         <h2 id="gaze-intro" className="text-3xl font-bold">
           Respondé con la mirada
         </h2>
         <ol className="mt-4 list-decimal space-y-2 pl-6 text-xl leading-relaxed">
-          <li>Prendemos la cámara y te pedimos que mires unos puntos para conocer tus ojos.</li>
-          <li>Para elegir una opción, mirala y quedate mirándola hasta que se llene el círculo.</li>
-          <li>Después confirmás mirando «Sí» o «No».</li>
+          <li>Prendemos la cámara y te pedimos que mires tres puntos para conocer tus ojos.</li>
+          <li>Siempre vas a ver dos opciones: una a la izquierda y otra a la derecha.</li>
+          <li>Para elegir una, mirala y quedate mirándola hasta que se llene el círculo.</li>
         </ol>
         <p className="mt-4 text-lg text-slate-700">
           La cámara se usa solo en esta compu: el video no se guarda ni se envía a ningún lado.
@@ -90,7 +99,10 @@ export function GazeSession({ children }: { children: ReactNode }) {
     if (gaze.status === "error") {
       // start() failed: back to the intro, which shows the error and the practice mode.
       return (
-        <div role="alert" className="rounded-2xl border-2 border-red-700 bg-red-50 p-6 text-lg">
+        <div
+          role="alert"
+          className="mx-auto mt-6 w-[calc(100%-2rem)] max-w-4xl rounded-2xl border-2 border-red-700 bg-red-50 p-6 text-lg"
+        >
           <p className="font-semibold text-red-900">{gaze.error}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" className={primaryButton} onClick={() => setPhase("intro")}>
@@ -106,7 +118,9 @@ export function GazeSession({ children }: { children: ReactNode }) {
     return (
       <Calibrate
         read={read}
+        loading={gaze.status === "idle" || gaze.status === "loading"}
         noFace={gaze.status === "no-face"}
+        onSkip={practice}
         onDone={(c) => {
           setCalibration(c);
           setPhase("active");
@@ -117,7 +131,7 @@ export function GazeSession({ children }: { children: ReactNode }) {
 
   return (
     <GazeContext value={{ mode, zone }}>
-      <div className="mb-6 flex flex-wrap items-center gap-4 rounded-xl border-2 border-slate-200 bg-white px-4 py-3">
+      <div className="mx-auto mt-4 flex w-[calc(100%-2rem)] max-w-4xl flex-wrap items-center gap-4 rounded-xl border-2 border-slate-200 bg-white px-4 py-3">
         {mode === "camera" ? (
           <>
             <Preview stream={gaze.stream} />
@@ -137,7 +151,7 @@ export function GazeSession({ children }: { children: ReactNode }) {
           <>
             <p className="text-lg">
               <span className="font-semibold">Modo práctica:</span> pasá el mouse sobre una opción o mantené apretada la
-              tecla 1, 2, 3 o 4.
+              flecha ← o →.
             </p>
             <button type="button" className={`${secondaryButton} ml-auto`} onClick={() => setPhase("intro")}>
               Usar la cámara
@@ -173,22 +187,24 @@ const SAMPLE_MS = 1500;
 const MIN_SAMPLES = 10;
 
 const POINT_POSITION: Record<CalibrationPoint, string> = {
-  A: "top-8 left-8",
-  B: "top-8 right-8",
-  C: "bottom-8 left-8",
-  D: "bottom-8 right-8",
+  left: "top-1/2 left-8 -translate-y-1/2",
+  right: "top-1/2 right-8 -translate-y-1/2",
   center: "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
 };
 
-// Five points at the corners and the center of the screen. On each one it waits for the eyes to arrive and then
+// Three points: the middle of the left edge, of the right edge, and the center of the screen. On each one it waits for the eyes to arrive and then
 // averages what the camera sees.
 function Calibrate({
   read,
+  loading,
   noFace,
+  onSkip,
   onDone,
 }: {
   read: () => number[] | null;
+  loading: boolean;
   noFace: boolean;
+  onSkip: () => void;
   onDone: (calibration: Calibration) => void;
 }) {
   const [step, setStep] = useState(0);
@@ -234,9 +250,11 @@ function Calibrate({
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-white">
       <p role="status" className="absolute inset-x-0 top-1/3 px-8 text-center text-2xl font-semibold">
-        {noFace
-          ? "No encontramos tu cara: acomodate frente a la cámara."
-          : `Mirá el punto y quedate mirándolo (${step + 1} de ${CALIBRATION_POINTS.length})`}
+        {loading
+          ? "Prendiendo la cámara…"
+          : noFace
+            ? "No encontramos tu cara: acomodate frente a la cámara."
+            : `Mirá el punto y quedate mirándolo (${step + 1} de ${CALIBRATION_POINTS.length})`}
       </p>
       <span
         aria-hidden="true"
@@ -245,6 +263,14 @@ function Calibrate({
       >
         <span className="size-8 rounded-full bg-white motion-safe:animate-pulse" />
       </span>
+      {/* For whoever is helping the student, if the camera can't see the face. */}
+      <button
+        type="button"
+        onClick={onSkip}
+        className="absolute bottom-8 left-1/2 min-h-11 -translate-x-1/2 rounded-lg border-2 border-slate-500 px-5 py-2 text-lg font-semibold text-slate-200 hover:bg-slate-800"
+      >
+        Seguir sin cámara
+      </button>
     </div>
   );
 }

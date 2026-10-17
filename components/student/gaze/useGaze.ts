@@ -69,7 +69,8 @@ export function useGaze() {
     let media: MediaStream | null = null;
     let landmarker: FaceLandmarker | null = null;
     let frame = 0;
-    running.current = {
+    // This run's own handle: a late step of a cancelled run must not stop a newer one.
+    const handle = {
       stop: () => {
         cancelled = true;
         cancelAnimationFrame(frame);
@@ -77,12 +78,13 @@ export function useGaze() {
         landmarker?.close();
       },
     };
+    running.current = handle;
 
     try {
       media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
       landmarker = await createLandmarker();
       if (cancelled) {
-        running.current?.stop();
+        handle.stop();
         return;
       }
       const video = document.createElement("video");
@@ -122,7 +124,8 @@ export function useGaze() {
       };
       frame = requestAnimationFrame(loop);
     } catch (e) {
-      running.current?.stop();
+      handle.stop();
+      if (running.current !== handle) return;
       running.current = null;
       const name = e instanceof DOMException ? e.name : "";
       setError(ERRORS[name] ?? "No pudimos prender el seguimiento de la mirada. Probá de nuevo o usá el modo sin cámara.");
@@ -131,7 +134,13 @@ export function useGaze() {
   }, []);
 
   // Leaving the page turns the camera off.
-  useEffect(() => () => running.current?.stop(), []);
+  useEffect(
+    () => () => {
+      running.current?.stop();
+      running.current = null;
+    },
+    [],
+  );
 
   // The latest smoothed eye features, or null without a face. Read it inside a frame loop, not while rendering.
   const read = useCallback(() => features.current, []);

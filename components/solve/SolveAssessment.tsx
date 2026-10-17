@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { GazeChoice, GazeYesNo } from "@/components/student/gaze/GazeChoice";
-import { GazeSession } from "@/components/student/gaze/GazeSession";
+import { GazeChoice, GazeTargets, GazeYesNo } from "@/components/student/gaze/GazeChoice";
+import { useGazeZone } from "@/components/student/gaze/GazeSession";
 import { MathText } from "@/components/ui/MathText";
 import { Loading } from "@/components/ui/States";
 import { approveButton, primaryButton, secondaryButton, textLink, typeTag } from "@/components/ui/styles";
@@ -67,41 +67,44 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
         <p className="text-lg text-slate-700">
           Respondiste {answered} de {steps.length}. Se guarda solo: podés salir y seguir después.
         </p>
-        <ol className="flex flex-wrap gap-2">
-          {steps.map((s, i) => {
-            const done = isAnswered(s, submission);
-            const active = i === index && !reviewing;
-            return (
-              <li key={`${s.kind}-${s.index}`}>
-                <button
-                  type="button"
-                  aria-current={active ? "step" : undefined}
-                  aria-label={`${s.label}${done ? ", respondido" : ""}`}
-                  onClick={() => go(i)}
-                  className={`min-h-11 min-w-11 rounded-lg border-2 px-3 text-lg font-bold transition-colors ${
-                    active
-                      ? "border-indigo-700 bg-indigo-700 text-white"
-                      : done
-                        ? "border-emerald-700 bg-emerald-50 text-emerald-900"
-                        : "border-slate-400 bg-white text-slate-900 hover:border-slate-800"
-                  }`}
-                >
-                  {done && !active ? "✓" : i + 1}
-                </button>
-              </li>
-            );
-          })}
-          <li>
-            <button
-              type="button"
-              aria-current={reviewing ? "step" : undefined}
-              onClick={() => setReviewing(true)}
-              className={`${reviewing ? primaryButton : secondaryButton} min-h-11 py-1`}
-            >
-              Entregar
-            </button>
-          </li>
-        </ol>
+        {/* With eye gaze there are no buttons to press: choosing moves on by itself. */}
+        {!gaze && (
+          <ol className="flex flex-wrap gap-2">
+            {steps.map((s, i) => {
+              const done = isAnswered(s, submission);
+              const active = i === index && !reviewing;
+              return (
+                <li key={`${s.kind}-${s.index}`}>
+                  <button
+                    type="button"
+                    aria-current={active ? "step" : undefined}
+                    aria-label={`${s.label}${done ? ", respondido" : ""}`}
+                    onClick={() => go(i)}
+                    className={`min-h-11 min-w-11 rounded-lg border-2 px-3 text-lg font-bold transition-colors ${
+                      active
+                        ? "border-indigo-700 bg-indigo-700 text-white"
+                        : done
+                          ? "border-emerald-700 bg-emerald-50 text-emerald-900"
+                          : "border-slate-400 bg-white text-slate-900 hover:border-slate-800"
+                    }`}
+                  >
+                    {done && !active ? "✓" : i + 1}
+                  </button>
+                </li>
+              );
+            })}
+            <li>
+              <button
+                type="button"
+                aria-current={reviewing ? "step" : undefined}
+                onClick={() => setReviewing(true)}
+                className={`${reviewing ? primaryButton : secondaryButton} min-h-11 py-1`}
+              >
+                Entregar
+              </button>
+            </li>
+          </ol>
+        )}
       </nav>
 
       {reviewing ? (
@@ -159,23 +162,25 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
             studentId={studentId}
             onChosen={next}
           />
-          <div className="mt-8 flex flex-wrap gap-3">
-            {index > 0 && (
-              <button type="button" className={secondaryButton} onClick={() => go(index - 1)}>
-                ← Anterior
-              </button>
-            )}
-            <span className="flex-1" />
-            {index < steps.length - 1 ? (
-              <button type="button" className={primaryButton} onClick={() => go(index + 1)}>
-                Siguiente →
-              </button>
-            ) : (
-              <button type="button" className={primaryButton} onClick={() => setReviewing(true)}>
-                Revisar y entregar
-              </button>
-            )}
-          </div>
+          {!gaze && (
+            <div className="mt-8 flex flex-wrap gap-3">
+              {index > 0 && (
+                <button type="button" className={secondaryButton} onClick={() => go(index - 1)}>
+                  ← Anterior
+                </button>
+              )}
+              <span className="flex-1" />
+              {index < steps.length - 1 ? (
+                <button type="button" className={primaryButton} onClick={() => go(index + 1)}>
+                  Siguiente →
+                </button>
+              ) : (
+                <button type="button" className={primaryButton} onClick={() => setReviewing(true)}>
+                  Revisar y entregar
+                </button>
+              )}
+            </div>
+          )}
         </section>
       ) : (
         <p className="text-lg text-slate-700">Este práctico no tiene ejercicios para responder.</p>
@@ -193,9 +198,6 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
 
       {closed ? (
         <Submitted steps={steps} submission={submission} title={title} graded={graded} />
-      ) : gaze ? (
-        // Camera and calibration first; the steps show up once calibrated.
-        <GazeSession>{solving}</GazeSession>
       ) : (
         solving
       )}
@@ -262,6 +264,9 @@ function Submitted({
   title: string;
   graded: boolean;
 }) {
+  const router = useRouter();
+  const gaze = useGazeZone() !== null;
+  const [showAnswers, setShowAnswers] = useState(!gaze);
   const date = submission?.submittedAt
     ? new Date(submission.submittedAt).toLocaleDateString("es-UY", { day: "numeric", month: "long" })
     : "";
@@ -272,20 +277,43 @@ function Submitted({
           ? "✓ Tu profesor ya lo corrigió: la nota está en tu inicio."
           : `✓ Entregaste el ${date}. Cuando tu profesor lo corrija, la nota aparece en tu inicio.`}
       </p>
-      <section aria-labelledby="answers-heading">
-        <h2 id="answers-heading" className="mb-4 text-2xl font-bold">
-          Tus respuestas
-        </h2>
-        <ol className="space-y-4" aria-label={title}>
-          {steps.map((s) => (
-            <li key={`${s.kind}-${s.index}`} className="rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-5">
-              <p className="text-lg font-bold">{s.label}</p>
-              <MathText text={s.text} className="mt-1 text-lg text-slate-700" />
-              <p className="mt-3 whitespace-pre-wrap text-xl leading-relaxed">{answerText(s, submission) ?? "Sin responder"}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+      {gaze && (
+        // Students who answer with eye gaze leave with their eyes too: two halves, like every other choice.
+        <GazeTargets
+          label="Qué hacés ahora"
+          items={[
+            {
+              key: "back",
+              spoken: "Volver a tus prácticos",
+              content: <span className="text-4xl font-bold">← Volver a tus prácticos</span>,
+              tone: "yes",
+            },
+            {
+              key: "answers",
+              spoken: showAnswers ? "Ocultar tus respuestas" : "Ver tus respuestas",
+              content: <span className="text-4xl font-bold">{showAnswers ? "Ocultar tus respuestas" : "Ver tus respuestas"}</span>,
+              tone: "no",
+            },
+          ]}
+          onSelect={(i) => (i === 0 ? router.push("/estudiante", { transitionTypes: BACK }) : setShowAnswers((v) => !v))}
+        />
+      )}
+      {showAnswers && (
+        <section aria-labelledby="answers-heading">
+          <h2 id="answers-heading" className="mb-4 text-2xl font-bold">
+            Tus respuestas
+          </h2>
+          <ol className="space-y-4" aria-label={title}>
+            {steps.map((s) => (
+              <li key={`${s.kind}-${s.index}`} className="rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-5">
+                <p className="text-lg font-bold">{s.label}</p>
+                <MathText text={s.text} className="mt-1 text-lg text-slate-700" />
+                <p className="mt-3 whitespace-pre-wrap text-xl leading-relaxed">{answerText(s, submission) ?? "Sin responder"}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </>
   );
 }
