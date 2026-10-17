@@ -42,7 +42,9 @@ async function Content() {
       </div>
       <h2 className="mt-10 mb-4 text-2xl font-bold">Tus prácticos y parciales</h2>
       <Assignments studentId={student.id} groupId={student.groupId} />
-      <h2 className="mt-12 mb-4 text-2xl font-bold">Calificaciones</h2>
+      <h2 id="calificaciones" tabIndex={-1} className="mt-12 mb-4 scroll-mt-6 text-2xl font-bold focus:outline-none">
+        Calificaciones
+      </h2>
       <MyGrades studentId={student.id} groupId={student.groupId} />
     </>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
 import { Loading } from "@/components/ui/States";
 import { typeTag } from "@/components/ui/styles";
 import { FORWARD } from "@/components/ui/transitions";
@@ -9,6 +11,7 @@ import { useData } from "@/lib/groups/store";
 import type { Assessment } from "@/lib/groups/types";
 import { TYPE_LABEL } from "@/lib/groups/versions";
 import { isAnswered, stepsOf } from "@/lib/solve/steps";
+import { topicPhrases, type VoiceCommand } from "@/lib/voice/commands";
 
 // Where the student is with an assessment: not started, how many they answered, or submitted.
 export function progress(assessment: Assessment, studentId: string): { text: string; className: string } {
@@ -26,9 +29,29 @@ export function progress(assessment: Assessment, studentId: string): { text: str
 // the student doesn't need to know their assessment is adapted.
 export function MyAssignments({ studentId, groupId }: { studentId: string; groupId: string }) {
   const data = useData();
-  if (!data) return <Loading />;
+  const router = useRouter();
+  const assigned = data ? assignedTo(data, studentId, groupId) : [];
 
-  const assigned = assignedTo(data, studentId, groupId);
+  // For students who navigate by voice: open each assessment by its topic, or the first one still open.
+  const pending = assigned.find((a) => !a.grades?.[studentId] && !a.submissions?.[studentId]?.submittedAt);
+  const open = (a: Assessment) => () => router.push(`/estudiante/${a.id}`);
+  const commands: VoiceCommand[] = assigned.map((a) => ({
+    id: `open-${a.id}`,
+    label: `Abrir ${TYPE_LABEL[a.type].toLowerCase()}: ${a.topic}`,
+    phrases: [...topicPhrases(a.topic), `${TYPE_LABEL[a.type]} de ${a.topic}`],
+    run: open(a),
+  }));
+  if (pending) {
+    commands.push({
+      id: "open-pending",
+      label: "El primero sin entregar",
+      phrases: ["el primero sin entregar", "sin entregar", "el que me falta", "lo que tengo que hacer"],
+      run: open(pending),
+    });
+  }
+  useVoiceCommands(commands);
+
+  if (!data) return <Loading />;
 
   if (assigned.length === 0) {
     return (

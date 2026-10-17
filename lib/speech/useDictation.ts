@@ -24,6 +24,9 @@ function recognitionConstructor(): RecognitionConstructor | null {
 
 const noop = () => () => {};
 
+// Chrome runs one recognition at a time: starting one (a voice command, or dictating an answer) cancels the other.
+let active: { recognition: Recognition; cancel: () => void } | null = null;
+
 const ERRORS: Record<string, string> = {
   "not-allowed": "No tenemos permiso para usar el micrófono. Habilitalo en el candado de la barra de direcciones.",
   "service-not-allowed": "No tenemos permiso para usar el micrófono. Habilitalo en el candado de la barra de direcciones.",
@@ -34,7 +37,12 @@ const ERRORS: Record<string, string> = {
 
 // Dictation in Rioplatense Spanish: works in Chrome and Edge. Elsewhere supported is false and the student types.
 // Starting again keeps adding to the same transcript; reset clears it. onEnd gets the full transcript when it stops.
-export function useDictation({ lang = "es-UY", onEnd }: { lang?: string; onEnd?: (transcript: string) => void } = {}) {
+// continuous false hears a single phrase and stops by itself (voice commands).
+export function useDictation({
+  lang = "es-UY",
+  continuous = true,
+  onEnd,
+}: { lang?: string; continuous?: boolean; onEnd?: (transcript: string) => void } = {}) {
   // On the server and before hydration it's false, so the first render matches.
   const supported = useSyncExternalStore(noop, () => recognitionConstructor() !== null, () => false);
   const recognition = useRef<Recognition | null>(null);
@@ -52,9 +60,10 @@ export function useDictation({ lang = "es-UY", onEnd }: { lang?: string; onEnd?:
   const start = useCallback(() => {
     const Constructor = recognitionConstructor();
     if (!Constructor || recognition.current) return;
+    active?.cancel();
     const r = new Constructor();
     r.lang = lang;
-    r.continuous = true;
+    r.continuous = continuous;
     r.interimResults = true;
     // Final results are added up; the interim one is replaced on each event.
     r.onresult = (event) => {
@@ -75,16 +84,29 @@ export function useDictation({ lang = "es-UY", onEnd }: { lang?: string; onEnd?:
       if (event.error !== "aborted") setError(ERRORS[event.error] ?? "El dictado falló. Probá de nuevo.");
     };
     r.onend = () => {
+      if (active?.recognition === r) active = null;
       recognition.current = null;
       setListening(false);
       setInterim("");
       onEndRef.current?.(transcriptRef.current);
     };
     recognition.current = r;
+    // Cancelled by another recognition: it ends without calling onEnd, like reset.
+    active = {
+      recognition: r,
+      cancel: () => {
+        r.onresult = null;
+        r.onend = null;
+        r.abort();
+        if (recognition.current === r) recognition.current = null;
+        setListening(false);
+        setInterim("");
+      },
+    };
     setError(null);
     setListening(true);
     r.start();
-  }, [lang]);
+  }, [lang, continuous]);
 
   const stop = useCallback(() => recognition.current?.stop(), []);
 
@@ -95,6 +117,7 @@ export function useDictation({ lang = "es-UY", onEnd }: { lang?: string; onEnd?:
       r.onresult = null;
       r.onend = null;
       r.abort();
+      if (active?.recognition === r) active = null;
       recognition.current = null;
       setListening(false);
     }

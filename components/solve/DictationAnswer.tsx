@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
 import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
 import type { TranscribeResponse } from "@/lib/contract";
 import type { Answer } from "@/lib/groups/types";
 import { transcribe } from "@/lib/solve/transcribe";
 import { speak, useDictation } from "@/lib/speech/useDictation";
+import type { VoiceCommand } from "@/lib/voice/commands";
 import { TypedAnswer } from "./TypedAnswer";
 
 type Status = { kind: "idle" } | { kind: "converting" } | { kind: "error"; message: string };
@@ -62,6 +64,45 @@ export function DictationAnswer({
     onSave({ text, mode: "voice", transcript: dictation.transcript, ...(graph ? { graph } : {}) });
     discard();
   }
+
+  // Voice commands for what the buttons below do. Stopping the dictation stays on the button: a spoken
+  // "stop" word would end up inside the answer.
+  const commands: VoiceCommand[] = [];
+  if (!disabled && dictation.supported && !dictation.listening && status.kind !== "converting") {
+    if (proposal) {
+      const answer = edited ?? proposal.answer;
+      if (answer.trim()) commands.push({ id: "answer-save", label: "Sí, guardar", phrases: ["si guardar", "guardar", "guardala", "esta bien"], run: confirm });
+      commands.push(
+        { id: "answer-redo", label: "Volver a dictar", phrases: ["volver a dictar", "dictar de nuevo", "otra vez"], run: () => { discard(); dictation.start(); } },
+        { id: "answer-listen", label: "Escuchar", phrases: ["escuchar", "leer la respuesta", "leemela"], run: () => speak(edited ?? proposal.readback) },
+      );
+      if (edited === null) {
+        commands.push({
+          id: "answer-keyboard",
+          label: "Corregir con el teclado",
+          phrases: ["corregir con el teclado", "corregir", "teclado"],
+          run: () => {
+            setEdited(proposal.answer);
+            setTimeout(() => document.getElementById(`${id}-edit`)?.focus());
+          },
+        });
+      }
+    } else {
+      commands.push({
+        id: "answer-dictate",
+        label: saved ? "Dictar de nuevo la respuesta" : "Dictar respuesta",
+        phrases: ["dictar respuesta", "dictar", "responder", "quiero responder", "dictar de nuevo"],
+        run: dictation.start,
+      });
+      if (saved) {
+        commands.push(
+          { id: "answer-listen", label: "Escuchar mi respuesta", phrases: ["escuchar", "escuchar mi respuesta", "leer mi respuesta"], run: () => speak(saved.text) },
+          { id: "answer-delete", label: "Borrar respuesta", phrases: ["borrar respuesta", "borrar mi respuesta"], run: () => onSave(null) },
+        );
+      }
+    }
+  }
+  useVoiceCommands(commands);
 
   if (!dictation.supported) {
     return (

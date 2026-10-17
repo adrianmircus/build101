@@ -117,3 +117,15 @@ export type ResultsAnalysisResponse = {
   difficulties: { topic: string; evidence: string }[];
   students: { ref: string; summary: string }[];
 };
+
+// POST /api/voice/command: a student who navigates by voice said something that matches no fixed phrase,
+// and the agent picks one of the commands on screen. Only what was heard and the commands travel: never names.
+export type VoiceCommandRequest = {
+  heard: string; // what the browser heard
+  commands: { id: string; label: string }[]; // the commands available on the current screen
+};
+
+export type VoiceCommandResponse = {
+  commandId: string | null; // one of the given ids, or null if none fits
+  reply: string; // short sentence to show the student: the confirmation, or what wasn't understood
+};
