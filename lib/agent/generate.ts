@@ -82,12 +82,15 @@ export async function generateVersion(request: GenerationRequest): Promise<Gener
   };
 
   if (gaze) {
-    // High effort: it has to solve each exercise to write the key and the wrong options.
+    // Streaming: rewriting a whole assessment as multiple choice can go past what the SDK allows without it.
     const response = await parseOrFail(() =>
-      getClient().beta.messages.parse({
-        ...params,
-        output_config: { effort: "high", format: betaZodOutputFormat(GazeOutput) },
-      }),
+      getClient()
+        .beta.messages.stream({
+          ...params,
+          max_tokens: 64000,
+          output_config: { effort: "medium", format: betaZodOutputFormat(GazeOutput) },
+        })
+        .finalMessage(),
     );
     checkStop(response.stop_reason);
     if (!response.parsed_output) throw new AgentError(INCOMPLETE);

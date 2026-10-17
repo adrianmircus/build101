@@ -13,9 +13,14 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
     "@mediapipe/tasks-vision": "1.0.1",
+    "katex": "0.16.47",
     "next": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-markdown": "10.1.0",
+    "rehype-katex": "7.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
     "server-only": "^0.0.1",
     "zod": "^4.6.7"
   },

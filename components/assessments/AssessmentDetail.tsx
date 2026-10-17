@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { addTransitionType, startTransition, useState, ViewTransition } from "react";
+import { MathText } from "@/components/ui/MathText";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
 import { TAB_SLIDE } from "@/components/ui/transitions";
@@ -121,7 +122,7 @@ export function AssessmentDetail() {
                 <h3 id="original-heading" className="mb-3 text-xl font-bold text-slate-700">
                   Original
                 </h3>
-                <div className="whitespace-pre-wrap text-lg leading-relaxed">{assessment.original}</div>
+                <MathText text={assessment.original} className="text-lg leading-relaxed" />
               </section>
 
               <section
@@ -145,13 +146,14 @@ export function AssessmentDetail() {
                     />
                   </>
                 ) : version.status === "ready" ? (
-                  <div className="whitespace-pre-wrap text-lg leading-relaxed">{version.content}</div>
+                  <MathText text={version.content ?? ""} className="text-lg leading-relaxed" />
                 ) : version.status === "error" || version.status === "pending" ? (
                   <div className="space-y-4">
                     {version.status === "error" ? (
-                      <p role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg font-semibold text-red-900">
-                        No se pudo generar esta versión.
-                      </p>
+                      <div role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg text-red-900">
+                        <p className="font-semibold">No se pudo generar esta versión.</p>
+                        {version.error && <p className="mt-1">{version.error}</p>}
+                      </div>
                     ) : (
                       <p className="text-lg">Esta versión todavía no se generó.</p>
                     )}
@@ -187,7 +189,7 @@ export function AssessmentDetail() {
                   {version.questions.map((q, i) => (
                     <li key={i} className="rounded-xl border-2 border-slate-200 p-4">
                       <p className="text-base font-semibold text-slate-700">Ejercicio {q.exercise}</p>
-                      <p className="mt-1 whitespace-pre-wrap text-lg leading-relaxed">{q.stem}</p>
+                      <MathText text={q.stem} className="mt-1 text-lg leading-relaxed" />
                       <ul className="mt-3 grid grid-cols-2 gap-2">
                         {q.options.map((o) => {
                           const correct = o.id === q.answer;
@@ -198,7 +200,7 @@ export function AssessmentDetail() {
                                 correct ? "border-emerald-700 bg-emerald-50 font-semibold text-emerald-900" : "border-slate-300"
                               }`}
                             >
-                              <span className="font-bold">{o.id})</span> {o.text}
+                              <span className="font-bold">{o.id})</span> <MathText text={o.text} inline />
                               {correct && <span className="block text-base">✓ Respuesta correcta</span>}
                             </li>
                           );
@@ -219,7 +221,8 @@ export function AssessmentDetail() {
                   <ol className="max-w-4xl list-decimal space-y-3 pl-6 text-lg leading-relaxed marker:font-bold">
                     {version.changes.map((c, i) => (
                       <li key={i}>
-                        <span className="font-semibold">{c.what}.</span> <span className="text-slate-700">{c.why}</span>
+                        <MathText text={c.what} inline className="font-semibold" />.{" "}
+                        <MathText text={c.why} inline className="text-slate-700" />
                       </li>
                     ))}
                   </ol>

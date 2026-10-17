@@ -15,7 +15,10 @@ async function requestVersion(request: GenerationRequest): Promise<GenerationRes
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  if (!response.ok) throw new Error(`The agent responded ${response.status}`);
+  if (!response.ok) {
+    const json = await response.json().catch(() => null);
+    throw new Error(json?.error ?? `La IA respondió con un error (${response.status}). Reintentá.`);
+  }
   return response.json();
 }
 
@@ -86,7 +89,7 @@ export async function generatePending(assessmentId: string) {
       const key = `${assessmentId}:${index}`;
       if (inFlight.has(key)) return;
       inFlight.add(key);
-      updateVersion(assessmentId, index, { status: "generating" });
+      updateVersion(assessmentId, index, { status: "generating", error: undefined });
       try {
         const { content, changes, questions } = await requestVersion({
           type: assessment.type,
@@ -97,8 +100,8 @@ export async function generatePending(assessmentId: string) {
           syllabus,
         });
         updateVersion(assessmentId, index, { status: "ready", content, changes, questions, approved: false });
-      } catch {
-        updateVersion(assessmentId, index, { status: "error" });
+      } catch (e) {
+        updateVersion(assessmentId, index, { status: "error", error: e instanceof Error ? e.message : undefined });
       } finally {
         inFlight.delete(key);
       }

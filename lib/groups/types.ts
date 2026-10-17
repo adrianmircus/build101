@@ -24,6 +24,8 @@ export type Version = {
   // Interests the version is themed around, fixed when it was created (empty or missing: none).
   interests?: string[];
   status: VersionStatus;
+  // Why the last generation failed, as the agent said it. Only with status "error".
+  error?: string;
   content?: string;
   changes?: Change[];
   // Multiple choice to answer with eye gaze, only for versions with the "motor" profile.

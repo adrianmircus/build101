@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { GazeChoice, GazeYesNo } from "@/components/student/gaze/GazeChoice";
 import { GazeSession } from "@/components/student/gaze/GazeSession";
+import { MathText } from "@/components/ui/MathText";
 import { Loading } from "@/components/ui/States";
 import { approveButton, primaryButton, secondaryButton, textLink, typeTag } from "@/components/ui/styles";
 import { BACK } from "@/components/ui/transitions";
@@ -150,7 +151,7 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
           <h2 id="step-heading" className="text-2xl font-bold">
             {step.label}
           </h2>
-          <p className="mt-3 mb-6 whitespace-pre-wrap text-2xl leading-relaxed">{step.text}</p>
+          <MathText text={step.text} className="mt-3 mb-6 text-2xl leading-relaxed" />
           <StepAnswer
             step={step}
             submission={submission}
@@ -279,7 +280,7 @@ function Submitted({
           {steps.map((s) => (
             <li key={`${s.kind}-${s.index}`} className="rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-5">
               <p className="text-lg font-bold">{s.label}</p>
-              <p className="mt-1 whitespace-pre-wrap text-lg text-slate-700">{s.text}</p>
+              <MathText text={s.text} className="mt-1 text-lg text-slate-700" />
               <p className="mt-3 whitespace-pre-wrap text-xl leading-relaxed">{answerText(s, submission) ?? "Sin responder"}</p>
             </li>
           ))}

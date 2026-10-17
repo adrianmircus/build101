@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { MathText } from "@/components/ui/MathText";
 import type { OptionId, Question } from "@/lib/contract";
 import { targetOf, zoneOf, type Zone } from "./calibration";
 import { useGazeZone } from "./GazeSession";
@@ -28,7 +29,7 @@ export function GazeChoice({
       <p className="rounded-xl border-2 border-slate-300 bg-slate-50 px-5 py-4 text-xl">
         {chosen ? (
           <>
-            Elegiste <span className="font-bold">{chosen.id})</span> {chosen.text}
+            Elegiste <span className="font-bold">{chosen.id})</span> <MathText text={chosen.text} inline />
           </>
         ) : (
           "No elegiste ninguna opción."
@@ -43,7 +44,7 @@ export function GazeChoice({
       <GazeYesNo
         prompt={
           <>
-            ¿Confirmás la opción <span className="font-bold">{option.id})</span> {option.text}?
+            ¿Confirmás la opción <span className="font-bold">{option.id})</span> <MathText text={option.text} inline />?
           </>
         }
         onYes={() => {
@@ -64,7 +65,7 @@ export function GazeChoice({
         content: (
           <>
             <span className="text-3xl font-bold">{o.id})</span>
-            <span className="text-2xl">{o.text}</span>
+            <MathText text={o.text} inline className="text-2xl" />
             {o.id === value && <span className="text-lg font-semibold">✓ Tu respuesta</span>}
           </>
         ),
