@@ -308,7 +308,14 @@ function Submitted({
               <li key={`${s.kind}-${s.index}`} className="rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-5">
                 <p className="text-lg font-bold">{s.label}</p>
                 <MathText text={s.text} className="mt-1 text-lg text-slate-700" />
-                <p className="mt-3 whitespace-pre-wrap text-xl leading-relaxed">{answerText(s, submission) ?? "Sin responder"}</p>
+                <p className="mt-3 whitespace-pre-wrap text-xl leading-relaxed">
+                  {s.kind === "choice" ? (
+                    // The options come from the agent, with LaTeX; what the student typed or dictated stays as is.
+                    <MathText inline text={answerText(s, submission) ?? "Sin responder"} />
+                  ) : (
+                    (answerText(s, submission) ?? "Sin responder")
+                  )}
+                </p>
               </li>
             ))}
           </ol>

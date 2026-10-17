@@ -6,32 +6,39 @@ export type Exercise = {
   text: string;
 };
 
-// A line that starts an exercise: "1)", "2.", "3 -", "Ejercicio 4", "Ej. 5", also as a markdown heading
-// or in bold ("### Ejercicio 2", "**Ejercicio 3.**"), which is how the adapted versions come.
-const MARKDOWN = /^\s*(?:#{1,6}\s+|>\s*|\*\*|__)*/;
-const START = /^(?:(ejercicio|ej\.?)\s*)?(\d{1,2})\s*[).:\-–]?(?:\*\*|__)?(?:\s+(?=\S)|\s*$)/i;
+// A line that starts an exercise: "1)", "2.", "3 -", "Ejercicio 4", "Ej. 5", also with the Markdown the agent
+// writes: "**1)**", "**Ejercicio 2.**", "### 3)". A bare number needs its separator, so "2.5" or "2 + 3" don't count.
+const START =
+  /^\s*(?:#{1,6}\s+)?(\*\*)?\s*(?:(?:ejercicio|ej\.?)\s*(\d{1,2})\s*[).:\-–]?|(\d{1,2})\s*[).:\-–])\s*?(\*\*\s*|\s+|$)/i;
+// A Markdown title ("# Ecuaciones racionales") and a separator line ("---").
+const HEADING = /^\s*#{1,6}\s/;
+const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
 
 // Splits a text into exercises by their numbering. Text before the first number (a heading) is dropped.
 // If some line says "Ejercicio N", only those start exercises, so numbered sub-items ("1.", "2.") stay inside.
-// A number that doesn't go up continues the current exercise: numbers never repeat.
-// Without numbering, the whole text is a single exercise.
+// Numbers only go up, so a "2 - x = 1" line inside exercise 2 doesn't start another one.
+// Without numbering, the whole text minus a leading title is a single exercise.
 export function splitExercises(original: string): Exercise[] {
-  const lines = original.split("\n").map((line) => {
-    const clean = line.replace(MARKDOWN, "");
-    return { line, clean, match: clean.match(START) };
-  });
-  const named = lines.some((l) => l.match?.[1]);
+  const lines = original.split("\n").filter((line) => !RULE.test(line));
+  const matches = lines.map((line) => line.match(START));
+  const named = matches.some((match) => match?.[2]);
   const exercises: Exercise[] = [];
-  for (const { line, clean, match } of lines) {
-    const number = match ? Number(match[2]) : 0;
-    const last = exercises[exercises.length - 1];
-    if (match && (!named || match[1]) && (!last || number > last.number)) {
-      exercises.push({ number, label: `Ej. ${number}`, text: clean.slice(match[0].length).trim() });
+  lines.forEach((line, i) => {
+    const match = matches[i];
+    const number = match ? Number(match[2] ?? match[3]) : 0;
+    const last = exercises.at(-1);
+    if (match && (!named || match[2]) && (!last || number > last.number)) {
+      let text = line.slice(match[0].length).trim();
+      // "**1) Resolvé** en…": the bold goes past the number, so it stays open.
+      if (match[1] && !match[4].startsWith("**")) text = `**${text}`;
+      exercises.push({ number, label: `Ej. ${number}`, text });
     } else if (last && line.trim()) {
-      last.text += `\n${line.trim()}`;
+      last.text = last.text ? `${last.text}\n${line.trim()}` : line.trim();
     }
-  }
-  return exercises.length > 0 ? exercises : [{ number: 1, label: "Ej. 1", text: original.trim() }];
+  });
+  if (exercises.length > 0) return exercises;
+  while (lines.length > 0 && (!lines[0].trim() || HEADING.test(lines[0]))) lines.shift();
+  return [{ number: 1, label: "Ej. 1", text: lines.join("\n").trim() }];
 }
 
 // The exercises the teacher corrects: the detected ones, adjusted to the count the teacher set.

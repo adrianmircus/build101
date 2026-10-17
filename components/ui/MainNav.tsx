@@ -7,6 +7,7 @@ import { Suspense } from "react";
 const LINKS = [
   { href: "/grupos", text: "Mis grupos" },
   { href: "/materia", text: "Mi materia" },
+  { href: "/adaptar", text: "Adaptar práctico" },
 ];
 
 // Teacher's main navigation: the current section is marked with aria-current and a solid underline.

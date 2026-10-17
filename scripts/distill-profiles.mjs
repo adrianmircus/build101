@@ -9,7 +9,12 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
-const MODEL = "claude-opus-5-5";
+// Same setup as lib/agent/client.ts: with OPENROUTER_API_KEY everything goes through OpenRouter's
+// Anthropic-compatible endpoint. Own variables, so inherited ANTHROPIC_* ones don't override them.
+const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+const MODEL = OPENROUTER_KEY ? process.env.OPENROUTER_MODEL || "anthropic/claude-opus-5.5" : "claude-opus-5-5";
+// Server-side model fallback only exists on the Anthropic API: OpenRouter rejects `fallbacks` with a 400.
+const FALLBACK = OPENROUTER_KEY ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };
 const FOLDER = path.join(process.cwd(), "data", "profiles");
 const EXTENSIONS = [".pdf", ".md", ".txt"];
 
@@ -85,8 +90,7 @@ async function distillFile(client, file, profile) {
   const response = await client.beta.messages.parse({
     model: MODEL,
     max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...FALLBACK,
     output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
     system: SYSTEM,
     messages: [
@@ -135,7 +139,9 @@ function draftMarkdown(id, profile, sources) {
 }
 
 async function main() {
-  const client = new Anthropic();
+  const client = OPENROUTER_KEY
+    ? new Anthropic({ baseURL: "https://openrouter.ai/api", authToken: OPENROUTER_KEY, apiKey: null })
+    : new Anthropic();
   const ids = profileIds();
   if (ids.length === 0) {
     console.log("No hay fuentes para destilar. Dejá los archivos en data/profiles/<perfil>/sources/.");

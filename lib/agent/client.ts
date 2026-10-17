@@ -1,24 +1,39 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 
-export const MODEL = "claude-opus-5-5";
+// Two ways to reach the model, both with Anthropic's Messages format:
+// - Anthropic's API, with ANTHROPIC_API_KEY.
+// - OpenRouter, with OPENROUTER_API_KEY (or OPEN_ROUTER_ANTHROPIC_KEY, the older name). OPENROUTER_MODEL picks the model.
+// With both keys Anthropic goes first and OpenRouter is the backup (withFallback). With only OpenRouter's, everything
+// goes through it. Our own variable names, so ANTHROPIC_* inherited from the environment don't override them.
+const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_ANTHROPIC_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "anthropic/claude-opus-5.5";
+const ANTHROPIC_MODEL = "claude-opus-5-5";
+const HAS_ANTHROPIC = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+const ONLY_OPENROUTER = Boolean(OPENROUTER_KEY) && !HAS_ANTHROPIC;
 
-// Backup while Anthropic's API isn't available (for example, out of credit): the same model through OpenRouter,
-// which accepts Anthropic's Messages format. Only used if OPEN_ROUTER_ANTHROPIC_KEY is set.
-const OPEN_ROUTER_MODEL = "anthropic/claude-opus-5.5";
+export const MODEL = ONLY_OPENROUTER ? OPENROUTER_MODEL : ANTHROPIC_MODEL;
 
-let client: Anthropic | null = null;
+// Server-side refusal fallback: it only exists on Anthropic's API. OpenRouter rejects the `fallbacks` field with a 400.
+const DIRECT_EXTRA = { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
+export const FALLBACK: { betas?: string[]; fallbacks?: "default" } = ONLY_OPENROUTER ? {} : DIRECT_EXTRA;
+
+let anthropic: Anthropic | null = null;
 let openRouter: Anthropic | null = null;
 
-// Created on the first request, so the build doesn't need ANTHROPIC_API_KEY.
-export function getClient(): Anthropic {
-  return (client ??= new Anthropic());
+function getAnthropic(): Anthropic {
+  return (anthropic ??= new Anthropic());
 }
 
 function getOpenRouter(): Anthropic | null {
-  const key = process.env.OPEN_ROUTER_ANTHROPIC_KEY;
-  if (!key) return null;
-  return (openRouter ??= new Anthropic({ baseURL: "https://openrouter.ai/api", apiKey: null, authToken: key }));
+  if (!OPENROUTER_KEY) return null;
+  return (openRouter ??= new Anthropic({ baseURL: "https://openrouter.ai/api", authToken: OPENROUTER_KEY, apiKey: null }));
+}
+
+// The main provider, for calls that don't need the backup. Created on the first request, so the build doesn't
+// need any key.
+export function getClient(): Anthropic {
+  return ONLY_OPENROUTER ? getOpenRouter()! : getAnthropic();
 }
 
 export type Api = {
@@ -30,23 +45,19 @@ export type Api = {
   files: boolean;
 };
 
-const DIRECT_EXTRA: Api["extra"] = { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };
-
 // Calls the AI through Anthropic's API and, if that fails, retries once through OpenRouter.
 // A 404 isn't retried: it's a missing file, and changing provider doesn't fix it.
 export async function withFallback<T>(call: (api: Api) => Promise<T>): Promise<T> {
   const backup = getOpenRouter();
-  // No Anthropic key at all: the SDK would fail with a plain Error on the request, so go straight to OpenRouter.
-  if (backup && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
-    return call({ client: backup, model: OPEN_ROUTER_MODEL, extra: {}, files: false });
-  }
+  const viaOpenRouter: Api | null = backup && { client: backup, model: OPENROUTER_MODEL, extra: {}, files: false };
+  if (ONLY_OPENROUTER) return call(viaOpenRouter!);
   try {
-    return await call({ client: getClient(), model: MODEL, extra: DIRECT_EXTRA, files: true });
+    return await call({ client: getAnthropic(), model: ANTHROPIC_MODEL, extra: DIRECT_EXTRA, files: true });
   } catch (e) {
     const retryable =
       (e instanceof Anthropic.APIError && !(e instanceof Anthropic.NotFoundError)) || e instanceof Anthropic.APIConnectionError;
-    if (!backup || !retryable) throw e;
+    if (!viaOpenRouter || !retryable) throw e;
     console.warn(`Anthropic falló (${e.status ?? "sin conexión"}: ${e.message.slice(0, 120)}); reintento por OpenRouter.`);
-    return call({ client: backup, model: OPEN_ROUTER_MODEL, extra: {}, files: false });
+    return call(viaOpenRouter);
   }
 }
