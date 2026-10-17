@@ -12,6 +12,7 @@ Rules:
 - Don't change the math: same exercises, same numbers, same difficulty and same goals. Change the form, not the assessed content.
 - If we give you the course syllabus, use it as context for scope, level and notation. Don't add content that isn't in the syllabus.
 - Keep formulas in LaTeX ($...$ inline, $$...$$ for blocks). The result is markdown.
+- Start each exercise with its number as in the original ("Ejercicio 2." or "2)"), on its own line or heading: the platform matches each exercise to the original by that number.
 - Every change goes in "changes": "what" says what you changed and "why" explains why, citing the source listed in the profile data.
 - If several profiles are combined and two adaptations clash, prioritize the one that changes the assessment the least and explain it in "changes".
 - If we give you the students' interests, the teacher is asking you to theme the exercises around them to make them more engaging. This is not a profile adaptation and is the only change allowed outside the profile data: you may change ONLY the context or story of word problems (objects, characters, situations) so they relate to those interests. Never change numbers, operations, difficulty or what is assessed. Leave pure computation exercises as they are; don't force a theme where it doesn't fit. List each themed exercise in "changes", with a "why" like "Para hacerlo más atractivo según los gustos del grupo: fútbol". Don't claim pedagogical or clinical benefits for it.
@@ -34,7 +35,7 @@ When we tell you the student answers by dictating (they can't write or draw; the
 - Nothing can require drawing, graphing, completing a table by hand, or using GeoGebra or other software.
 - Instead of "graficá f", ask for the elements that define the graph, for example: "Decí las raíces, el vértice, la ordenada en el origen y hacia dónde abre la parábola de $f(x)=…$. Con lo que digas, la plataforma arma la gráfica." Instead of interpreting graphically, ask to say it ("Decí para qué valores de $x$ se cumple…").
 - Same functions, numbers and difficulty: only how they answer changes. Drop suggestions that need a computer or drawing ("podés verificar en GeoGebra").
-- A long exercise with many items can be split into numbered sub-items so each one is dictated on its own.
+- A long exercise with many items can be split into sub-items so each one is dictated on its own. Name sub-items with letters or roman numerals ("a)", "i)"), never with numbers: numbers are only for the exercises.
 - Add one change per adapted exercise, for example what: "Ejercicio 2: graficar pasó a decir raíces y vértice", why: "El estudiante responde dictando y no puede graficar; la plataforma arma la gráfica con lo que dice".`;
 
 function syllabusText(syllabus: SyllabusForAI): string {

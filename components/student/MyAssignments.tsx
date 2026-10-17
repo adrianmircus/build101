@@ -16,7 +16,7 @@ function progress(assessment: Assessment, studentId: string): { text: string; cl
   if (assessment.grades?.[studentId]) return { text: "✓ Corregido", className: "text-emerald-800" };
   if (submission?.submittedAt) return { text: "✓ Entregado", className: "text-emerald-800" };
   const version = versionOf(assessment, studentId);
-  const steps = version ? stepsOf(version) : [];
+  const steps = version ? stepsOf(version, assessment.original) : [];
   const answered = steps.filter((s) => isAnswered(s, submission)).length;
   if (answered === 0) return { text: "Sin empezar", className: "text-amber-900" };
   return { text: `En curso: ${answered} de ${steps.length}`, className: "text-indigo-800" };

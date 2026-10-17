@@ -10,8 +10,8 @@ export type Step =
   | { kind: "voice" | "typed"; index: number; label: string; text: string };
 
 // index is where the answer is saved: the question index for "choice" (Submission.choices),
-// the exercise number − 1 for the rest (Submission.answers), the same index the teacher corrects.
-export function stepsOf(version: Version): Step[] {
+// for the rest, the exercise's position in the original (Submission.answers), the same index the teacher corrects.
+export function stepsOf(version: Version, original: string): Step[] {
   if (usesGaze(version.profiles) && version.questions && version.questions.length > 0) {
     return version.questions.map((question, index) => ({
       kind: "choice",
@@ -22,9 +22,12 @@ export function stepsOf(version: Version): Step[] {
     }));
   }
   const kind = usesVoice(version.profiles) ? "voice" : "typed";
-  return splitExercises(version.content ?? "").map((e) => ({
+  // The index is the position of the same exercise in the original, which is what the teacher corrects
+  // (exercisesOf). An original numbered 2 and 5 gives 0 and 1, not 1 and 4.
+  const numbers = splitExercises(original).map((e) => e.number);
+  return splitExercises(version.content ?? "").map((e, i) => ({
     kind,
-    index: e.number - 1,
+    index: numbers.includes(e.number) ? numbers.indexOf(e.number) : i,
     label: `Ejercicio ${e.number}`,
     text: e.text,
   }));

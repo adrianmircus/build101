@@ -39,7 +39,7 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
     );
   }
 
-  const steps = stepsOf(version);
+  const steps = stepsOf(version, assessment.original);
   const submission = assessment.submissions?.[studentId];
   // Once submitted or graded (the sample exam was corrected on paper) it's read-only.
   const graded = Boolean(assessment.grades?.[studentId]);
