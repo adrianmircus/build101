@@ -26,10 +26,25 @@ const BLOCK: Components = {
 // Short texts (an option, a confirmation): no paragraph around them.
 const INLINE: Components = { ...BLOCK, p: ({ children }) => <>{children}</> };
 
+// The agent writes one idea per line (an exercise, its sub-items, "Preguntas guía:" and each question), but markdown
+// joins single line breaks into one paragraph. Each line becomes its own paragraph, except table rows and the lines
+// of a multi-line $$ formula, which have to stay together.
+function lineParagraphs(text: string): string {
+  const out: string[] = [];
+  let inDisplay = false;
+  for (const line of text.split("\n")) {
+    const previous = out.at(-1);
+    const keepTogether = inDisplay || (line.trim().startsWith("|") && previous?.trim().startsWith("|"));
+    out.push(previous === undefined || keepTogether || !line.trim() || !previous.trim() ? line : `\n${line}`);
+    if ((line.match(/\$\$/g) ?? []).length % 2 === 1) inDisplay = !inDisplay;
+  }
+  return out.join("\n");
+}
+
 export function MathText({ text, inline = false, className = "" }: { text: string; inline?: boolean; className?: string }) {
   const markdown = (
     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={REHYPE} components={inline ? INLINE : BLOCK}>
-      {text}
+      {inline ? text : lineParagraphs(text)}
     </ReactMarkdown>
   );
   return inline ? <span className={className}>{markdown}</span> : <div className={`space-y-3 ${className}`}>{markdown}</div>;

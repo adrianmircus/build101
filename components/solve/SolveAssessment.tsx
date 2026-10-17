@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { GazeChoice, GazeTargets, GazeYesNo } from "@/components/student/gaze/GazeChoice";
 import { useGazeZone } from "@/components/student/gaze/GazeSession";
 import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
@@ -17,9 +17,9 @@ import { TYPE_LABEL } from "@/lib/groups/versions";
 import { isAnswered, stepsOf, type Step } from "@/lib/solve/steps";
 import { speechText } from "@/lib/speech/latexSpeech";
 import { speak } from "@/lib/speech/useDictation";
-import { speakAloud, stopSpeaking } from "@/lib/speech/voice";
 import type { VoiceCommand } from "@/lib/voice/commands";
 import { DictationAnswer } from "./DictationAnswer";
+import { AudioHelps, ListenButton } from "./Listen";
 import { TypedAnswer } from "./TypedAnswer";
 
 // The student solves their version on the platform, one exercise per screen. Everything saves on each change;
@@ -176,6 +176,8 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
             {!gaze && <ListenButton text={step.text} />}
           </div>
           <MathText text={step.text} className="mt-3 mb-6 text-2xl leading-relaxed" />
+          {/* Reduced reasoning: the statement and each support can be listened to on their own. */}
+          {!gaze && (version.supports ?? []).length > 0 && <AudioHelps text={step.text} />}
           <StepAnswer
             step={step}
             submission={submission}
@@ -261,31 +263,6 @@ function SolveVoiceCommands({
   }
   useVoiceCommands(commands);
   return null;
-}
-
-// "Escuchar": reads the exercise aloud, formulas in words (lib/speech/latexSpeech.ts), with the Rioplatense
-// ElevenLabs voice or, without it, the browser's. Changing exercise or leaving stops it.
-function ListenButton({ text }: { text: string }) {
-  const [playing, setPlaying] = useState(false);
-  useEffect(() => () => stopSpeaking(), []);
-  return (
-    <button
-      type="button"
-      className={secondaryButton}
-      onClick={() => {
-        if (playing) {
-          stopSpeaking();
-          setPlaying(false);
-          return;
-        }
-        setPlaying(true);
-        speakAloud(speechText(text), () => setPlaying(false));
-      }}
-    >
-      <span aria-hidden="true">{playing ? "■" : "🔊"}</span>
-      {playing ? "Detener" : "Escuchar"}
-    </button>
-  );
 }
 
 function StepAnswer({
