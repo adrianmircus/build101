@@ -7,8 +7,9 @@ import "./globals.css";
 const lexend = Lexend({ subsets: ["latin", "latin-ext"], variable: "--font-lexend" });
 
 export const metadata: Metadata = {
-  title: "Prácticos accesibles",
+  title: { default: "Tiza.ai", template: "%s · Tiza.ai" },
   description: "Prácticos y parciales de matemática adaptados a cada estudiante del grupo.",
+  applicationName: "Tiza.ai",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

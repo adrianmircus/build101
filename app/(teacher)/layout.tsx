@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/ui/Logo";
 import { MainNav } from "@/components/ui/MainNav";
 import { ResetButton } from "@/components/ui/ResetButton";
 import { logout } from "@/lib/auth/actions";
@@ -8,8 +9,8 @@ export default function TeacherLayout({ children }: Readonly<{ children: React.R
     <div className="flex min-h-dvh flex-col">
       <header className="border-b-2 border-slate-200 bg-white print:hidden" style={{ viewTransitionName: "site-header" }}>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
-          <Link href="/grupos" className="inline-flex min-h-11 items-center rounded-lg text-xl font-bold text-slate-900">
-            Prácticos accesibles
+          <Link href="/grupos" className="inline-flex min-h-11 items-center rounded-lg text-xl">
+            <Logo />
           </Link>
           <nav aria-label="Principal" className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <MainNav />

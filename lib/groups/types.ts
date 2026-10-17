@@ -29,6 +29,21 @@ export type Version = {
   approved: boolean;
 };
 
+// A student's result on an assessment, on the 1–10 scale (see lib/groups/grades.ts).
+export type Grade = {
+  score: number;
+  feedback?: string;
+  gradedAt: string;
+};
+
+export type ExerciseStatus = "correct" | "partial" | "wrong" | "blank";
+
+// How a student did on one exercise. errors are ids from ERROR_TAGS (lib/results/catalog.ts).
+export type ExerciseResult = {
+  status: ExerciseStatus;
+  errors: string[];
+};
+
 export type Assessment = {
   id: string;
   groupId: string;
@@ -36,10 +51,26 @@ export type Assessment = {
   topic: string;
   original: string;
   versions: Version[];
+  // By student id. Optional so older localStorage data keeps working.
+  grades?: Record<string, Grade>;
+  // Per-exercise correction. The count defaults to the exercises detected in the original.
+  exerciseCount?: number;
+  // By student id, one entry per exercise; null means not marked yet.
+  exerciseResults?: Record<string, (ExerciseResult | null)[]>;
+  createdAt: string;
+};
+
+// The AI's reading of a group's results. A draft for the teacher, never shown to students.
+export type GroupAnalysis = {
+  summary: string;
+  difficulties: { topic: string; evidence: string }[];
+  students: { studentId: string; summary: string }[];
   createdAt: string;
 };
 
 export type Data = {
   groups: Group[];
   assessments: Assessment[];
+  // By group id. Optional so older localStorage data keeps working.
+  analyses?: Record<string, GroupAnalysis>;
 };

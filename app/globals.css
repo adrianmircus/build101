@@ -179,9 +179,6 @@ li {
   animation-iteration-count: infinite;
   animation-direction: alternate;
 }
-.login-backdrop[data-paused] .login-anim {
-  animation-play-state: paused;
-}
 
 @keyframes login-reveal {
   from {

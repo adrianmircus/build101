@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ViewTransition } from "react";
+import { Logo } from "@/components/ui/Logo";
 import type { LoginState } from "@/lib/auth/actions";
 import type { Role } from "@/lib/auth/signing";
 import { LoginForm } from "./LoginForm";
@@ -26,9 +27,9 @@ export function LoginScreen({ role, title, subtitle, action }: Props) {
       <main id="main-content" className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-6 px-4 py-12">
         <Link
           href="/"
-          className="focus-on-dark inline-flex min-h-11 items-center self-start rounded-md text-xl font-bold text-white underline-offset-4 hover:underline"
+          className="focus-on-dark inline-flex min-h-11 items-center self-start rounded-md text-2xl"
         >
-          Prácticos accesibles
+          <Logo tone="dark" />
         </Link>
         <ViewTransition name="login-card" share="login-card" default="none">
           <div className="rounded-2xl bg-white p-6 shadow-2xl shadow-black/40 sm:p-8">

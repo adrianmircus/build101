@@ -9,6 +9,7 @@ import { generatePending } from "@/lib/groups/generate";
 import { updateVersion, useData } from "@/lib/groups/store";
 import type { Version } from "@/lib/groups/types";
 import { TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
+import { Grades } from "./Grades";
 
 const STATUS: Record<Version["status"], string> = {
   pending: "Pendiente",
@@ -275,6 +276,8 @@ export function AssessmentDetail() {
             )}
           </div>
         </ViewTransition>
+
+        <Grades assessment={assessment} group={group} />
       </div>
 
       {/* The only thing that gets printed: the approved version. The browser's "Save as PDF". */}

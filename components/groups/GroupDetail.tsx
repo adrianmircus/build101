@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { addTransitionType, startTransition, useState, ViewTransition, type KeyboardEvent } from "react";
 import { AssessmentList } from "@/components/assessments/AssessmentList";
+import { ResultsTab } from "@/components/results/ResultsTab";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { primaryButton } from "@/components/ui/styles";
 import { FORWARD, TAB_SLIDE } from "@/components/ui/transitions";
@@ -15,6 +16,7 @@ import { Students } from "./Students";
 const TABS = [
   { id: "students", text: "Estudiantes" },
   { id: "assessments", text: "Prácticos y parciales" },
+  { id: "results", text: "Resultados" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
@@ -103,8 +105,10 @@ export function GroupDetail() {
           <div>
             {tab === "students" ? (
               <Students group={group} />
-            ) : (
+            ) : tab === "assessments" ? (
               <AssessmentList groupId={group.id} assessments={assessments} />
+            ) : (
+              <ResultsTab group={group} data={data} />
             )}
           </div>
         </ViewTransition>

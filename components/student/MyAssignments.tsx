@@ -2,6 +2,7 @@
 
 import { Loading } from "@/components/ui/States";
 import { typeTag } from "@/components/ui/styles";
+import { assignedTo } from "@/lib/groups/grades";
 import { useData } from "@/lib/groups/store";
 import { TYPE_LABEL } from "@/lib/groups/versions";
 
@@ -11,10 +12,7 @@ export function MyAssignments({ studentId, groupId }: { studentId: string; group
   const data = useData();
   if (!data) return <Loading />;
 
-  const assigned = data.assessments
-    .filter((a) => a.groupId === groupId)
-    .filter((a) => a.versions.some((v) => v.approved && v.studentIds.includes(studentId)))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const assigned = assignedTo(data, studentId, groupId);
 
   if (assigned.length === 0) {
     return (

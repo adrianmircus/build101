@@ -53,3 +53,25 @@ export type GenerationResponse = {
   content: string; // markdown + LaTeX
   changes: Change[];
 };
+
+// POST /api/results/analyze: the agent reads a group's results and summarizes the difficulties.
+// Students travel as pseudonyms ("E1", "E2"…): never names, profiles or the teacher's feedback.
+export type ExerciseMark = {
+  status: "correct" | "partial" | "wrong" | "blank";
+  errors: string[]; // error type labels, e.g. "Interpretación del enunciado"
+};
+
+export type ResultsAnalysisRequest = {
+  assessments: {
+    type: AssessmentType;
+    topic: string;
+    exercises: string[]; // text of each exercise
+    students: { ref: string; grade?: number; marks: (ExerciseMark | null)[] }[];
+  }[];
+};
+
+export type ResultsAnalysisResponse = {
+  summary: string;
+  difficulties: { topic: string; evidence: string }[];
+  students: { ref: string; summary: string }[];
+};

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Tiza.ai: chalk "t" on the board with the amber dot of ".ai". Same drawing as components/ui/Logo.tsx. -->
+  <rect width="64" height="64" rx="14" fill="#1e1b4b"/>
+  <g stroke="#f8fafc" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M27 13V40Q27 49 36 49H38"/>
+    <path d="M17 25H39"/>
+  </g>
+  <circle cx="48" cy="48" r="5" fill="#fcd34d"/>
+</svg>

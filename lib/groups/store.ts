@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { ProfileId } from "@/lib/profiles";
 import { seed } from "./seed";
-import type { Assessment, Data, Group, Version } from "./types";
+import type { Assessment, Data, ExerciseResult, Grade, Group, GroupAnalysis, Version } from "./types";
 
 const KEY = "build101:data:v2";
 
@@ -109,6 +109,47 @@ export function updateVersion(assessmentId: string, index: number, changes: Part
         : a,
     ),
   }));
+}
+
+// null removes the grade. Students see the change right away: there is no publish step.
+export function setGrade(assessmentId: string, studentId: string, grade: Grade | null) {
+  save((d) => ({
+    ...d,
+    assessments: d.assessments.map((a) => {
+      if (a.id !== assessmentId) return a;
+      const grades = { ...a.grades };
+      if (grade) grades[studentId] = grade;
+      else delete grades[studentId];
+      return { ...a, grades };
+    }),
+  }));
+}
+
+function updateAssessment(assessmentId: string, update: (assessment: Assessment) => Assessment) {
+  save((d) => ({ ...d, assessments: d.assessments.map((a) => (a.id === assessmentId ? update(a) : a)) }));
+}
+
+export function setExerciseCount(assessmentId: string, count: number) {
+  updateAssessment(assessmentId, (a) => ({ ...a, exerciseCount: count }));
+}
+
+// null clears the mark. Exercise results are for the teacher's metrics: students don't see them.
+export function setExerciseResult(
+  assessmentId: string,
+  studentId: string,
+  index: number,
+  result: ExerciseResult | null,
+) {
+  updateAssessment(assessmentId, (a) => {
+    const row = [...(a.exerciseResults?.[studentId] ?? [])];
+    while (row.length <= index) row.push(null);
+    row[index] = result;
+    return { ...a, exerciseResults: { ...a.exerciseResults, [studentId]: row } };
+  });
+}
+
+export function saveAnalysis(groupId: string, analysis: GroupAnalysis) {
+  save((d) => ({ ...d, analyses: { ...d.analyses, [groupId]: analysis } }));
 }
 
 export function resetDemo() {

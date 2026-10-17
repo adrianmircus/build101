@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { MyAssignments } from "@/components/student/MyAssignments";
+import { MyGrades } from "@/components/student/MyGrades";
+import { Logo } from "@/components/ui/Logo";
 import { Loading } from "@/components/ui/States";
 import { secondaryButton } from "@/components/ui/styles";
 import { PageTransition } from "@/components/ui/transitions";
@@ -13,7 +15,8 @@ export const metadata: Metadata = { title: "Tus prácticos", description: "Tus p
 export default function StudentPage() {
   return (
     <PageTransition>
-      <main id="main-content" className="mx-auto w-full max-w-4xl px-4 pt-10 pb-16">
+      <main id="main-content" className="mx-auto w-full max-w-4xl px-4 pt-6 pb-16">
+        <Logo className="mb-8 text-xl" />
         <Suspense fallback={<Loading />}>
           <Content />
         </Suspense>
@@ -39,6 +42,8 @@ async function Content() {
       </div>
       <h2 className="mt-10 mb-4 text-2xl font-bold">Tus prácticos y parciales</h2>
       <MyAssignments studentId={student.id} groupId={student.groupId} />
+      <h2 className="mt-12 mb-4 text-2xl font-bold">Calificaciones</h2>
+      <MyGrades studentId={student.id} groupId={student.groupId} />
     </>
   );
 }
