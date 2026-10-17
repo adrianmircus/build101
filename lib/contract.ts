@@ -48,6 +48,14 @@ export type SyllabusUnitsResponse = {
   units: SyllabusUnit[];
 };
 
+// POST /api/assessments/read-pdf (multipart, field "file"): the agent reads the teacher's PDF and
+// transcribes the exercises. The text is what gets adapted, after the teacher reviews it.
+export type ReadPdfResponse = {
+  name: string; // file name, to show it
+  original: string; // the exercises as text (markdown + LaTeX)
+  doubts: string[]; // what it couldn't read well; empty if none
+};
+
 // Multiple choice for students who answer with eye gaze (profile "motor"): one option per screen quadrant.
 export type OptionId = "A" | "B" | "C" | "D";
 

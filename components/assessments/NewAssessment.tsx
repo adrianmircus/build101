@@ -8,9 +8,26 @@ import { field, focusWithin, inlineLink, primaryButton } from "@/components/ui/s
 import { FORWARD } from "@/components/ui/transitions";
 import type { AssessmentType } from "@/lib/contract";
 import { generatePending } from "@/lib/groups/generate";
+import { readExercisesPdf } from "@/lib/groups/readPdf";
 import { createAssessment, useData } from "@/lib/groups/store";
 import { groupByProfiles, topInterests, TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
 import { isSyllabusConfirmed, useSyllabus } from "@/lib/syllabus/store";
+
+const MAX_PDF_BYTES = 4 * 1024 * 1024;
+
+// The same chip style for "Tipo" and for where the exercises come from.
+const chip = (active: boolean) =>
+  `inline-flex min-h-11 cursor-pointer items-center rounded-lg border-2 px-5 py-2 text-lg font-semibold transition-colors ${focusWithin} ${
+    active
+      ? "border-indigo-700 bg-indigo-700 text-white"
+      : "border-slate-500 bg-white text-slate-900 hover:border-slate-800 hover:bg-slate-50"
+  }`;
+
+type PdfState =
+  | { status: "idle" }
+  | { status: "reading"; name: string }
+  | { status: "done"; name: string; doubts: string[] }
+  | { status: "error"; message: string };
 
 export function NewAssessment() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -21,6 +38,9 @@ export function NewAssessment() {
   const [topic, setTopic] = useState("");
   const [original, setOriginal] = useState("");
   const [useInterests, setUseInterests] = useState(true);
+  // By default the teacher uploads the PDF they already have; typing the exercises is the alternative.
+  const [source, setSource] = useState<"pdf" | "text">("pdf");
+  const [pdf, setPdf] = useState<PdfState>({ status: "idle" });
 
   if (!data) return <Loading />;
   const group = data.groups.find((g) => g.id === groupId);
@@ -33,6 +53,27 @@ export function NewAssessment() {
     interests: themed ? topInterests(group.students.filter((s) => v.studentIds.includes(s.id))) : [],
   }));
   const nameOf = (id: string) => group.students.find((s) => s.id === id)?.name ?? "";
+  // With a PDF, there's nothing to generate until the AI read it and the teacher can review the text.
+  const waitingPdf = source === "pdf" && pdf.status !== "done";
+
+  const readPdf = async (file: File) => {
+    if (file.type !== "application/pdf") {
+      setPdf({ status: "error", message: "El archivo tiene que ser un PDF." });
+      return;
+    }
+    if (file.size > MAX_PDF_BYTES) {
+      setPdf({ status: "error", message: "El PDF pesa más de 4 MB. Probá con una versión más liviana." });
+      return;
+    }
+    setPdf({ status: "reading", name: file.name });
+    try {
+      const read = await readExercisesPdf(file);
+      setOriginal(read.original);
+      setPdf({ status: "done", name: read.name, doubts: read.doubts });
+    } catch (e) {
+      setPdf({ status: "error", message: e instanceof Error ? e.message : "No pudimos leer el PDF. Reintentá." });
+    }
+  };
 
   return (
     <>
@@ -50,7 +91,7 @@ export function NewAssessment() {
           className="space-y-6"
           onSubmit={(e) => {
             e.preventDefault();
-            if (versions.length === 0) return;
+            if (versions.length === 0 || waitingPdf) return;
             const id = createAssessment({
               groupId: group.id,
               type,
@@ -71,14 +112,7 @@ export function NewAssessment() {
             <legend className="mb-2 text-lg font-semibold">Tipo</legend>
             <div className="flex gap-3">
               {(Object.keys(TYPE_LABEL) as AssessmentType[]).map((t) => (
-                <label
-                  key={t}
-                  className={`inline-flex min-h-11 cursor-pointer items-center rounded-lg border-2 px-5 py-2 text-lg font-semibold transition-colors ${focusWithin} ${
-                    type === t
-                      ? "border-indigo-700 bg-indigo-700 text-white"
-                      : "border-slate-500 bg-white text-slate-900 hover:border-slate-800 hover:bg-slate-50"
-                  }`}
-                >
+                <label key={t} className={chip(type === t)}>
                   <input
                     type="radio"
                     name="type"
@@ -106,22 +140,105 @@ export function NewAssessment() {
             />
           </div>
 
-          <div>
-            <label htmlFor="original" className="mb-1 block text-lg font-semibold">
-              Ejercicios originales
-            </label>
-            <p id="original-help" className="mb-2 text-base text-slate-700">
-              Pegalo como lo das siempre. Las fórmulas pueden ir en LaTeX.
-            </p>
-            <textarea
-              id="original"
-              className={`${field} min-h-72 font-mono text-base`}
-              aria-describedby="original-help"
-              value={original}
-              onChange={(e) => setOriginal(e.target.value)}
-              required
-            />
-          </div>
+          <fieldset>
+            <legend className="mb-2 text-lg font-semibold">Ejercicios originales</legend>
+            <div className="flex flex-wrap gap-3">
+              <label className={chip(source === "pdf")}>
+                <input
+                  type="radio"
+                  name="source"
+                  className="sr-only"
+                  checked={source === "pdf"}
+                  onChange={() => setSource("pdf")}
+                />
+                Subir PDF
+              </label>
+              <label className={chip(source === "text")}>
+                <input
+                  type="radio"
+                  name="source"
+                  className="sr-only"
+                  checked={source === "text"}
+                  onChange={() => setSource("text")}
+                />
+                Escribirlos
+              </label>
+            </div>
+
+            {source === "pdf" && (
+              <div className="mt-4 space-y-3">
+                <label
+                  className={`flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-slate-500 bg-white px-6 py-6 text-center transition-colors hover:border-indigo-700 hover:bg-indigo-50 ${focusWithin}`}
+                >
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="sr-only"
+                    disabled={pdf.status === "reading"}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      // Empty again so choosing the same file reads it again.
+                      e.target.value = "";
+                      if (file) void readPdf(file);
+                    }}
+                  />
+                  <span className="text-lg font-semibold">
+                    {pdf.status === "done" ? "Elegir otro PDF" : "Elegí el PDF del práctico o parcial"}
+                  </span>
+                  <span className="text-base text-slate-700">
+                    {pdf.status === "done"
+                      ? pdf.name
+                      : "Hasta 4 MB. La IA lee los ejercicios y vos los revisás antes de generar."}
+                  </span>
+                </label>
+
+                {pdf.status === "reading" && (
+                  <p role="status" className="text-lg font-semibold text-indigo-900">
+                    Leyendo {pdf.name}…
+                  </p>
+                )}
+                {pdf.status === "error" && (
+                  <p role="alert" className="rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg text-red-900">
+                    <span className="font-semibold">{pdf.message}</span>{" "}
+                    <button type="button" className={inlineLink} onClick={() => setSource("text")}>
+                      O escribilos a mano.
+                    </button>
+                  </p>
+                )}
+                {pdf.status === "done" && pdf.doubts.length > 0 && (
+                  <div className="rounded-lg border-2 border-amber-600 bg-amber-50 px-4 py-3 text-lg text-amber-950">
+                    <p className="font-semibold">La IA no está segura de esto:</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-6">
+                      {pdf.doubts.map((d, i) => (
+                        <li key={i}>{d}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(source === "text" || pdf.status === "done") && (
+              <div className="mt-4">
+                <label htmlFor="original" className={source === "pdf" ? "mb-1 block text-lg font-semibold" : "sr-only"}>
+                  {source === "pdf" ? "Lo que leyó la IA" : "Ejercicios originales"}
+                </label>
+                <p id="original-help" className="mb-2 text-base text-slate-700">
+                  {source === "pdf"
+                    ? "Revisá que la IA haya leído bien los ejercicios. Podés corregirlos acá: esto es lo que se adapta."
+                    : "Pegalo como lo das siempre. Las fórmulas pueden ir en LaTeX."}
+                </p>
+                <textarea
+                  id="original"
+                  className={`${field} min-h-72 font-mono text-base`}
+                  aria-describedby="original-help"
+                  value={original}
+                  onChange={(e) => setOriginal(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+          </fieldset>
 
           {hasInterests && (
             <label className="flex min-h-11 cursor-pointer items-start gap-3 text-lg">
@@ -140,9 +257,21 @@ export function NewAssessment() {
             </label>
           )}
 
-          <button type="submit" className={primaryButton} disabled={versions.length === 0}>
-            Generar {versions.length} {versions.length === 1 ? "versión" : "versiones"}
-          </button>
+          <div>
+            <button
+              type="submit"
+              className={primaryButton}
+              disabled={versions.length === 0 || waitingPdf}
+              aria-describedby={waitingPdf ? "pdf-needed" : undefined}
+            >
+              Generar {versions.length} {versions.length === 1 ? "versión" : "versiones"}
+            </button>
+            {waitingPdf && (
+              <p id="pdf-needed" className="mt-2 text-base text-slate-700">
+                Primero subí el PDF y revisá lo que leyó la IA.
+              </p>
+            )}
+          </div>
         </form>
 
         <aside aria-labelledby="versions-heading" className="h-fit rounded-2xl border-2 border-slate-200 bg-white p-6">
@@ -189,7 +318,7 @@ export function NewAssessment() {
             )}
           </p>
           <p className="mt-4 text-base text-slate-700">
-            A la IA solo le llegan los ejercicios, los perfiles y los gustos, nunca los nombres. Vas a revisar y aprobar cada versión
+            A la IA solo le llegan los ejercicios (o el PDF), los perfiles y los gustos, nunca los nombres. Vas a revisar y aprobar cada versión
             antes de descargarla.
           </p>
         </aside>
