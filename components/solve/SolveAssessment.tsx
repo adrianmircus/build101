@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GazeChoice, GazeTargets, GazeYesNo } from "@/components/student/gaze/GazeChoice";
 import { useGazeZone } from "@/components/student/gaze/GazeSession";
 import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
@@ -30,6 +30,15 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
   const data = useData();
   const [current, setCurrent] = useState(0);
   const [reviewing, setReviewing] = useState(false);
+  // Bumped on each move between exercises: then focus goes to the new heading (not on the first render).
+  const [moved, setMoved] = useState(0);
+
+  useEffect(() => {
+    if (moved === 0) return;
+    const heading = document.getElementById(reviewing ? "review-heading" : "step-heading");
+    heading?.focus({ preventScroll: true });
+    heading?.scrollIntoView({ block: "nearest" });
+  }, [moved, reviewing]);
 
   if (!data) return <Loading />;
   const assessment = data.assessments.find((a) => a.id === assessmentId && a.groupId === groupId);
@@ -59,11 +68,20 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
   const gaze = steps[0]?.kind === "choice";
   const firstMissing = missing.length > 0 ? steps.indexOf(missing[0]) : 0;
 
+  // Students who answer with eye gaze don't use the keyboard and their screen is laid out for the gaze: focus stays put.
+  const move = () => {
+    if (!gaze) setMoved((m) => m + 1);
+  };
   const go = (i: number) => {
     setReviewing(false);
     setCurrent(i);
+    move();
   };
-  const next = () => (index < steps.length - 1 ? go(index + 1) : setReviewing(true));
+  const review = () => {
+    setReviewing(true);
+    move();
+  };
+  const next = () => (index < steps.length - 1 ? go(index + 1) : review());
   const submit = () => submitAssessment(assessment.id, studentId);
 
   const solving = (
@@ -75,7 +93,7 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
           index={index}
           reviewing={reviewing}
           go={go}
-          review={() => setReviewing(true)}
+          review={review}
           back={() => go(missing.length > 0 ? firstMissing : index)}
           submit={submit}
         />
@@ -114,7 +132,7 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
               <button
                 type="button"
                 aria-current={reviewing ? "step" : undefined}
-                onClick={() => setReviewing(true)}
+                onClick={review}
                 className={`${reviewing ? primaryButton : secondaryButton} min-h-11 py-1`}
               >
                 Entregar
@@ -126,7 +144,7 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
 
       {reviewing ? (
         <section aria-labelledby="review-heading" className="rounded-2xl border-2 border-amber-600 bg-amber-50 p-4 sm:p-6">
-          <h2 id="review-heading" className="text-2xl font-bold text-amber-950">
+          <h2 id="review-heading" tabIndex={-1} className="scroll-mt-24 text-2xl font-bold text-amber-950 outline-offset-4">
             ¿Entregás el {TYPE_LABEL[assessment.type].toLowerCase()}?
           </h2>
           {missing.length > 0 ? (
@@ -169,7 +187,7 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
             {index + 1} de {steps.length}
           </p>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="step-heading" className="text-2xl font-bold">
+            <h2 id="step-heading" tabIndex={-1} className="scroll-mt-24 text-2xl font-bold outline-offset-4">
               {step.label}
             </h2>
             {/* Students who answer with eye gaze can't click: the button is for everyone else. */}
@@ -198,7 +216,7 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
                   Siguiente →
                 </button>
               ) : (
-                <button type="button" className={primaryButton} onClick={() => setReviewing(true)}>
+                <button type="button" className={primaryButton} onClick={review}>
                   Revisar y entregar
                 </button>
               )}

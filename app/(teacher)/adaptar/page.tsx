@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { PracticeAdapter } from "@/components/adapter/PracticeAdapter";
 import { PageTransition } from "@/components/ui/transitions";
+
+export const metadata: Metadata = { title: "Adaptar un práctico", description: "Subí tu práctico de matemática y salen versiones adaptadas para revisar." };
 
 export default function AdaptPage() {
   return (

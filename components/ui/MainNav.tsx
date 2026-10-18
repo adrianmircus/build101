@@ -26,7 +26,7 @@ function ActiveLinks() {
 
 function Links({ pathname }: { pathname: string | null }) {
   return (
-    <ul className="flex items-center gap-1">
+    <ul className="flex flex-wrap items-center gap-1">
       {LINKS.map((link) => {
         const active = pathname !== null && (pathname === link.href || pathname.startsWith(`${link.href}/`));
         return (

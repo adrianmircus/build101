@@ -1,9 +1,10 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { addTransitionType, startTransition, useState, ViewTransition } from "react";
+import { addTransitionType, startTransition, useEffect, useRef, useState, ViewTransition } from "react";
 import { AiProgress } from "@/components/ui/AiProgress";
 import { FunctionGraph } from "@/components/ui/FunctionGraph";
+import { MathMarkdown } from "@/components/ui/MathMarkdown";
 import { MathText } from "@/components/ui/MathText";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
@@ -38,6 +39,22 @@ export function AssessmentDetail() {
   const [draft, setDraft] = useState<string | null>(null);
   // If the number check flagged something, approving asks the teacher to confirm they reviewed it.
   const [reviewed, setReviewed] = useState(false);
+  // Same for a version that came out without adaptations for some profile (no data loaded for it).
+  const [unadaptedOk, setUnadaptedOk] = useState(false);
+  // Read by screen readers when the review state changes (approve, save, remove the approval).
+  const [announcement, setAnnouncement] = useState("");
+  // Where focus goes after the next render: the button that had it may no longer exist.
+  const focusTo = useRef<"review-heading" | "draft" | null>(null);
+  const setFocusTo = (id: "review-heading" | "draft") => {
+    focusTo.current = id;
+  };
+
+  // Runs after every render: each click that sets focusTo also changes state, so the element is already there.
+  useEffect(() => {
+    if (!focusTo.current) return;
+    document.getElementById(focusTo.current)?.focus();
+    focusTo.current = null;
+  });
 
   if (!data) return <Loading />;
   const group = data.groups.find((g) => g.id === groupId);
@@ -54,6 +71,9 @@ export function AssessmentDetail() {
   const label = versionLabel(version.profiles, version.supports);
   const numbers = version.status === "ready" ? checkNumbers(assessment.original, version) : { applies: false as const };
   const flagged = numbers.applies && numbers.issues.length > 0;
+  // The agent says so in the changes when a profile had no data and its part went out as the original.
+  const unadapted = (version.changes ?? []).flatMap((c) => /^Sin adaptaciones para (.+?)\.?$/.exec(c.what.trim())?.[1] ?? []);
+  const unsaved = editing && draft !== (version.content ?? "");
 
   return (
     <>
@@ -107,12 +127,15 @@ export function AssessmentDetail() {
                   aria-current={active ? "true" : undefined}
                   onClick={() => {
                     if (i === index) return;
+                    if (unsaved && !window.confirm("Tenés cambios sin guardar en esta versión. ¿Querés descartarlos?")) return;
                     // Inside a transition so the version content slides toward the chosen tab.
                     startTransition(() => {
                       addTransitionType(i > index ? "tab-forward" : "tab-back");
                       setIndex(i);
                       setDraft(null);
                       setReviewed(false);
+                      setUnadaptedOk(false);
+                      setAnnouncement("");
                     });
                   }}
                   className={`flex w-full flex-col items-start rounded-xl border-2 px-4 py-3 text-left transition-colors sm:w-auto ${
@@ -133,6 +156,11 @@ export function AssessmentDetail() {
             );
           })}
         </ul>
+
+        {/* Outside the transition so it is always in the page and screen readers hear each change. */}
+        <p role="status" className="sr-only">
+          {announcement}
+        </p>
 
         <ViewTransition key={index} enter={TAB_SLIDE} exit={TAB_SLIDE} default="none">
           <div>
@@ -227,6 +255,12 @@ export function AssessmentDetail() {
                 <p className="mt-1 text-lg text-slate-700">
                   Revisá que la respuesta correcta esté bien: la calculó la IA. El estudiante no la ve.
                 </p>
+                {version.questionsStale && (
+                  <p className="mt-3 rounded-lg border-2 border-amber-600 bg-amber-50 px-4 py-3 text-lg text-amber-950">
+                    <span className="font-semibold">Ojo:</span> editaste el texto a mano y estas preguntas se armaron con el
+                    texto anterior. Revisá que sigan coincidiendo, o generá la versión de nuevo.
+                  </p>
+                )}
                 <ol className="mt-4 grid gap-4 lg:grid-cols-2">
                   {version.questions.map((q, i) => (
                     <li key={i} className="rounded-xl border-2 border-slate-200 p-4">
@@ -291,8 +325,9 @@ export function AssessmentDetail() {
                   <ol className="max-w-4xl list-decimal space-y-3 pl-6 text-lg leading-relaxed marker:font-bold">
                     {version.changes.map((c, i) => (
                       <li key={i}>
-                        <MathText text={c.what} inline className="font-semibold" />.{" "}
-                        <MathText text={c.why} inline className="text-slate-700" />
+                        {/* The agent sometimes ends "what" with its own period: only one goes between the two. */}
+                        <MathMarkdown text={c.what.trim().replace(/[.\s]+$/, "")} inline className="font-semibold" />.{" "}
+                        <MathMarkdown text={c.why} inline className="text-slate-700" />
                       </li>
                     ))}
                   </ol>
@@ -316,7 +351,8 @@ export function AssessmentDetail() {
               >
                 <h3
                   id="review-heading"
-                  className={`text-2xl font-bold ${
+                  tabIndex={-1}
+                  className={`text-2xl font-bold outline-offset-4 ${
                     editing ? "text-indigo-950" : version.approved ? "text-emerald-900" : "text-amber-950"
                   }`}
                 >
@@ -329,6 +365,23 @@ export function AssessmentDetail() {
                       ? "Tus estudiantes ya la ven y la pueden resolver en la plataforma."
                       : "Revisala y corregila si hace falta. Tus estudiantes no la ven hasta que la apruebes."}
                 </p>
+                {editing && version.questions && version.questions.length > 0 && (
+                  <p className="mt-3 rounded-lg border-2 border-amber-600 bg-amber-50 px-4 py-3 text-lg text-amber-950">
+                    <span className="font-semibold">Ojo:</span> las preguntas de opción múltiple para responder con la mirada se
+                    armaron con el texto anterior y no cambian al guardar. Revisalas después.
+                  </p>
+                )}
+                {!editing && !version.approved && unadapted.length > 0 && (
+                  <div role="note" className="mt-3 rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg text-red-950">
+                    <p className="font-semibold">
+                      Esta versión no tiene adaptaciones para {unadapted.join(" ni para ")}.
+                    </p>
+                    <p className="mt-1">
+                      Todavía no hay datos revisados de ese perfil, así que esa parte quedó igual al original. Editala a mano o
+                      aprobala sabiendo que no está adaptada.
+                    </p>
+                  </div>
+                )}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {editing ? (
                     <>
@@ -337,32 +390,70 @@ export function AssessmentDetail() {
                         className={primaryButton}
                         onClick={() => {
                           // Editing by hand invalidates the approval: the new text has to be approved again.
-                          updateVersion(assessment.id, index, { content: draft, approved: false });
+                          // The gaze questions are kept, so they are marked as made from the previous text.
+                          const changed = draft !== (version.content ?? "");
+                          updateVersion(assessment.id, index, {
+                            content: draft,
+                            approved: false,
+                            ...(changed && (version.questions?.length ?? 0) > 0 ? { questionsStale: true } : {}),
+                          });
                           setDraft(null);
                           setReviewed(false);
+                          setAnnouncement("Guardaste los cambios. La versión vuelve a necesitar tu aprobación.");
+                          setFocusTo("review-heading");
                         }}
                       >
                         Guardar cambios
                       </button>
-                      <button type="button" className={secondaryButton} onClick={() => setDraft(null)}>
+                      <button
+                        type="button"
+                        className={secondaryButton}
+                        onClick={() => {
+                          if (unsaved && !window.confirm("¿Querés descartar los cambios que hiciste?")) return;
+                          setDraft(null);
+                          setFocusTo("review-heading");
+                        }}
+                      >
                         Cancelar
                       </button>
                     </>
                   ) : (
                     <>
-                      <button type="button" className={secondaryButton} onClick={() => setDraft(version.content ?? "")}>
+                      <button
+                        type="button"
+                        className={secondaryButton}
+                        onClick={() => {
+                          setDraft(version.content ?? "");
+                          setFocusTo("draft");
+                        }}
+                      >
                         Editar a mano
                       </button>
                       {version.approved ? (
                         <button
                           type="button"
                           className={secondaryButton}
-                          onClick={() => updateVersion(assessment.id, index, { approved: false })}
+                          onClick={() => {
+                            updateVersion(assessment.id, index, { approved: false });
+                            setAnnouncement(`Quitaste la aprobación de la versión ${label}. Tus estudiantes ya no la ven.`);
+                            setFocusTo("review-heading");
+                          }}
                         >
                           Quitar aprobación
                         </button>
                       ) : (
                         <>
+                          {unadapted.length > 0 && (
+                            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
+                              <input
+                                type="checkbox"
+                                className="size-5 accent-emerald-700"
+                                checked={unadaptedOk}
+                                onChange={(e) => setUnadaptedOk(e.target.checked)}
+                              />
+                              Entiendo que no está adaptada para {unadapted.join(" ni para ")}
+                            </label>
+                          )}
                           {flagged && (
                             <label className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
                               <input
@@ -377,8 +468,13 @@ export function AssessmentDetail() {
                           <button
                             type="button"
                             className={approveButton}
-                            disabled={flagged && !reviewed}
-                            onClick={() => updateVersion(assessment.id, index, { approved: true })}
+                            disabled={(flagged && !reviewed) || (unadapted.length > 0 && !unadaptedOk)}
+                            onClick={() => {
+                              updateVersion(assessment.id, index, { approved: true });
+                              setAnnouncement(`Aprobaste la versión ${label}. Tus estudiantes ya la ven.`);
+                              // The button disappears; focus goes to the heading that now says it's approved.
+                              setFocusTo("review-heading");
+                            }}
                           >
                             ✓ Aprobar y publicar
                           </button>

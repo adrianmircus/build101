@@ -121,7 +121,7 @@ export async function generatePending(assessmentId: string) {
           keep: version.keep,
           syllabus,
         });
-        updateVersion(assessmentId, index, { status: "ready", content, changes, questions, approved: false });
+        updateVersion(assessmentId, index, { status: "ready", content, changes, questions, questionsStale: false, approved: false });
       } catch (e) {
         updateVersion(assessmentId, index, { status: "error", error: e instanceof Error ? e.message : undefined });
       } finally {

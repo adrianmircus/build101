@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { NewAssessment } from "@/components/assessments/NewAssessment";
 import { Loading } from "@/components/ui/States";
 import { PageTransition } from "@/components/ui/transitions";
+
+export const metadata: Metadata = { title: "Nuevo práctico", description: "Armá un práctico o parcial y generá una versión para cada perfil del grupo." };
 
 export default function NewAssessmentPage() {
   return (

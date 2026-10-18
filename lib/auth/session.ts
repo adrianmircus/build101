@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { SESSION_COOKIE, sign, verify, type Session } from "./signing";
+import { connection } from "next/server";
+import { SESSION_COOKIE, SESSION_MAX_AGE, sign, verify, type Session } from "./signing";
 
 export async function createSession(session: Session) {
   (await cookies()).set(SESSION_COOKIE, sign(session), {
@@ -8,12 +9,15 @@ export async function createSession(session: Session) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 8,
+    maxAge: SESSION_MAX_AGE,
   });
 }
 
 export async function readSession(): Promise<Session | null> {
-  return verify((await cookies()).get(SESSION_COOKIE)?.value);
+  const value = (await cookies()).get(SESSION_COOKIE)?.value;
+  // verify() compares the expiry with the current time: that only runs at request time, never while prerendering.
+  await connection();
+  return verify(value);
 }
 
 export async function deleteSession() {

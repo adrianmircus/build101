@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     ".claude/worktrees/**",
     // MediaPipe's WASM loaders, copied from node_modules on install (scripts/copy-mediapipe.mjs).
     "public/mediapipe/**",
+    // Local end-to-end test runs (not committed): their bundled output isn't app code.
+    ".e2e-codex/**",
   ]),
 ]);
 

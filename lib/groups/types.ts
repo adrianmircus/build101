@@ -36,6 +36,8 @@ export type Version = {
   changes?: Change[];
   // Multiple choice to answer with eye gaze, only for versions with the "motor" profile.
   questions?: Question[];
+  // The teacher edited the text by hand after the questions were generated: they may no longer match it.
+  questionsStale?: boolean;
   approved: boolean;
 };
 

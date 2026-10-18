@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
 import { AiProgress } from "@/components/ui/AiProgress";
 import { FunctionGraph } from "@/components/ui/FunctionGraph";
@@ -33,6 +33,13 @@ export function DictationAnswer({
   const [proposal, setProposal] = useState<TranscribeResponse | null>(null);
   // What the student fixed by keyboard over the proposal; null while they don't edit it.
   const [edited, setEdited] = useState<string | null>(null);
+  // The microphone failed or was denied and the student chose to type instead. It stays until they leave the exercise.
+  const [typing, setTyping] = useState(false);
+
+  // When the AI's proposal shows up, focus goes to its question so screen readers read it right away.
+  useEffect(() => {
+    if (proposal) document.getElementById(`${id}-proposal`)?.focus();
+  }, [proposal, id]);
 
   async function convert(transcript: string) {
     if (!transcript.trim()) return;
@@ -204,9 +211,31 @@ export function DictationAnswer({
             />
           )}
           {dictation.error && (
-            <p role="alert" className="text-lg font-semibold text-red-800">
-              {dictation.error}
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p role="alert" className="text-lg font-semibold text-red-800">
+                {dictation.error}
+              </p>
+              {!typing && (
+                <button
+                  type="button"
+                  className={secondaryButton}
+                  onClick={() => {
+                    setTyping(true);
+                    setTimeout(() => document.getElementById(`${id}-typed`)?.focus());
+                  }}
+                >
+                  Escribir la respuesta
+                </button>
+              )}
+            </div>
+          )}
+          {typing && (
+            // Same as when the browser can't dictate: what they type saves on each change.
+            <TypedAnswer
+              id={`${id}-typed`}
+              value={saved?.mode === "typed" ? saved.text : ""}
+              onChange={(text) => onSave(text ? { text, mode: "typed" } : null)}
+            />
           )}
           {status.kind === "error" && (
             <div role="alert" className="flex flex-wrap items-center gap-3">
@@ -227,7 +256,7 @@ export function DictationAnswer({
       {!disabled && proposal && (
         // The student's approval: nothing is saved until they confirm.
         <section aria-labelledby={`${id}-proposal`} className="rounded-2xl border-2 border-amber-600 bg-amber-50 p-4 sm:p-6">
-          <h3 id={`${id}-proposal`} className="text-xl font-bold text-amber-950">
+          <h3 id={`${id}-proposal`} tabIndex={-1} className="text-xl font-bold text-amber-950 outline-offset-4">
             ¿Es esto lo que dijiste?
           </h3>
           {proposal.answer ? (
