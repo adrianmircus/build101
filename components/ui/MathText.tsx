@@ -41,10 +41,17 @@ function lineParagraphs(text: string): string {
   return out.join("\n");
 }
 
+// The agent sometimes writes an amount of money as a formula ("$\$150$"). Markdown reads the "\$" as an escaped
+// dollar before remark-math sees it, and it shows up as "\150$". An amount alone is plain text: "\$150" shows "$150".
+function moneyAsText(text: string): string {
+  return text.replace(/\$\\\$\s*([\d.,]+)\s*\$/g, "\\$$$1");
+}
+
 export function MathText({ text, inline = false, className = "" }: { text: string; inline?: boolean; className?: string }) {
+  const source = moneyAsText(text);
   const markdown = (
     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={REHYPE} components={inline ? INLINE : BLOCK}>
-      {inline ? text : lineParagraphs(text)}
+      {inline ? source : lineParagraphs(source)}
     </ReactMarkdown>
   );
   return inline ? <span className={className}>{markdown}</span> : <div className={`space-y-3 ${className}`}>{markdown}</div>;
