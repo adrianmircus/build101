@@ -1,4 +1,4 @@
-import type { Assessment, Data, ExerciseResult, Grade, Student } from "./types";
+import type { Assessment, Data, ExerciseResult, Grade, Group, Student } from "./types";
 import { groupByProfiles } from "./versions";
 
 // Sample data for the demo. All students are fictional.
@@ -84,18 +84,20 @@ function exam(): Assessment {
   };
 }
 
+// For the demo: one student per way of answering (writing with ADHD, eye gaze, dictation).
+const DEMO_GROUP: Group = {
+  id: "demo",
+  name: "Grupo demo",
+  students: students("demo", [
+    ["Lucas R.", ["adhd"], ["fútbol"]],
+    ["Paula G.", ["motor"]],
+    ["Tomás V.", ["dysgraphia"], ["música"]],
+  ]),
+};
+
 const SEED: Data = {
   groups: [
-    {
-      // For the demo: one student per way of answering (writing with ADHD, eye gaze, dictation).
-      id: "demo",
-      name: "Grupo demo",
-      students: students("demo", [
-        ["Lucas R.", ["adhd"], ["fútbol"]],
-        ["Paula G.", ["motor"]],
-        ["Tomás V.", ["dysgraphia"], ["música"]],
-      ]),
-    },
+    DEMO_GROUP,
     {
       id: "6a",
       name: "6.º A",
@@ -122,4 +124,8 @@ const SEED: Data = {
 
 export function seed(): Data {
   return structuredClone(SEED);
+}
+
+export function demoGroup(): Group {
+  return structuredClone(DEMO_GROUP);
 }

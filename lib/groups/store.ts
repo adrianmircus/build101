@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { ProfileId } from "@/lib/profiles";
 import type { Support } from "@/lib/supports";
-import { seed } from "./seed";
+import { demoGroup, seed } from "./seed";
 import type { OptionId } from "@/lib/contract";
 import type { Answer, Assessment, Data, ExerciseResult, Grade, Group, GroupAnalysis, Submission, Version } from "./types";
 
@@ -20,6 +20,11 @@ function load(): Data {
       // After a reload no generation is running: anything left halfway goes back to pending.
       for (const a of data.assessments) {
         for (const v of a.versions) if (v.status === "generating") v.status = "pending";
+      }
+      // Data saved before the demo group existed: it's added first, without touching anything else.
+      if (!data.groups.some((g) => g.id === "demo")) {
+        data.groups.unshift(demoGroup());
+        localStorage.setItem(KEY, JSON.stringify(data));
       }
       return data;
     }
