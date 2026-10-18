@@ -54,6 +54,17 @@ export function AssessmentDetail() {
   const label = versionLabel(version.profiles, version.supports);
   const numbers = version.status === "ready" ? checkNumbers(assessment.original, version) : { applies: false as const };
   const flagged = numbers.applies && numbers.issues.length > 0;
+  // Written versions go to PDF; eye gaze and dictation are answered on the platform.
+  const written = !usesGaze(version.profiles) && !usesVoice(version.profiles);
+
+  // The browser's "Save as PDF" with the print stylesheet: the formulas come out as on screen and the text stays
+  // selectable. The document title is the file name it suggests, without the profile: the sheet reaches the student.
+  const exportPdf = () => {
+    const previous = document.title;
+    document.title = `${TYPE_LABEL[assessment.type]} - ${assessment.topic} (versión ${index + 1})`;
+    window.addEventListener("afterprint", () => (document.title = previous), { once: true });
+    window.print();
+  };
 
   return (
     <>
@@ -384,9 +395,17 @@ export function AssessmentDetail() {
                           </button>
                         </>
                       )}
+                      {version.approved && written && (
+                        <button type="button" className={primaryButton} onClick={exportPdf}>
+                          Exportar a PDF
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
+                {!editing && !version.approved && written && (
+                  <p className="mt-3 text-base text-slate-700">Aprobala para poder exportarla a PDF.</p>
+                )}
               </section>
             )}
           </div>
@@ -394,6 +413,18 @@ export function AssessmentDetail() {
 
         <Grades assessment={assessment} group={group} />
       </div>
+
+      {version.status === "ready" && version.approved && written && (
+        // Only for printing / PDF: title, name and date to fill in, and the version. Never the profile's label.
+        <article className="hidden print:block">
+          <h1 className="text-2xl font-bold">{title}</h1>
+          <p className="mt-4 flex flex-wrap gap-x-10 gap-y-2 text-lg">
+            <span>Nombre: ________________________________</span>
+            <span>Fecha: ______________</span>
+          </p>
+          <MathText text={version.content ?? ""} className="print-version mt-8 text-lg leading-relaxed" />
+        </article>
+      )}
     </>
   );
 }

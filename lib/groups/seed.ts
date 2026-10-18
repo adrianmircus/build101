@@ -87,6 +87,16 @@ function exam(): Assessment {
 const SEED: Data = {
   groups: [
     {
+      // For the demo: one student per way of answering (writing with ADHD, eye gaze, dictation).
+      id: "demo",
+      name: "Grupo demo",
+      students: students("demo", [
+        ["Lucas R.", ["adhd"], ["fútbol"]],
+        ["Paula G.", ["motor"]],
+        ["Tomás V.", ["dysgraphia"], ["música"]],
+      ]),
+    },
+    {
       id: "6a",
       name: "6.º A",
       students: STUDENTS_6A,

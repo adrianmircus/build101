@@ -11,6 +11,10 @@ const ACCOUNTS: { username: string; password: string; role: Role; id: string }[]
   { username: "camila", password: "demo123", role: "student", id: "6a-s3" },
   { username: "facundo", password: "demo123", role: "student", id: "6a-s6" },
   { username: "belen", password: "demo123", role: "student", id: "6b-s2" },
+  // Grupo demo: TDAH, Motriz (eye gaze) and Disgrafía (dictation).
+  { username: "lucas", password: "demo123", role: "student", id: "demo-s1" },
+  { username: "paula", password: "demo123", role: "student", id: "demo-s2" },
+  { username: "tomas", password: "demo123", role: "student", id: "demo-s3" },
 ];
 
 export function findAccount(username: string, password: string, role: Role) {

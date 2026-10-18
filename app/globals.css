@@ -219,11 +219,27 @@ li {
 }
 
 @media print {
+  @page {
+    margin: 2cm;
+  }
+
   html {
     font-size: 14pt;
   }
 
   body {
     background: #fff;
+  }
+
+  /* An exercise (or a line of it) isn't split between two pages. */
+  .print-version p,
+  .print-version table,
+  .print-version .katex-display {
+    break-inside: avoid;
+  }
+
+  /* Next's dev indicator. */
+  nextjs-portal {
+    display: none !important;
   }
 }
