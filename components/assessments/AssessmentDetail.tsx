@@ -72,7 +72,10 @@ export function AssessmentDetail() {
   const numbers = version.status === "ready" ? checkNumbers(assessment.original, version) : { applies: false as const };
   const flagged = numbers.applies && numbers.issues.length > 0;
   // The agent says so in the changes when a profile had no data and its part went out as the original.
-  const unadapted = (version.changes ?? []).flatMap((c) => /^Sin adaptaciones para (.+?)\.?$/.exec(c.what.trim())?.[1] ?? []);
+  // "extra" is Motriz and Disgrafía: they still answer with eye gaze or by dictation, but nothing else was adapted.
+  const unadapted = (version.changes ?? []).flatMap(
+    (c) => /^Sin adaptaciones (?:extra )?para (.+?)\.?$/.exec(c.what.trim())?.[1] ?? [],
+  );
   const unsaved = editing && draft !== (version.content ?? "");
 
   return (
@@ -377,8 +380,9 @@ export function AssessmentDetail() {
                       Esta versión no tiene adaptaciones para {unadapted.join(" ni para ")}.
                     </p>
                     <p className="mt-1">
-                      Todavía no hay datos revisados de ese perfil, así que esa parte quedó igual al original. Editala a mano o
-                      aprobala sabiendo que no está adaptada.
+                      Todavía no hay datos revisados de {unadapted.length === 1 ? "ese perfil" : "esos perfiles"}, así que el
+                      texto quedó igual al original (si responde con la mirada o dictando, eso sí se mantiene). Editala a mano
+                      o aprobala sabiendo que no está adaptada.
                     </p>
                   </div>
                 )}
