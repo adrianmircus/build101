@@ -46,7 +46,6 @@ Si el navegador ya tenía datos guardados, tocá «Restaurar datos de ejemplo» 
 app/
   (teacher)/grupos/…        Mis grupos: estudiantes, nuevo práctico, detalle y aprobación, corrección, resultados
   (teacher)/materia/        Mi materia: temario a partir del programa oficial
-  (teacher)/adaptar/        Adaptador del compañero (fuera del menú, accesible por URL)
   estudiante/               Inicio y resolución; el layout monta la mirada y la voz
   ingresar/                 Login de profesor y de estudiante
   api/                      Rutas que llaman a la IA (ver abajo)
@@ -138,7 +137,7 @@ Recibe por versión el original, la combinación de perfiles, los gustos, los ap
 3. **La salida** se valida contra el esquema. Para la mirada se usa streaming (pueden ser respuestas largas) y se controla que cada pregunta tenga exactamente 2 opciones y la respuesta entre ellas.
 4. **El chequeo de números** (`lib/groups/numberCheck.ts`) corre sin IA en la pantalla de aprobación: cada número del ejercicio original tiene que seguir en el mismo ejercicio de la versión. Si algo cambió, el profe tiene que confirmar que lo revisó antes de aprobar.
 
-### Adaptador del compañero (`/api/adapt`, pantalla `/adaptar`)
+### Adaptador del compañero (`/api/adapt`, sin pantalla propia)
 
 Pipeline en `lib/adapter/adapt-pipeline.ts` que manda el progreso por streaming (NDJSON):
 1. Extrae los ejercicios del PDF o las fotos y reemplaza cada fórmula por un marcador con sus versiones en mathjs y LaTeX.

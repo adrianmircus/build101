@@ -39,8 +39,6 @@ export function AssessmentDetail() {
   const [draft, setDraft] = useState<string | null>(null);
   // If the number check flagged something, approving asks the teacher to confirm they reviewed it.
   const [reviewed, setReviewed] = useState(false);
-  // Same for a version that came out without adaptations for some profile (no data loaded for it).
-  const [unadaptedOk, setUnadaptedOk] = useState(false);
   // Read by screen readers when the review state changes (approve, save, remove the approval).
   const [announcement, setAnnouncement] = useState("");
   // Where focus goes after the next render: the button that had it may no longer exist.
@@ -71,11 +69,6 @@ export function AssessmentDetail() {
   const label = versionLabel(version.profiles, version.supports);
   const numbers = version.status === "ready" ? checkNumbers(assessment.original, version) : { applies: false as const };
   const flagged = numbers.applies && numbers.issues.length > 0;
-  // The agent says so in the changes when a profile had no data and its part went out as the original.
-  // "extra" is Disgrafía: it still answers by dictation, but nothing else was adapted. Motriz never warns (no document by design).
-  const unadapted = (version.changes ?? []).flatMap(
-    (c) => /^Sin adaptaciones (?:extra )?para (.+?)\.?$/.exec(c.what.trim())?.[1] ?? [],
-  );
   const unsaved = editing && draft !== (version.content ?? "");
 
   // Written versions go to PDF; eye gaze and dictation are answered on the platform.
@@ -149,7 +142,6 @@ export function AssessmentDetail() {
                       setIndex(i);
                       setDraft(null);
                       setReviewed(false);
-                      setUnadaptedOk(false);
                       setAnnouncement("");
                     });
                   }}
@@ -386,18 +378,6 @@ export function AssessmentDetail() {
                     armaron con el texto anterior y no cambian al guardar. Revisalas después.
                   </p>
                 )}
-                {!editing && !version.approved && unadapted.length > 0 && (
-                  <div role="note" className="mt-3 rounded-lg border-2 border-red-700 bg-red-50 px-4 py-3 text-lg text-red-950">
-                    <p className="font-semibold">
-                      Esta versión no tiene adaptaciones para {unadapted.join(" ni para ")}.
-                    </p>
-                    <p className="mt-1">
-                      Todavía no hay datos revisados de {unadapted.length === 1 ? "ese perfil" : "esos perfiles"}, así que el
-                      texto quedó igual al original (si responde dictando, eso sí se mantiene). Editala a mano
-                      o aprobala sabiendo que no está adaptada.
-                    </p>
-                  </div>
-                )}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {editing ? (
                     <>
@@ -459,17 +439,6 @@ export function AssessmentDetail() {
                         </button>
                       ) : (
                         <>
-                          {unadapted.length > 0 && (
-                            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
-                              <input
-                                type="checkbox"
-                                className="size-5 accent-emerald-700"
-                                checked={unadaptedOk}
-                                onChange={(e) => setUnadaptedOk(e.target.checked)}
-                              />
-                              Entiendo que no está adaptada para {unadapted.join(" ni para ")}
-                            </label>
-                          )}
                           {flagged && (
                             <label className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
                               <input
@@ -484,7 +453,7 @@ export function AssessmentDetail() {
                           <button
                             type="button"
                             className={approveButton}
-                            disabled={(flagged && !reviewed) || (unadapted.length > 0 && !unadaptedOk)}
+                            disabled={flagged && !reviewed}
                             onClick={() => {
                               updateVersion(assessment.id, index, { approved: true });
                               setAnnouncement(`Aprobaste la versión ${label}. Tus estudiantes ya la ven.`);

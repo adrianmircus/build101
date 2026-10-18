@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-// Loading screen for every wait on the AI, in the adapter's visual language (components/adapter/AdapterProgress.tsx):
+// Loading screen for every wait on the AI:
 // one row per stage, ✓ when done and "…" while working.
 // Our routes answer all at once, so the stages are estimated: they describe what the AI really does, in order, and
 // move on with the expected time. The last one stays "in progress" until the answer arrives, and the bar stops at 90 %.

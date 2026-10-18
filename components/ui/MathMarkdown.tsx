@@ -1,11 +1,11 @@
 "use client";
 
 import { Fragment } from "react";
-import { Tex } from "@/components/adapter/MathText";
+import { Tex } from "./Tex";
 import { parseMathMarkdown, type Inline } from "@/lib/math-markdown";
 
 // The text of a version or an exercise as the agent writes it: Markdown with **bold** and LaTeX formulas.
-// The formulas go through KaTeX like in the adapter, with MathML and no aria-label on top (see Tex).
+// The formulas go through KaTeX with MathML and no aria-label on top (see Tex).
 // inline: for short pieces inside a sentence or a button (multiple choice options), all in one line.
 export function MathMarkdown({ text, className = "", inline = false }: { text: string; className?: string; inline?: boolean }) {
   const blocks = parseMathMarkdown(text);

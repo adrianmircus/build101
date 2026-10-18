@@ -1,4 +1,4 @@
-// POST { text } → audio/mpeg con la voz rioplatense de ElevenLabs. La usan el profe (Escuchar en /adaptar) y los
+// POST { text } → audio/mpeg con la voz rioplatense de ElevenLabs. La usan el profe y los
 // estudiantes (relectura del dictado), así que alcanza con cualquier sesión.
 // 503 si ElevenLabs no está configurado o falla: el navegador lee con su propia voz.
 import { MAX_TTS_CHARS, synthesize, TtsUnavailable } from "@/lib/speech/elevenlabs";

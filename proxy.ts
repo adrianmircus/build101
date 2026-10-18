@@ -13,7 +13,7 @@ export function proxy(request: NextRequest) {
     if (!allowed) return NextResponse.json({ error: "Tu sesión venció. Volvé a ingresar." }, { status: 401 });
     return;
   }
-  const teacherArea = pathname.startsWith("/grupos") || pathname.startsWith("/materia") || pathname.startsWith("/adaptar");
+  const teacherArea = pathname.startsWith("/grupos") || pathname.startsWith("/materia");
   if (teacherArea && session?.role !== "teacher") {
     return NextResponse.redirect(new URL("/ingresar/profesor", request.url));
   }
@@ -23,5 +23,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/grupos/:path*", "/materia/:path*", "/adaptar/:path*", "/estudiante/:path*", "/api/:path*"],
+  matcher: ["/grupos/:path*", "/materia/:path*", "/estudiante/:path*", "/api/:path*"],
 };
