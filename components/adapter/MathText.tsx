@@ -12,6 +12,11 @@ const TOKEN = /(\{\{m\d+\}\}|\*\*[^*]+\*\*)/g;
 
 // mathjs → LaTeX, for the solved example's steps, which come in mathjs only.
 export function mathjsToTex(src: string): string {
+  // A system travels as "y = 2*x + 5; y = -x + 2": one line per equation inside a brace.
+  if (src.includes(";")) {
+    const lines = src.split(";").map((s) => s.trim()).filter(Boolean).map(mathjsToTex);
+    return `\\begin{cases} ${lines.join(" \\\\ ")} \\end{cases}`;
+  }
   try {
     return normalize(src)
       .split("=")

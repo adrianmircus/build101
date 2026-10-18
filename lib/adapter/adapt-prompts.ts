@@ -10,9 +10,10 @@ export const EXTRACT_SYSTEM = `Digitalizás prácticos de matemática de liceo. 
   - mathjs: sintaxis de mathjs, con * explícito, ^, fracciones con paréntesis completos, sqrt() y punto decimal. El "log" de los prácticos es en base 10: escribilo log10(x); el neperiano, ln(x); en otra base, log(x, b). Las funciones van como en el original: f(x), g(t), P(x);
   - latex;
   - role: "equation" si tiene =, "value" si es un número o un resultado y "expression" en los demás casos.
-  Las inecuaciones y los sistemas también van como marcador, copiados como se ven.
+  Las inecuaciones también van como marcador, copiadas como se ven.
+  Un sistema de ecuaciones es UN solo marcador: en mathjs, sus ecuaciones separadas por punto y coma ("y = 2*x + 5; y = -x + 2"); en latex, \\begin{cases} … \\end{cases}; role "equation".
 - kind:
-  - "ecuacion": resolver una ecuación;
+  - "ecuacion": resolver una ecuación o un sistema de ecuaciones;
   - "expresion": simplificar, factorizar o desarrollar;
   - "calculo": cálculo numérico;
   - "problema": problema con texto;
@@ -31,7 +32,8 @@ const SUPPORT_RULES: Record<Exclude<Adjustment, "menos_items">, string> = {
   recordatorio: `- support.reminder: una o dos oraciones con el procedimiento general del tema (por ejemplo, cómo se despeja una incógnita o para qué sirve el discriminante). Sin los números del ejercicio y sin matemática escrita. Si no aplica, "".`,
   ejemplo_resuelto: `- support.example: un ejercicio del mismo tipo, con otros números, ya resuelto. Solo para ecuaciones y problemas con texto; en los demás, statement "" y steps [].
   - statement: la consigna del ejemplo, en texto. Sus números tienen que ser distintos de los datos del ejercicio.
-  - steps: la resolución en sintaxis mathjs, una ecuación por paso, desde el planteo hasta la incógnita despejada (por ejemplo "x + (x + 2) = 10", "2*x + 2 = 10", "2*x = 8", "x = 4"). Cada paso tiene que salir del anterior. La respuesta del ejemplo no puede ser la misma que la del ejercicio.`,
+  - steps: la resolución en sintaxis mathjs, una ecuación por paso, desde el planteo hasta la incógnita despejada (por ejemplo "x + (x + 2) = 10", "2*x + 2 = 10", "2*x = 8", "x = 4"). Cada paso tiene que salir del anterior. La respuesta del ejemplo no puede ser la misma que la del ejercicio.
+  - Si el ejercicio es un sistema, o un problema que se resuelve con un sistema, el ejemplo también: cada paso es el sistema completo, con las ecuaciones separadas por punto y coma, y el último paso da el valor de cada incógnita. Por ejemplo: "y = x + 1; y = -x + 9", "y = x + 1; x + 1 = -x + 9", "y = x + 1; x = 4", "x = 4; y = 5". Si el sistema del ejercicio tiene solución única, el ejemplo también; si no tiene solución o tiene infinitas, el ejemplo muestra el mismo caso y termina con la igualdad que lo muestra (0 = 5 o 0 = 0).`,
   numeros_simples: `- En los problemas con texto podés cambiar los datos por números más chicos o más redondos, que den una respuesta entera. Mantené la misma situación, las mismas relaciones entre los datos (más que, el doble, en total) y la misma pregunta. No cambies los marcadores. Contalo en notes_for_teacher.`,
 };
 
@@ -120,6 +122,8 @@ export function adaptSystem(format: Format, ajustes: Adjustment[] = [], interese
   return `${commonRules(ajustes, intereses)}\n\n${FORMAT_RULES[format]}`;
 }
 
-export const MODEL_SYSTEM = `Recibís la consigna de un problema de matemática con texto. Planteá UNA ecuación con UNA incógnita, en sintaxis mathjs, cuya solución sea exactamente lo que pregunta el problema. No la resuelvas.
-- Si el problema no se puede plantear así (pide una explicación, tiene varias preguntas, necesita un sistema o depende de una figura que no tenés), solvable = false.
-- unknown: el nombre de la incógnita. asks_for: qué representa, en pocas palabras.`;
+export const MODEL_SYSTEM = `Recibís la consigna de un problema de matemática con texto. Planteá en sintaxis mathjs UNA ecuación con UNA incógnita, o un sistema de ecuaciones lineales, cuya solución sea exactamente lo que pregunta el problema. No lo resuelvas.
+- equation: si alcanza una incógnita, una sola ecuación. Si el problema pregunta por dos o tres cantidades ("¿cuántos hizo cada uno?") o se plantea mejor con un sistema, un sistema lineal con una ecuación por incógnita, separadas por punto y coma ("x + y = 26; x - y = 4").
+- unknown: las incógnitas por las que pregunta el problema, separadas por coma ("x" o "x, y"). Nunca uses e ni i como incógnita: son el número e y la unidad imaginaria. Si hay una incógnita auxiliar que no se pregunta, no va.
+- asks_for: qué representan las incógnitas de unknown, en pocas palabras ("goles de Suárez y de Cavani").
+- Si el problema no se puede plantear así (pide una explicación, no es lineal y tiene más de una incógnita, o depende de una figura que no tenés), solvable = false.`;

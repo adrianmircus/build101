@@ -7,12 +7,14 @@ import type { AdaptResult } from "@/lib/adapter/adapt-pipeline";
 import { FORMAT_LABELS, FORMATS, isReasoning, type Format, type MathObject } from "@/lib/adapter/adapt-schemas";
 import { AdaptedVersion, type Speech } from "./AdaptedVersion";
 import { AdapterForm, type AdaptInput } from "./AdapterForm";
-import { AdapterProgress, INITIAL_PROGRESS, type Progress } from "./AdapterProgress";
+import { AdapterProgress, INITIAL_PROGRESS, STAGE_TEXT, type Progress } from "./AdapterProgress";
 import { MathText } from "./MathText";
 
 type Run =
   | { kind: "idle" }
   | { kind: "running"; progress: Progress }
+  // The práctico is read and the versions are arriving: each one can be reviewed as soon as it is ready.
+  | { kind: "partial"; result: AdaptResult; pending: Format[]; progress: Progress }
   | { kind: "done"; result: AdaptResult }
   | { kind: "error"; message: string }
   | { kind: "out_of_scope"; reason: string };
@@ -49,10 +51,12 @@ export function PracticeAdapter() {
 
   async function start(input: AdaptInput) {
     let progress = INITIAL_PROGRESS;
+    let partial: { result: AdaptResult; pending: Format[] } | null = null;
     let finished = false;
+    const show = () => setRun(partial ? { kind: "partial", ...partial, progress } : { kind: "running", progress });
     const update = (p: Progress) => {
       progress = p;
-      setRun({ kind: "running", progress: p });
+      show();
     };
     setApproved(NONE_APPROVED);
     update(INITIAL_PROGRESS);
@@ -60,6 +64,15 @@ export function PracticeAdapter() {
       await runAdapt(input, (e) => {
         switch (e.stage) {
           case "leyendo":
+            break;
+          case "preparado":
+            partial = { result: e.result, pending: e.pending };
+            setTab("lectura_facil");
+            update({ ...progress, reading: "done" });
+            break;
+          case "clave":
+            if (partial) partial = { ...partial, result: { ...partial.result, answerKey: e.answerKey } };
+            show();
             break;
           case "adaptando":
           case "verificando":
@@ -69,12 +82,17 @@ export function PracticeAdapter() {
           case "formato_listo": {
             const r = e.result;
             const ok = r.checks.filter((c) => c.ok).length;
+            if (partial) {
+              const ready = [...partial.result.formats, r];
+              partial = { result: { ...partial.result, formats: ready }, pending: partial.pending.filter((f) => f !== r.format) };
+              // If the open tab is still being prepared, jump to the version that just arrived.
+              setTab((t) => (t !== "original" && !ready.some((x) => x.format === t) ? r.format : t));
+            }
             update({ reading: "done", formats: { ...progress.formats, [r.format]: { stage: "lista", ok, total: r.checks.length } } });
             break;
           }
           case "listo":
             finished = true;
-            setTab("lectura_facil");
             setRun({ kind: "done", result: e.result });
             break;
           case "fuera_de_alcance":
@@ -93,10 +111,12 @@ export function PracticeAdapter() {
     }
   }
 
-  if (run.kind === "done") {
+  if (run.kind === "done" || run.kind === "partial") {
     return (
       <Results
         result={run.result}
+        pending={run.kind === "partial" ? run.pending : []}
+        progress={run.kind === "partial" ? run.progress : null}
         tab={tab}
         onTab={setTab}
         approved={approved}
@@ -131,6 +151,8 @@ export function PracticeAdapter() {
 
 function Results({
   result,
+  pending,
+  progress,
   tab,
   onTab,
   approved,
@@ -139,6 +161,8 @@ function Results({
   onRestart,
 }: {
   result: AdaptResult;
+  pending: Format[]; // versions still being prepared
+  progress: Progress | null; // null when everything arrived
   tab: Tab;
   onTab: (t: Tab) => void;
   approved: Record<Format, boolean>;
@@ -150,18 +174,21 @@ function Results({
     () => new Map<string, MathObject>(result.extraction.items.flatMap((it) => it.math.map((m) => [m.id, m] as const))),
     [result],
   );
-  // Tabs in a fixed order, only for the versions that came out (razonamiento disminuido only when asked for).
-  const formats = FORMATS.filter((f) => result.formats.some((r) => r.format === f));
+  // Tabs in a fixed order, for the versions that came out or are on their way (razonamiento disminuido only when asked for).
+  const formats = FORMATS.filter((f) => result.formats.some((r) => r.format === f) || pending.includes(f));
   const tabs: Tab[] = [...formats, "original"];
   const done = formats.filter((f) => approved[f]).length;
+  const running = pending.length > 0;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
-        <p className="text-xl">
-          Listo en {Math.round(result.ms.total / 1000)} s. Aprobaste {done} de {formats.length} versiones.
+        <p className="text-xl" aria-live="polite">
+          {running
+            ? `Adaptando: ${result.formats.length} de ${formats.length} versiones listas. Ya podés revisar las que llegaron.`
+            : `Listo en ${Math.round(result.ms.total / 1000)} s. Aprobaste ${done} de ${formats.length} versiones.`}
         </p>
-        <button type="button" className={secondaryButton} onClick={onRestart}>
+        <button type="button" className={secondaryButton} onClick={onRestart} disabled={running}>
           Adaptar otro práctico
         </button>
       </div>
@@ -189,6 +216,12 @@ function Results({
             }`}
           >
             {TAB_LABELS[t]}
+            {t !== "original" && pending.includes(t) && (
+              <>
+                <span aria-hidden="true" className="text-slate-600">…</span>
+                <span className="sr-only">(en preparación)</span>
+              </>
+            )}
             {t !== "original" && approved[t] && <span className="text-emerald-800">✓</span>}
           </button>
         ))}
@@ -200,6 +233,14 @@ function Results({
         ) : (
           (() => {
             const fr = result.formats.find((f) => f.format === tab);
+            if (!fr && pending.includes(tab)) {
+              const stage = progress?.formats[tab]?.stage ?? "esperando";
+              return (
+                <p className={`${card} text-xl`}>
+                  Esta versión se está preparando: {STAGE_TEXT[stage].toLocaleLowerCase("es")}
+                </p>
+              );
+            }
             if (!fr) return <p className="text-lg">Esta versión no llegó. Probá adaptar de nuevo.</p>;
             return (
               <AdaptedVersion
