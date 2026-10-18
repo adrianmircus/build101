@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { normalize } from "@/lib/voice/commands";
 import { speakAloud } from "./voice";
 
 // The browser's Web Speech API. TypeScript's DOM types don't include SpeechRecognition: only what we use.
@@ -131,6 +132,110 @@ export function useDictation({
   useEffect(() => () => recognition.current?.abort(), []);
 
   return { supported, listening, transcript, interim, error, start, stop, reset };
+}
+
+// Errors after which listening again won't help: without a microphone or permission it stays off.
+const FATAL = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
+
+// Hands-free: keeps listening in the background and calls onHeard each time one of the phrases is said, inside any
+// sentence. For students who can't press a button (eye gaze). Chrome stops a recognition after a while or a silence:
+// it starts again by itself. It yields to any other recognition (a voice command, dictating) and comes back after.
+export function useVoicePhrase({
+  phrases,
+  onHeard,
+  lang = "es-UY",
+}: {
+  phrases: string[];
+  onHeard: () => void;
+  lang?: string;
+}) {
+  const supported = useSyncExternalStore(noop, () => recognitionConstructor() !== null, () => false);
+  const [listening, setListening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const onHeardRef = useRef(onHeard);
+  useEffect(() => {
+    onHeardRef.current = onHeard;
+  });
+  const key = phrases.map(normalize).join("|");
+
+  useEffect(() => {
+    const Constructor = recognitionConstructor();
+    if (!Constructor) return;
+    const wanted = key.split("|").filter(Boolean);
+    let disposed = false;
+    let fatal = false;
+    let current: Recognition | null = null;
+    let timer = 0;
+
+    const later = (ms: number) => {
+      window.clearTimeout(timer);
+      if (!disposed && !fatal) timer = window.setTimeout(listen, ms);
+    };
+    const release = (r: Recognition) => {
+      if (active?.recognition === r) active = null;
+      if (current === r) current = null;
+      setListening(false);
+    };
+
+    function listen() {
+      // Someone else is listening (a voice command or a dictation): wait for them to finish.
+      if (active) return later(1000);
+      const r = new Constructor!();
+      r.lang = lang;
+      r.continuous = true;
+      r.interimResults = false;
+      r.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (!event.results[i].isFinal) continue;
+          const heard = ` ${normalize(event.results[i][0].transcript)} `;
+          if (wanted.some((phrase) => heard.includes(` ${phrase} `))) onHeardRef.current();
+        }
+      };
+      r.onerror = (event) => {
+        if (!FATAL.has(event.error)) return;
+        fatal = true;
+        setError(ERRORS[event.error]);
+      };
+      r.onend = () => {
+        release(r);
+        later(400);
+      };
+      current = r;
+      active = {
+        recognition: r,
+        cancel: () => {
+          r.onresult = null;
+          r.onend = null;
+          r.abort();
+          release(r);
+          later(1000);
+        },
+      };
+      try {
+        r.start();
+        setError(null);
+        setListening(true);
+      } catch {
+        release(r);
+        later(1000);
+      }
+    }
+
+    later(0);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      const r = current;
+      if (r) {
+        r.onresult = null;
+        r.onend = null;
+        r.abort();
+        if (active?.recognition === r) active = null;
+      }
+    };
+  }, [key, lang]);
+
+  return { supported, listening, error };
 }
 
 // Reads a text aloud with the Rioplatense ElevenLabs voice, falling back to the browser's voice.

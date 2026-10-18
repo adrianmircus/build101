@@ -5,6 +5,7 @@ import { useVoiceCommands } from "@/components/student/voice/VoiceCommands";
 import { secondaryButton } from "@/components/ui/styles";
 import { hasSupports, splitSupports } from "@/lib/solve/supportParts";
 import { speechText } from "@/lib/speech/latexSpeech";
+import { useVoicePhrase } from "@/lib/speech/useDictation";
 import { speakAloud, stopSpeaking } from "@/lib/speech/voice";
 import type { VoiceCommand } from "@/lib/voice/commands";
 
@@ -30,6 +31,49 @@ export function ListenButton({ text, label = "Escuchar", className = secondaryBu
       <span aria-hidden="true">{playing ? "■" : "🔊"}</span>
       {playing ? "Detener" : label}
     </button>
+  );
+}
+
+// What the student says to hear the exercise. "leer consigna" is the one on screen; the rest are how it comes out.
+const READ_PROMPT = ["leer consigna", "leer la consigna", "lee la consigna", "leeme la consigna", "repetir la consigna"];
+
+// Students who answer with eye gaze can't press "Escuchar": saying «leer consigna» reads the exercise aloud with the
+// Rioplatense ElevenLabs voice (the browser's if it isn't available). The microphone stays on while the exercise is on
+// screen and only reacts to that phrase. If the student also navigates by voice, it's one more command of the bar.
+export function ReadPromptByVoice({ text }: { text: string }) {
+  const [reading, setReading] = useState(false);
+  const read = () => {
+    setReading(true);
+    speakAloud(speechText(text), () => setReading(false));
+  };
+  const voice = useVoicePhrase({ phrases: READ_PROMPT, onHeard: read });
+  useVoiceCommands([{ id: "read-prompt", label: "Leer consigna", phrases: READ_PROMPT, run: read }]);
+  // Changing exercise or leaving stops the reading.
+  useEffect(() => () => stopSpeaking(), []);
+  if (!voice.supported) return null;
+  return (
+    <p
+      role="status"
+      className={`mb-6 flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-lg ${
+        voice.error ? "border-red-700 bg-red-50 text-red-900" : "border-indigo-200 bg-indigo-50 text-indigo-950"
+      }`}
+    >
+      <span aria-hidden="true" className="text-2xl">
+        {reading ? "🔊" : "🎤"}
+      </span>
+      <span>
+        {voice.error ??
+          (reading ? (
+            <span className="font-semibold">Leyendo la consigna…</span>
+          ) : voice.listening ? (
+            <>
+              Decí <span className="font-semibold">«leer consigna»</span> y te la leemos en voz alta.
+            </>
+          ) : (
+            "Prendiendo el micrófono…"
+          ))}
+      </span>
+    </p>
   );
 }
 

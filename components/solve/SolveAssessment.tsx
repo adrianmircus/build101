@@ -19,7 +19,7 @@ import { speechText } from "@/lib/speech/latexSpeech";
 import { speak } from "@/lib/speech/useDictation";
 import type { VoiceCommand } from "@/lib/voice/commands";
 import { DictationAnswer } from "./DictationAnswer";
-import { AudioHelps, ListenButton } from "./Listen";
+import { AudioHelps, ListenButton, ReadPromptByVoice } from "./Listen";
 import { TypedAnswer } from "./TypedAnswer";
 
 // The student solves their version on the platform, one exercise per screen. Everything saves on each change;
@@ -194,6 +194,8 @@ export function SolveAssessment({ studentId, groupId }: { studentId: string; gro
             {!gaze && <ListenButton text={step.text} />}
           </div>
           <MathText text={step.text} className="mt-3 mb-6 text-2xl leading-relaxed" />
+          {/* Eye gaze: instead of the button, saying «leer consigna» reads it aloud. */}
+          {gaze && <ReadPromptByVoice text={step.text} />}
           {/* Reduced reasoning: the statement and each support can be listened to on their own. */}
           {!gaze && (version.supports ?? []).length > 0 && <AudioHelps text={step.text} />}
           <StepAnswer
