@@ -10,6 +10,7 @@ type Recognition = {
   onresult: ((event: { resultIndex: number; results: SpeechRecognitionResultList }) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
+  onstart?: (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;
@@ -136,34 +137,33 @@ export function useDictation({
 
 // Errors after which listening again won't help: without a microphone or permission it stays off.
 const FATAL = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
+// If the browser doesn't know Uruguayan Spanish, the closest ones.
+const FALLBACK_LANGS = ["es-UY", "es-419", "es-ES"];
 
-// Hands-free: keeps listening in the background and calls onHeard each time one of the phrases is said, inside any
-// sentence. For students who can't press a button (eye gaze). Chrome stops a recognition after a while or a silence:
-// it starts again by itself. It yields to any other recognition (a voice command, dictating) and comes back after.
-export function useVoicePhrase({
-  phrases,
-  onHeard,
-  lang = "es-UY",
-}: {
-  phrases: string[];
-  onHeard: () => void;
-  lang?: string;
-}) {
+// Hands-free: keeps listening in the background and calls onFinal with each phrase heard, normalized (lowercase,
+// no accents, numbers as digits). For students who can't press a button (eye gaze). Chrome stops a recognition after
+// a while or a silence: it starts again by itself. It yields to any other recognition (a voice command, dictating) and
+// comes back after. listening is true only once the browser confirms the microphone is on, not while it waits for
+// permission; heard is the last phrase, so the screen can show what it understood.
+// paused: while the page is reading aloud, the microphone hears the speakers. What it hears then is ignored.
+export function useHandsFreeListening({ onFinal, paused = false }: { onFinal: (heard: string) => void; paused?: boolean }) {
   const supported = useSyncExternalStore(noop, () => recognitionConstructor() !== null, () => false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const onHeardRef = useRef(onHeard);
+  const [heard, setHeard] = useState("");
+  const onFinalRef = useRef(onFinal);
+  const pausedRef = useRef(paused);
   useEffect(() => {
-    onHeardRef.current = onHeard;
+    onFinalRef.current = onFinal;
+    pausedRef.current = paused;
   });
-  const key = phrases.map(normalize).join("|");
 
   useEffect(() => {
     const Constructor = recognitionConstructor();
     if (!Constructor) return;
-    const wanted = key.split("|").filter(Boolean);
     let disposed = false;
     let fatal = false;
+    let lang = 0;
     let current: Recognition | null = null;
     let timer = 0;
 
@@ -181,17 +181,28 @@ export function useVoicePhrase({
       // Someone else is listening (a voice command or a dictation): wait for them to finish.
       if (active) return later(1000);
       const r = new Constructor!();
-      r.lang = lang;
+      r.lang = FALLBACK_LANGS[lang];
       r.continuous = true;
       r.interimResults = false;
+      // The microphone is really on: until then the browser may be waiting for permission.
+      r.onstart = () => {
+        setError(null);
+        setListening(true);
+      };
       r.onresult = (event) => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (!event.results[i].isFinal) continue;
-          const heard = ` ${normalize(event.results[i][0].transcript)} `;
-          if (wanted.some((phrase) => heard.includes(` ${phrase} `))) onHeardRef.current();
+          if (!event.results[i].isFinal || pausedRef.current) continue;
+          const text = normalize(event.results[i][0].transcript);
+          if (!text) continue;
+          setHeard(text);
+          onFinalRef.current(text);
         }
       };
       r.onerror = (event) => {
+        if (event.error === "language-not-supported" && lang < FALLBACK_LANGS.length - 1) {
+          lang++;
+          return;
+        }
         if (!FATAL.has(event.error)) return;
         fatal = true;
         setError(ERRORS[event.error]);
@@ -213,8 +224,6 @@ export function useVoicePhrase({
       };
       try {
         r.start();
-        setError(null);
-        setListening(true);
       } catch {
         release(r);
         later(1000);
@@ -233,9 +242,9 @@ export function useVoicePhrase({
         if (active?.recognition === r) active = null;
       }
     };
-  }, [key, lang]);
+  }, []);
 
-  return { supported, listening, error };
+  return { supported, listening, error, heard };
 }
 
 // Reads a text aloud with the Rioplatense ElevenLabs voice, falling back to the browser's voice.

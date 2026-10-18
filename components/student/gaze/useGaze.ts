@@ -29,6 +29,22 @@ const ERRORS: Record<string, string> = {
   NotReadableError: "La cámara la está usando otro programa. Cerralo y probá de nuevo.",
 };
 
+// The camera, asking for the microphone in the same prompt: «leer consigna» listens by voice, and a student who
+// can't press buttons can't answer a second prompt later. Only the video stays on; the microphone is used by the
+// browser's speech recognition. Without a microphone (or if it's refused) the camera still works.
+async function cameraWithMicPermission(): Promise<MediaStream> {
+  try {
+    const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
+    media.getAudioTracks().forEach((t) => {
+      t.stop();
+      media.removeTrack(t);
+    });
+    return media;
+  } catch {
+    return navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+  }
+}
+
 async function createLandmarker(): Promise<FaceLandmarker> {
   const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
   const fileset = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
@@ -81,7 +97,7 @@ export function useGaze() {
     running.current = handle;
 
     try {
-      media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      media = await cameraWithMicPermission();
       landmarker = await createLandmarker();
       if (cancelled) {
         handle.stop();
