@@ -16,7 +16,12 @@ cp .env.example .env.local   # completar las claves
 npm run dev                  # http://localhost:3000
 ```
 
-Cuentas de demo (login simulado): profesor `profe` / `demo123`; estudiantes `ana`, `bruno`, `camila`, `facundo`, `belen` con la misma contraseña.
+Cuentas de demo (login simulado), todas con contraseña `demo123`:
+- Profesor: `profe`.
+- «Grupo demo», uno por cada forma de responder: `lucas` (TDAH, escribe), `paula` (Motriz, responde con la mirada) y `tomas` (Disgrafía, dicta).
+- Otros grupos: `ana`, `bruno`, `camila`, `facundo` (6.º A) y `belen` (6.º B).
+
+Si el navegador ya tenía datos guardados, tocá «Restaurar datos de ejemplo» (abajo en la pantalla del profe) para que aparezca el «Grupo demo».
 
 | Variable | Para qué |
 |---|---|
