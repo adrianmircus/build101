@@ -75,23 +75,19 @@ export async function generateVersion(input: GenerationRequest): Promise<Generat
   const voice = usesVoice(profiles);
 
   // Profiles without data are not adapted: the code decides it, not the model, so we don't invent pedagogy.
+  // Motor has no document by design: its adaptation is the multiple choice for eye gaze, so there's nothing to warn about.
   const notices: Change[] = profiles
-    .filter((id) => !withData.some((p) => p.id === id))
+    .filter((id) => id !== GAZE_PROFILE && !withData.some((p) => p.id === id))
     .map((id) =>
-      id === GAZE_PROFILE
+      id === VOICE_PROFILE
         ? {
             what: `Sin adaptaciones extra para ${profileLabel(id)}`,
-            why: "Se pasó a opción múltiple para responder con la mirada, pero todavía no hay datos cargados para otras adaptaciones de ese perfil.",
+            why: "El estudiante responde dictando en la plataforma, pero todavía no hay datos cargados para otras adaptaciones de ese perfil.",
           }
-        : id === VOICE_PROFILE
-          ? {
-              what: `Sin adaptaciones extra para ${profileLabel(id)}`,
-              why: "El estudiante responde dictando en la plataforma, pero todavía no hay datos cargados para otras adaptaciones de ese perfil.",
-            }
-          : {
-              what: `Sin adaptaciones para ${profileLabel(id)}`,
-              why: `Todavía no hay datos cargados para ${profileLabel(id)}, así que no se aplicaron adaptaciones para ese perfil.`,
-            },
+        : {
+            what: `Sin adaptaciones para ${profileLabel(id)}`,
+            why: `Todavía no hay datos cargados para ${profileLabel(id)}, así que no se aplicaron adaptaciones para ese perfil.`,
+          },
     );
 
   if (omitted.length > 0) {
