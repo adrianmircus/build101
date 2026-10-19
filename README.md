@@ -1,4 +1,4 @@
-# Tiza.ai
+# Tiza.ai https://tiza-ai.vercel.app/
 
 Prácticos y parciales de matemática de bachillerato adaptados a cada estudiante del grupo. El profesor sube el práctico que ya tiene y la IA arma una versión para cada combinación de perfiles del grupo: TDAH, dislexia, TEA, discapacidad motriz (responde con la mirada) y disgrafía (responde dictando). El profesor revisa y aprueba cada versión, los estudiantes la resuelven en la plataforma y el profesor corrige.
 
