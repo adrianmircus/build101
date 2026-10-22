@@ -55,6 +55,7 @@ export function GazeSession({ children, autoStart = false }: { children: ReactNo
   if (phase === "intro") {
     return (
       <section
+        data-tour="gaze-intro"
         aria-labelledby="gaze-intro"
         className="mx-auto mt-6 w-[calc(100%-2rem)] max-w-4xl rounded-2xl border-2 border-indigo-700 bg-white p-6 sm:p-8"
       >

@@ -8,6 +8,13 @@ export function proxy(request: NextRequest) {
   // APIs answer 401 instead of redirecting. Dictation (/api/answers), voice commands (/api/voice) and reading aloud
   // (/api/tts) are used by students too; the rest is the teacher's.
   if (pathname.startsWith("/api/")) {
+    // Every API calls the AI (or ElevenLabs): anyone can enter the demo from the landing, so it never spends.
+    if (session?.demo) {
+      return NextResponse.json(
+        { error: "En la demo no se usa la IA en vivo. Ingresá con tu cuenta para probarla." },
+        { status: 403 },
+      );
+    }
     const anyRole = pathname.startsWith("/api/answers/") || pathname.startsWith("/api/voice/") || pathname === "/api/tts";
     const allowed = anyRole ? session !== null : session?.role === "teacher";
     if (!allowed) return NextResponse.json({ error: "Tu sesión venció. Volvé a ingresar." }, { status: 401 });

@@ -4,6 +4,7 @@
 // Only a confirmed syllabus travels to the agent.
 import { useSyncExternalStore } from "react";
 import type { SyllabusForAI, SyllabusUnit } from "@/lib/contract";
+import { isDemo } from "@/lib/demo/mode";
 
 export type Unit = {
   id: string;
@@ -24,12 +25,16 @@ const KEY = "build101:syllabus:v3";
 // Starts with no units: they come from the official syllabus PDF, we don't invent them.
 const EMPTY: Syllabus = { subject: "Matemática", course: "6.º de bachillerato", units: [], confirmed: false };
 
-let cache: Syllabus | null = null;
+// The demo from the landing keeps its own syllabus, like its groups (lib/groups/store.ts).
+const DEMO_KEY = "build101:syllabus:demo";
+const currentKey = () => (isDemo() ? DEMO_KEY : KEY);
+
+let cache: { key: string; syllabus: Syllabus } | null = null;
 const listeners = new Set<() => void>();
 
-function load(): Syllabus {
+function load(key: string): Syllabus {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(key);
     if (raw) return JSON.parse(raw) as Syllabus;
   } catch {
     // localStorage blocked or corrupt data: start empty.
@@ -38,7 +43,9 @@ function load(): Syllabus {
 }
 
 function read(): Syllabus {
-  return (cache ??= load());
+  const key = currentKey();
+  if (cache?.key !== key) cache = { key, syllabus: load(key) };
+  return cache.syllabus;
 }
 
 function subscribe(listener: () => void) {
@@ -49,9 +56,9 @@ function subscribe(listener: () => void) {
 }
 
 function save(update: (syllabus: Syllabus) => Syllabus) {
-  cache = update(read());
+  cache = { key: currentKey(), syllabus: update(read()) };
   try {
-    localStorage.setItem(KEY, JSON.stringify(cache));
+    localStorage.setItem(cache.key, JSON.stringify(cache.syllabus));
   } catch {
     // Without localStorage the changes stay in memory only.
   }

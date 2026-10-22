@@ -66,6 +66,25 @@ li {
   animation: none;
 }
 
+/* The demo tour (components/demo) stays as it is while the page changes underneath: the dark layer and the
+   highlight don't fade or slide with the page. The bar goes on top of everything, as outside a transition. */
+::view-transition-group(demo-tour) {
+  animation: none;
+  z-index: 101;
+}
+::view-transition-group(demo-bar) {
+  animation: none;
+  z-index: 102;
+}
+::view-transition-old(demo-tour),
+::view-transition-old(demo-bar) {
+  display: none;
+}
+::view-transition-new(demo-tour),
+::view-transition-new(demo-bar) {
+  animation: none;
+}
+
 /* Between sections: soft fade with a small rise. */
 ::view-transition-old(.page-fade) {
   animation: 150ms ease-in both vt-fade reverse;

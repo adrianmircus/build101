@@ -64,7 +64,12 @@ export function GroupDetail() {
           </p>
           <ProfileSummary students={group.students} />
         </div>
-        <Link href={`/grupos/${group.id}/evaluaciones/nueva`} transitionTypes={FORWARD} className={primaryButton}>
+        <Link
+          href={`/grupos/${group.id}/evaluaciones/nueva`}
+          transitionTypes={FORWARD}
+          data-tour="new-assessment"
+          className={primaryButton}
+        >
           Nuevo práctico o parcial
         </Link>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { isDemo } from "@/lib/demo/mode";
 import { useData } from "@/lib/groups/store";
 import { usesGaze } from "@/lib/profiles";
 import { GazeSession } from "./GazeSession";
@@ -11,5 +12,6 @@ export function StudentGaze({ studentId, groupId, children }: { studentId: strin
   const data = useData();
   const student = data?.groups.find((g) => g.id === groupId)?.students.find((s) => s.id === studentId);
   if (!student || !usesGaze(student.profiles)) return children;
-  return <GazeSession autoStart>{children}</GazeSession>;
+  // In the demo a visitor plays Paula: they choose whether to turn the camera on, it doesn't ask by itself.
+  return <GazeSession autoStart={!isDemo()}>{children}</GazeSession>;
 }

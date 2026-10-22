@@ -3,18 +3,23 @@
 import { useSyncExternalStore } from "react";
 import type { ProfileId } from "@/lib/profiles";
 import type { Support } from "@/lib/supports";
+import { isDemo } from "@/lib/demo/mode";
 import { demoGroup, seed } from "./seed";
 import type { OptionId } from "@/lib/contract";
 import type { Answer, Assessment, Data, ExerciseResult, Grade, Group, GroupAnalysis, Submission, Version } from "./types";
 
 const KEY = "build101:data:v2";
+// The demo from the landing keeps its own data: entering it never touches what the teacher created.
+const DEMO_KEY = "build101:data:demo";
+const currentKey = () => (isDemo() ? DEMO_KEY : KEY);
 
-let cache: Data | null = null;
+// Tied to its key: if the demo flag changes (entering or leaving the demo), the next read loads the other data.
+let cache: { key: string; data: Data } | null = null;
 const listeners = new Set<() => void>();
 
-function load(): Data {
+function load(key: string): Data {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       const data = JSON.parse(raw) as Data;
       // After a reload no generation is running: anything left halfway goes back to pending.
@@ -24,7 +29,7 @@ function load(): Data {
       // Data saved before the demo group existed: it's added first, without touching anything else.
       if (!data.groups.some((g) => g.id === "demo")) {
         data.groups.unshift(demoGroup());
-        localStorage.setItem(KEY, JSON.stringify(data));
+        localStorage.setItem(key, JSON.stringify(data));
       }
       return data;
     }
@@ -35,7 +40,9 @@ function load(): Data {
 }
 
 function read(): Data {
-  return (cache ??= load());
+  const key = currentKey();
+  if (cache?.key !== key) cache = { key, data: load(key) };
+  return cache.data;
 }
 
 function subscribe(listener: () => void) {
@@ -46,9 +53,9 @@ function subscribe(listener: () => void) {
 }
 
 function save(update: (data: Data) => Data) {
-  cache = update(read());
+  cache = { key: currentKey(), data: update(read()) };
   try {
-    localStorage.setItem(KEY, JSON.stringify(cache));
+    localStorage.setItem(cache.key, JSON.stringify(cache.data));
   } catch {
     // Without localStorage the changes stay in memory only.
   }

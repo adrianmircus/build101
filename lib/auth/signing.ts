@@ -4,7 +4,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export type Role = "teacher" | "student";
 
 // Only identifies the person. The student's profile never travels in the cookie.
-export type Session = { id: string; role: Role };
+// demo: entered from "Probar la demo" on the landing; it can't call the AI (see proxy.ts).
+export type Session = { id: string; role: Role; demo?: boolean };
 
 export const SESSION_COOKIE = "session";
 
@@ -26,7 +27,12 @@ function hmac(data: string) {
 }
 
 export function sign(session: Session): string {
-  const payload = { id: session.id, role: session.role, exp: Date.now() + SESSION_MAX_AGE * 1000 };
+  const payload = {
+    id: session.id,
+    role: session.role,
+    ...(session.demo && { demo: true }),
+    exp: Date.now() + SESSION_MAX_AGE * 1000,
+  };
   const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${data}.${hmac(data)}`;
 }
@@ -39,10 +45,10 @@ export function verify(value: string | undefined): Session | null {
   const received = Buffer.from(signature);
   if (expected.length !== received.length || !timingSafeEqual(expected, received)) return null;
   try {
-    const { id, role, exp } = JSON.parse(Buffer.from(data, "base64url").toString());
+    const { id, role, demo, exp } = JSON.parse(Buffer.from(data, "base64url").toString());
     // Without an expiry (cookies from before it existed) or past it: log in again.
     if (typeof exp !== "number" || exp <= Date.now()) return null;
-    return { id, role } as Session;
+    return (demo === true ? { id, role, demo } : { id, role }) as Session;
   } catch {
     return null;
   }

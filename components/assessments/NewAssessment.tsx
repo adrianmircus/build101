@@ -10,6 +10,8 @@ import { FORWARD } from "@/components/ui/transitions";
 import type { AssessmentType } from "@/lib/contract";
 import { generatePending } from "@/lib/groups/generate";
 import { readExercisesPdf } from "@/lib/groups/readPdf";
+import { DEMO_EXAMPLE, DEMO_GROUP_ID } from "@/lib/demo/example";
+import { isDemo } from "@/lib/demo/mode";
 import { createAssessment, useData } from "@/lib/groups/store";
 import { groupByProfiles, topInterests, TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
 import { ACCEPTED, uploadIssue } from "@/lib/adapter/upload";
@@ -36,12 +38,14 @@ export function NewAssessment() {
   const router = useRouter();
   const data = useData();
   const syllabus = useSyllabus();
-  const [type, setType] = useState<AssessmentType>("worksheet");
-  const [topic, setTopic] = useState("");
-  const [original, setOriginal] = useState("");
+  // In the demo, the demo group's worksheet comes loaded and can't be edited: its versions are precomputed.
+  const [example] = useState(() => (isDemo() && groupId === DEMO_GROUP_ID ? DEMO_EXAMPLE : null));
+  const [type, setType] = useState<AssessmentType>(example?.type ?? "worksheet");
+  const [topic, setTopic] = useState(example?.topic ?? "");
+  const [original, setOriginal] = useState(example?.original ?? "");
   const [useInterests, setUseInterests] = useState(true);
   // By default the teacher uploads the PDF they already have; typing the exercises is the alternative.
-  const [source, setSource] = useState<"pdf" | "text">("pdf");
+  const [source, setSource] = useState<"pdf" | "text">(example ? "text" : "pdf");
   const [pdf, setPdf] = useState<PdfState>({ status: "idle" });
   // "Menos ítems": by version, the exercise numbers the teacher left out. Empty: the version keeps them all.
   const [dropped, setDropped] = useState<Record<string, number[]>>({});
@@ -129,7 +133,12 @@ export function NewAssessment() {
             router.push(`/grupos/${group.id}/evaluaciones/${id}`, { transitionTypes: FORWARD });
           }}
         >
-          <fieldset>
+          {example && (
+            <p className="rounded-lg border-2 border-indigo-200 bg-indigo-50 px-4 py-3 text-lg text-indigo-950">
+              En la demo usamos un práctico de ejemplo, así que no se puede editar.
+            </p>
+          )}
+          <fieldset disabled={!!example}>
             <legend className="mb-2 text-lg font-semibold">Tipo</legend>
             <div className="flex gap-3">
               {(Object.keys(TYPE_LABEL) as AssessmentType[]).map((t) => (
@@ -157,13 +166,14 @@ export function NewAssessment() {
               placeholder="Ej.: Límites de funciones"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
+              readOnly={!!example}
               required
             />
           </div>
 
           <fieldset>
             <legend className="mb-2 text-lg font-semibold">Ejercicios originales</legend>
-            <div className="flex flex-wrap gap-3">
+            <div className={example ? "hidden" : "flex flex-wrap gap-3"}>
               <label className={chip(source === "pdf")}>
                 <input
                   type="radio"
@@ -250,12 +260,14 @@ export function NewAssessment() {
             )}
 
             {(source === "text" || pdf.status === "done") && (
-              <div className="mt-4">
+              <div data-tour="original" className="mt-4">
                 <label htmlFor="original" className={source === "pdf" ? "mb-1 block text-lg font-semibold" : "sr-only"}>
                   {source === "pdf" ? "Lo que leyó la IA" : "Ejercicios originales"}
                 </label>
                 <p id="original-help" className="mb-2 text-base text-slate-700">
-                  {source === "pdf"
+                  {example
+                    ? "El práctico de ejemplo de la demo: tres límites para 6.º."
+                    : source === "pdf"
                     ? "Revisá que la IA haya leído bien los ejercicios. Podés corregirlos acá: esto es lo que se adapta."
                     : "Pegalo como lo das siempre. Las fórmulas pueden ir en LaTeX."}
                 </p>
@@ -265,6 +277,7 @@ export function NewAssessment() {
                   aria-describedby="original-help"
                   value={original}
                   onChange={(e) => setOriginal(e.target.value)}
+                  readOnly={!!example}
                   required
                 />
               </div>
@@ -277,6 +290,7 @@ export function NewAssessment() {
                 type="checkbox"
                 className="mt-1.5 size-5 shrink-0 accent-indigo-700"
                 checked={useInterests}
+                disabled={!!example}
                 onChange={(e) => setUseInterests(e.target.checked)}
               />
               <span>
@@ -291,6 +305,7 @@ export function NewAssessment() {
           <div>
             <button
               type="submit"
+              data-tour="generate"
               className={primaryButton}
               disabled={versions.length === 0 || waitingPdf || submitting}
               aria-describedby={waitingPdf ? "pdf-needed" : undefined}
@@ -314,7 +329,7 @@ export function NewAssessment() {
           </div>
         </form>
 
-        <aside aria-labelledby="versions-heading" className="h-fit rounded-2xl border-2 border-slate-200 bg-white p-6">
+        <aside data-tour="versions-plan" aria-labelledby="versions-heading" className="h-fit rounded-2xl border-2 border-slate-200 bg-white p-6">
           <h2 id="versions-heading" className="text-2xl font-bold">
             Se van a generar {versions.length} {versions.length === 1 ? "versión" : "versiones"}
           </h2>
@@ -337,7 +352,7 @@ export function NewAssessment() {
                       Dificultad modificada: {v.supports.map(supportLabel).join(", ").toLowerCase()}
                     </p>
                   )}
-                  {!isOriginal(v) && exerciseNumbers.length > 1 && (
+                  {!isOriginal(v) && !example && exerciseNumbers.length > 1 && (
                     <LessItems
                       label={versionLabel(v.profiles, v.supports)}
                       numbers={exerciseNumbers}

@@ -28,16 +28,26 @@ export default function Home() {
             Cargás tu práctico una vez y Tiza.ai arma una versión para quienes tienen TDAH, dislexia o TEA. Vos aprobás
             cada una.
           </p>
-          <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
+          <div className="mt-10 flex flex-wrap items-start gap-x-8 gap-y-4">
+            <div>
+              {/* A plain <a>: /demo sets the demo's cookies and the full reload makes the app pick its own data. */}
+              <a
+                href="/demo"
+                className="focus-on-dark inline-flex min-h-11 items-center justify-center rounded-lg bg-amber-300 px-7 py-4 text-xl font-bold text-indigo-950 transition-colors hover:bg-amber-200 active:translate-y-px"
+              >
+                Probar la demo
+              </a>
+              <p className="mt-2 text-base text-indigo-100">Sin cuenta · 3 minutos</p>
+            </div>
             <Link
               href="/ingresar/profesor"
-              className="focus-on-dark inline-flex min-h-11 items-center justify-center rounded-lg bg-amber-300 px-7 py-4 text-xl font-bold text-indigo-950 transition-colors hover:bg-amber-200 active:translate-y-px"
+              className="focus-on-dark inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-white px-7 py-4 text-xl font-bold text-white transition-colors hover:bg-white/10 active:translate-y-px"
             >
               Soy profesor
             </Link>
             <Link
               href="/ingresar/estudiante"
-              className="focus-on-dark inline-flex min-h-11 items-center rounded-md text-xl font-semibold text-white underline underline-offset-4 hover:text-amber-200"
+              className="focus-on-dark inline-flex min-h-16 items-center rounded-md text-xl font-semibold text-white underline underline-offset-4 hover:text-amber-200"
             >
               Soy estudiante
             </Link>

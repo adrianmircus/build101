@@ -9,6 +9,8 @@ import { MathText } from "@/components/ui/MathText";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
 import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
 import { TAB_SLIDE } from "@/components/ui/transitions";
+import { DEMO_EXAMPLE } from "@/lib/demo/example";
+import { isDemo } from "@/lib/demo/mode";
 import { generatePending } from "@/lib/groups/generate";
 import { checkNumbers, issueText } from "@/lib/groups/numberCheck";
 import { updateVersion, useData } from "@/lib/groups/store";
@@ -107,12 +109,19 @@ export function AssessmentDetail() {
           </p>
         </div>
 
+        {isDemo() && assessment.original === DEMO_EXAMPLE.original && (
+          // The demo never calls the AI: say where these versions come from.
+          <p className="mt-6 rounded-lg border-2 border-indigo-200 bg-indigo-50 px-4 py-3 text-lg text-indigo-950">
+            Demo: estas versiones las generó antes el agente de Tiza.ai con este mismo práctico.
+          </p>
+        )}
+
         {assessment.versions.some((v) => v.status === "pending" || v.status === "generating") && (
           // Real progress: each version arrives on its own.
-          <div className="mt-6">
+          <div data-tour="generation" className="mt-6">
             <AiProgress
               title={`Generando ${assessment.versions.length} ${assessment.versions.length === 1 ? "versión" : "versiones"}`}
-              seconds={60}
+              seconds={isDemo() ? 6 : 60}
               rows={assessment.versions.map((v) => ({
                 label: versionLabel(v.profiles, v.supports),
                 status:
@@ -132,6 +141,7 @@ export function AssessmentDetail() {
               <li key={[...v.profiles, ...(v.supports ?? [])].join("+") || "base"}>
                 <button
                   type="button"
+                  data-tour={`version-${[...v.profiles, ...(v.supports ?? [])].join("+") || "base"}`}
                   aria-current={active ? "true" : undefined}
                   onClick={() => {
                     if (i === index) return;
@@ -255,7 +265,7 @@ export function AssessmentDetail() {
 
             {version.status === "ready" && version.questions && version.questions.length > 0 && (
               // What the student will answer with eye gaze. The key is only shown here, so the teacher can check it.
-              <section aria-labelledby="questions-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
+              <section data-tour="gaze-questions" aria-labelledby="questions-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
                 <h3 id="questions-heading" className="text-xl font-bold">
                   Opción múltiple para responder con la mirada
                 </h3>
@@ -324,7 +334,7 @@ export function AssessmentDetail() {
             )}
 
             {version.status === "ready" && (
-              <section aria-labelledby="changes-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
+              <section data-tour="changes" aria-labelledby="changes-heading" className="mt-6 rounded-2xl border-2 border-slate-200 bg-white p-4 sm:p-6">
                 <h3 id="changes-heading" className="mb-3 text-xl font-bold">
                   Qué cambió y por qué
                 </h3>
@@ -347,6 +357,7 @@ export function AssessmentDetail() {
             {version.status === "ready" && (
               // The teacher's review: only approved versions reach the students. It changes color with the state so it reads from far away.
               <section
+                data-tour="approve"
                 aria-labelledby="review-heading"
                 className={`mt-6 rounded-2xl border-2 p-4 sm:p-6 ${
                   editing

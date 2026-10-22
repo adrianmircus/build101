@@ -11,6 +11,7 @@ export function GroupCard({ group, latest }: { group: Group; latest?: Assessment
     <Link
       href={`/grupos/${group.id}`}
       transitionTypes={FORWARD}
+      data-tour={`group-${group.id}`}
       className={`${card} flex h-full flex-col gap-4 transition-colors hover:border-indigo-700 hover:bg-indigo-50/40`}
     >
       <div>

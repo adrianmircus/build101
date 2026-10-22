@@ -1,4 +1,6 @@
+import demoFixture from "@/data/demo/limites.json";
 import type { GenerationRequest, GenerationResponse, GraphSpec } from "@/lib/contract";
+import { isDemo } from "@/lib/demo/mode";
 import { usesGaze } from "@/lib/profiles";
 import { syllabusForAI } from "@/lib/syllabus/store";
 import { getData, updateVersion } from "./store";
@@ -10,6 +12,7 @@ import { versionLabel } from "./versions";
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
 
 async function requestVersion(request: GenerationRequest): Promise<GenerationResponse> {
+  if (isDemo()) return precomputed(request);
   if (USE_MOCK) return mock(request);
   const response = await fetch("/api/generate", {
     method: "POST",
@@ -21,6 +24,21 @@ async function requestVersion(request: GenerationRequest): Promise<GenerationRes
     throw new Error(json?.error ?? `La IA respondió con un error (${response.status}). Reintentá.`);
   }
   return response.json();
+}
+
+// When each precomputed version "arrives", in ms: one by one, like a real generation.
+const DEMO_DELAY: Record<string, number> = { adhd: 2500, dysgraphia: 4000, motor: 5500 };
+
+// The demo doesn't call the AI: the example worksheet answers with what the real agent generated for it
+// (scripts/demo-fixture.ts). Anything else fails with the same message the API gives a demo session.
+async function precomputed(request: GenerationRequest): Promise<GenerationResponse> {
+  const key = request.profiles.join("+");
+  const version = (demoFixture.versions as Record<string, GenerationResponse>)[key];
+  await new Promise((resolve) => setTimeout(resolve, DEMO_DELAY[key] ?? 3000));
+  if (request.original !== demoFixture.original || !version) {
+    throw new Error("En la demo no se usa la IA en vivo. Ingresá con tu cuenta para probarla.");
+  }
+  return version;
 }
 
 // Does not invent adaptations: it only marks where each profile agent's output will go.

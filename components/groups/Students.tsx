@@ -21,7 +21,7 @@ export function Students({ group }: { group: Group }) {
           Este grupo todavía no tiene estudiantes. Agregá el primero arriba.
         </p>
       ) : (
-        <ul className="divide-y-2 divide-slate-100 rounded-2xl border-2 border-slate-200 bg-white">
+        <ul data-tour="group-profiles" className="divide-y-2 divide-slate-100 rounded-2xl border-2 border-slate-200 bg-white">
           {group.students.map((student) => (
             <StudentRow key={student.id} group={group} student={student} suggestions={suggestions} />
           ))}
