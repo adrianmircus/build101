@@ -24,20 +24,20 @@ Qué cambia al escribir código:
 
 ## Stack
 - Next.js 16 (App Router, Cache Components, Turbopack), React 19, TypeScript y Tailwind 4. Esta versión de Next.js trae cambios: ante la duda, revisar `node_modules/next/dist/docs/`.
-- IA: API de Claude con `@anthropic-ai/sdk`. El modelo principal es `claude-opus-5-5` y `claude-sonnet-5-5` es el modelo rápido del adaptador. Usa salida estructurada con zod y respaldo por OpenRouter (`lib/agent/client.ts`). Ante cualquier duda de la API, usar la skill `claude-api`; no adivinar parámetros.
+- IA: API de Claude con `@anthropic-ai/sdk` y el modelo `claude-opus-5-5`. Usa salida estructurada con zod y respaldo por OpenRouter (`lib/agent/client.ts`). Ante cualquier duda de la API, usar la skill `claude-api`; no adivinar parámetros.
 - Voz: Web Speech API para dictar y ElevenLabs para leer en voz alta. Mirada: MediaPipe, 100 % en el navegador.
 
 ## Estructura y dueños
 | Área | Carpetas |
 |---|---|
 | Front | `app/` (páginas), `components/` |
-| IA y backend | `app/api/`, `lib/agent/`, `lib/adapter/`, `data/` |
+| IA y backend | `app/api/`, `lib/agent/`, `data/` |
 | Contrato front↔IA | `lib/contract.ts`: es **compartido**. Los cambios son aditivos y se avisan al otro lado. |
 | Producto | `docs/` |
 
 `docs/PLAN.md` y `docs/IDEAS.md` son del hackathon: sirven como historia, no como plan actual.
 
 ## Reglas
-- Antes de pushear: `npx tsc --noEmit && npm run lint`, más `npm run test:adapter` si se toca `lib/adapter/`.
+- Antes de pushear: `npx tsc --noEmit && npm run lint && npm test`.
 - No romper los flujos principales (el profe sube y adapta, aprueba, el estudiante resuelve, el profe corrige) ni la demo guiada. Se puede refactorizar, en pasos chicos y verificados.
 - Ningún secreto en el código: las claves van en variables de entorno.

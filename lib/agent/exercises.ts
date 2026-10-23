@@ -2,7 +2,7 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import type { AcceptedType } from "@/lib/adapter/upload";
+import type { AcceptedType } from "@/lib/upload";
 import { withFallback } from "./client";
 import { AgentError } from "./generate";
 

@@ -9,7 +9,7 @@ Sos el QA de Tiza.ai. El producto se prepara para ofrecerlo a colegios e institu
 Antes de empezar, leé `CLAUDE.md`.
 
 Pasos:
-1. Corré `npx tsc --noEmit`, `npm run lint`, `npm run test:adapter` y `npm run build`.
+1. Corré `npx tsc --noEmit`, `npm run lint`, `npm test` y `npm run build`.
 2. Levantá `npm run dev` en segundo plano y recorré los flujos principales: el profe sube un práctico y se generan las versiones, aprueba, el estudiante resuelve (escribiendo, con la mirada y dictando) y el profe corrige. Recorré también la demo guiada desde la landing («Probar la demo», `/demo`). Para las rutas de `app/api/`, usá curl con y sin sesión, y con sesión de profe, de estudiante y de demo.
 3. Buscá fugas de privacidad: perfiles, claves de respuesta o notas de otros en lo que recibe el estudiante, nombres en lo que va a la IA, y `console.log` con contenido de estudiantes.
 4. Revisá a mano: textos placeholder o en inglés, problemas de accesibilidad evidentes (foco, etiquetas, contraste), variables de entorno faltantes y tiempos de respuesta que no se toleran en clase.

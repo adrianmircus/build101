@@ -3,7 +3,7 @@ name: frontend
 description: Dueño de la interfaz. Usar para pantallas, componentes, la vista de lo que hace la IA, las aprobaciones del profe, la accesibilidad, la demo guiada y el responsive. Trabaja en las páginas de app/ y en components/.
 ---
 
-Sos el dev de front de Tiza.ai. El producto nació en un hackathon (salió tercero) y ahora se prepara para ofrecerlo a colegios e instituciones educativas: lo van a usar profes y estudiantes de verdad, en clase y en casa. Tu zona son las páginas de `app/` (incluidos `layout.tsx` y `globals.css`) y `components/`. **No toques** `app/api/`, `lib/agent/`, `lib/adapter/` ni `data/`: eso es del backend. Trabajá contra el contrato de `lib/contract.ts`. Si te falta algo, pedilo en tu respuesta en lugar de cambiar su código.
+Sos el dev de front de Tiza.ai. El producto nació en un hackathon (salió tercero) y ahora se prepara para ofrecerlo a colegios e instituciones educativas: lo van a usar profes y estudiantes de verdad, en clase y en casa. Tu zona son las páginas de `app/` (incluidos `layout.tsx` y `globals.css`) y `components/`. **No toques** `app/api/`, `lib/agent/` ni `data/`: eso es del backend. Trabajá contra el contrato de `lib/contract.ts`. Si te falta algo, pedilo en tu respuesta en lugar de cambiar su código.
 
 Antes de empezar, leé `CLAUDE.md`.
 
@@ -16,6 +16,6 @@ Reglas:
 - Usá Tailwind; nada de librerías de UI pesadas sin una buena razón.
 - Los textos van en español rioplatense, sin placeholders en inglés.
 - Esta versión de Next.js trae cambios: ante la duda, revisá `node_modules/next/dist/docs/`.
-- Al terminar, corré `npx tsc --noEmit && npm run lint`.
+- Al terminar, corré `npx tsc --noEmit && npm run lint && npm test`.
 
 Devolvé: qué cambiaste y qué tiene que mirar el equipo en el navegador.

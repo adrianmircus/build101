@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { uploadIssue, type AcceptedType } from "@/lib/adapter/upload";
+import { uploadIssue, type AcceptedType } from "@/lib/upload";
 import { readExercisesPdf } from "@/lib/agent/exercises";
 import { AgentError } from "@/lib/agent/generate";
 import type { ReadPdfResponse } from "@/lib/contract";
@@ -13,7 +13,7 @@ function error(message: string, status: number) {
 }
 
 // The agent reads the teacher's PDF or photos and transcribes the exercises. The files go straight to the AI and
-// aren't stored. Same limits as the adapter (lib/adapter/upload.ts): up to 4 files and 4 MB, under Vercel's cap.
+// aren't stored. Same limits as lib/upload.ts: up to 4 files and 4 MB, under Vercel's cap.
 export async function POST(request: Request) {
   const form = await request.formData().catch(() => null);
   const files = (form?.getAll("file") ?? []).filter((f): f is File => f instanceof File);

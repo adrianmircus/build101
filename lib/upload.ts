@@ -1,4 +1,4 @@
-// Archivos que acepta /api/adapt. Vercel corta con 413 los pedidos de más de 4,5 MB antes de que lleguen a la ruta:
+// Archivos que el profe puede subir (/api/assessments/read-pdf). Vercel corta con 413 los pedidos de más de 4,5 MB antes de que lleguen a la ruta:
 // con 4 MB de archivos queda margen para el resto del formulario. Sin dependencias: sirve también en el navegador.
 export const ACCEPTED = ["application/pdf", "image/jpeg", "image/png", "image/webp"] as const;
 export type AcceptedType = (typeof ACCEPTED)[number];

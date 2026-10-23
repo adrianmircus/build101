@@ -12,15 +12,6 @@ const ANTHROPIC_MODEL = "claude-opus-5-5";
 const HAS_ANTHROPIC = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 const ONLY_OPENROUTER = Boolean(OPENROUTER_KEY) && !HAS_ANTHROPIC;
 
-export const MODEL = ONLY_OPENROUTER ? OPENROUTER_MODEL : ANTHROPIC_MODEL;
-
-// Fast model for long, bounded tasks (adapting an already-read worksheet, setting up a problem): it writes several
-// times faster than Opus at half the cost. What matters (the math not changing) is checked by the verifier.
-// Same provider as getClient(), which it is used with.
-export const FAST_MODEL = ONLY_OPENROUTER
-  ? process.env.OPENROUTER_FAST_MODEL || "anthropic/claude-sonnet-5.5"
-  : "claude-sonnet-5-5";
-
 // Server-side refusal fallback: it only exists on Anthropic's API. OpenRouter rejects the `fallbacks` field with a 400.
 const DIRECT_EXTRA = { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
 
@@ -36,7 +27,7 @@ function getOpenRouter(): Anthropic | null {
   return (openRouter ??= new Anthropic({ baseURL: "https://openrouter.ai/api", authToken: OPENROUTER_KEY, apiKey: null }));
 }
 
-// The main provider, for calls that don't go through withFallback (the Files API upload and the adapter).
+// The main provider, for calls that don't go through withFallback (the Files API upload).
 // Created on the first request, so the build doesn't need any key.
 export function getClient(): Anthropic {
   return ONLY_OPENROUTER ? getOpenRouter()! : getAnthropic();

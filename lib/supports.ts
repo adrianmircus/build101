@@ -1,13 +1,18 @@
-import { ADJUSTMENT_LABELS, REASONING_ADJUSTMENTS } from "@/lib/adapter/adapt-schemas";
-
 // Reasoning supports ("razonamiento disminuido") the teacher turns on for a student in "Datos adicionales".
-// The same four as the adapter (lib/adapter/adapt-schemas.ts). They lower the difficulty, so the version is marked.
-export type Support = (typeof REASONING_ADJUSTMENTS)[number];
+// They lower the difficulty, so the version is marked.
+export const SUPPORTS = ["preguntas_guia", "recordatorio", "ejemplo_resuelto", "numeros_simples"] as const;
 
-export const SUPPORTS: readonly Support[] = REASONING_ADJUSTMENTS;
+export type Support = (typeof SUPPORTS)[number];
+
+const LABELS: Record<Support, string> = {
+  preguntas_guia: "Preguntas guía paso a paso",
+  recordatorio: "Recordatorio del procedimiento",
+  ejemplo_resuelto: "Ejemplo resuelto con otros números",
+  numeros_simples: "Números más simples en los problemas",
+};
 
 export function supportLabel(support: Support): string {
-  return ADJUSTMENT_LABELS[support];
+  return LABELS[support];
 }
 
 export function isSupport(value: string): value is Support {
