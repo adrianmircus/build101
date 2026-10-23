@@ -46,16 +46,21 @@ function resultsText(request: ResultsAnalysisRequest): string {
     .join("\n\n");
 }
 
-export async function analyzeResults(request: ResultsAnalysisRequest): Promise<ResultsAnalysisResponse> {
-  const response = await withFallback(({ client, model, extra }) =>
-    client.beta.messages.parse({
-      model,
-      ...extra,
-      max_tokens: 8000,
-      output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
-      system: SYSTEM,
-      messages: [{ role: "user", content: `${resultsText(request)}\n\nAnalizá los resultados de este grupo.` }],
-    }),
+export async function analyzeResults(request: ResultsAnalysisRequest, signal?: AbortSignal): Promise<ResultsAnalysisResponse> {
+  const response = await withFallback(
+    ({ client, model, extra, signal }) =>
+      client.beta.messages.parse(
+        {
+          model,
+          ...extra,
+          max_tokens: 8000,
+          output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
+          system: SYSTEM,
+          messages: [{ role: "user", content: `${resultsText(request)}\n\nAnalizá los resultados de este grupo.` }],
+        },
+        { signal },
+      ),
+    { route: "results/analyze", signal },
   );
 
   if (response.stop_reason === "refusal") {

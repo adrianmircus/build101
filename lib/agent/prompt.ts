@@ -82,8 +82,16 @@ export function buildMessage(
     });
   }
 
+  // First what every version of the assessment shares (syllabus and original), cached: the assessment's other versions
+  // are generated right after and read it from the cache. Then what changes per version. The eye-gaze version isn't
+  // cached: its output schema goes in the prefix, so no other version could read it.
+  const kind = request.type === "exam" ? "exam" : "worksheet";
+  const shared: string[] = [];
+  if (request.syllabus) shared.push(syllabusText(request.syllabus));
+  shared.push(`The ${kind} is about "${request.topic}":\n<original>\n${request.original}\n</original>`);
+  blocks.push({ type: "text", text: shared.join("\n\n"), ...(gaze ? {} : { cache_control: { type: "ephemeral" as const } }) });
+
   const parts: string[] = [];
-  if (request.syllabus) parts.push(syllabusText(request.syllabus));
   for (const p of profiles) {
     parts.push(`<profile id="${p.id}" name="${p.fullName}">\n${p.text}\n</profile>`);
   }
@@ -92,7 +100,6 @@ export function buildMessage(
     parts.push(`<interests>\n${interests.map((i) => `- ${i}`).join("\n")}\n</interests>`);
   }
   if (supports.length > 0) parts.push(`<supports>\n${supports.map((s) => `- ${s}`).join("\n")}\n</supports>`);
-  const kind = request.type === "exam" ? "exam" : "worksheet";
   const goals = [
     profiles.length > 0 && `adapt it for a student with: ${profiles.map((p) => p.label).join(" + ")}`,
     interests.length > 0 && "theme its word problems around the students' interests",
@@ -100,8 +107,7 @@ export function buildMessage(
     gaze && "convert it to multiple choice for a student who answers with eye gaze",
     voice && !gaze && "adapt it for a student who answers by dictating",
   ].filter(Boolean);
-  parts.push(`For this ${kind} about "${request.topic}": ${goals.join(", and ")}.`);
-  parts.push(`<original>\n${request.original}\n</original>`);
+  parts.push(`For the ${kind} above: ${goals.join(", and ")}.`);
 
   blocks.push({ type: "text", text: parts.join("\n\n") });
   return blocks;

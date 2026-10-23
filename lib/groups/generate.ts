@@ -11,6 +11,9 @@ import { versionLabel } from "./versions";
 // To connect the real agent: NEXT_PUBLIC_USE_MOCK=false in .env.local.
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
 
+// A bit more than the route's maxDuration (app/api/generate/route.ts): by then the server already gave up.
+const REQUEST_TIMEOUT_MS = 310_000;
+
 async function requestVersion(request: GenerationRequest): Promise<GenerationResponse> {
   if (isDemo()) return precomputed(request);
   if (USE_MOCK) return mock(request);
@@ -18,6 +21,10 @@ async function requestVersion(request: GenerationRequest): Promise<GenerationRes
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  }).catch((e: unknown) => {
+    if (e instanceof DOMException && e.name === "TimeoutError") throw new Error("La IA tardó demasiado en responder. Reintentá.");
+    throw e;
   });
   if (!response.ok) {
     const json = await response.json().catch(() => null);
@@ -115,12 +122,39 @@ function sampleParabola(expr: string, x: number, y: number): GraphSpec {
 
 const inFlight = new Set<string>();
 
-// Generates every pending or failed version in parallel. Each one is saved as soon as it arrives,
-// so the screen shows them one by one.
+// At most this many versions generating at once, across all the teacher's assessments: a group usually has about 4
+// versions, and this only caps the big ones. A lower cap made the teacher wait twice as long for little saving.
+const MAX_IN_FLIGHT = 4;
+// The first version of an assessment goes alone for a few seconds: the next ones then read from the cache the prompt
+// it wrote (system, syllabus and original are the same in every version). With 4 s they did in a real run.
+const HEAD_START_MS = 4000;
+
+let running = 0;
+const waiting: (() => void)[] = [];
+
+function acquire(): Promise<void> {
+  if (running < MAX_IN_FLIGHT) {
+    running++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => waiting.push(resolve));
+}
+
+// The slot goes straight to the next in line, so nobody arriving in between can take it.
+function release() {
+  const next = waiting.shift();
+  if (next) next();
+  else running--;
+}
+
+// Generates every pending or failed version, a few at a time. Each one is saved as soon as it arrives,
+// so the screen shows them one by one. The demo and the mock answer without the AI: they don't wait their turn.
 export async function generatePending(assessmentId: string) {
   const assessment = getData().assessments.find((a) => a.id === assessmentId);
   if (!assessment) return;
   const syllabus = syllabusForAI();
+  const live = !isDemo() && !USE_MOCK;
+  let first = true;
   await Promise.all(
     assessment.versions.map(async (version, index) => {
       if (version.status !== "pending" && version.status !== "error") return;
@@ -128,6 +162,10 @@ export async function generatePending(assessmentId: string) {
       if (inFlight.has(key)) return;
       inFlight.add(key);
       updateVersion(assessmentId, index, { status: "generating", error: undefined });
+      const delay = live && !first ? HEAD_START_MS : 0;
+      first = false;
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      if (live) await acquire();
       try {
         const { content, changes, questions } = await requestVersion({
           type: assessment.type,
@@ -143,6 +181,7 @@ export async function generatePending(assessmentId: string) {
       } catch (e) {
         updateVersion(assessmentId, index, { status: "error", error: e instanceof Error ? e.message : undefined });
       } finally {
+        if (live) release();
         inFlight.delete(key);
       }
     }),

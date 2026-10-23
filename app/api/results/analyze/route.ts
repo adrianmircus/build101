@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { analyzeResults } from "@/lib/agent/analyze";
 import { AgentError } from "@/lib/agent/generate";
+import { cutShort, deadline } from "@/lib/agent/client";
 
 // Validates ResultsAnalysisRequest (lib/contract.ts). Refs are pseudonyms like "E3": a name can't fit.
 const Mark = z
@@ -33,6 +34,9 @@ const RequestBody = z.object({
     .max(20),
 });
 
+// The AI call has 110 s (deadline below); the rest is margin to answer.
+export const maxDuration = 120;
+
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status });
 }
@@ -42,9 +46,12 @@ export async function POST(request: Request) {
   const parsed = RequestBody.safeParse(body);
   if (!parsed.success) return error("No hay resultados válidos para analizar.", 400);
 
+  const signal = deadline(request, 110);
   try {
-    return Response.json(await analyzeResults(parsed.data));
+    return Response.json(await analyzeResults(parsed.data, signal));
   } catch (e) {
+    const cut = cutShort(e, signal);
+    if (cut) return error(cut.message, cut.status);
     if (e instanceof AgentError) return error(e.message, 502);
     if (e instanceof Anthropic.AuthenticationError) return error("Falta configurar la API key de la IA.", 500);
     if (e instanceof Anthropic.RateLimitError) return error("La IA está saturada. Esperá unos segundos y reintentá.", 429);

@@ -26,7 +26,7 @@ Rules:
 // A PDF or a photo of the teacher's assessment, already in base64.
 export type ExercisesFile = { mediaType: AcceptedType; data: string };
 
-export async function readExercisesPdf(files: ExercisesFile[]): Promise<{ original: string; doubts: string[] }> {
+export async function readExercisesPdf(files: ExercisesFile[], signal?: AbortSignal): Promise<{ original: string; doubts: string[] }> {
   const documents: Anthropic.Beta.BetaContentBlockParam[] = files.map((f) =>
     f.mediaType === "application/pdf"
       ? {
@@ -36,29 +36,34 @@ export async function readExercisesPdf(files: ExercisesFile[]): Promise<{ origin
         }
       : { type: "image", source: { type: "base64", media_type: f.mediaType, data: f.data } },
   );
-  const response = await withFallback(({ client, model, extra }) =>
-    client.beta.messages.parse({
-      model,
-      ...extra,
-      max_tokens: 16000,
-      output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
-      system: SYSTEM,
-      messages: [
+  const response = await withFallback(
+    ({ client, model, extra, signal }) =>
+      client.beta.messages.parse(
         {
-          role: "user",
-          content: [
-            ...documents,
+          model,
+          ...extra,
+          max_tokens: 16000,
+          output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
+          system: SYSTEM,
+          messages: [
             {
-              type: "text",
-              text:
-                files.length > 1
-                  ? "Transcribí los ejercicios de estos archivos, en orden: son páginas del mismo práctico o parcial."
-                  : "Transcribí los ejercicios de este documento.",
+              role: "user",
+              content: [
+                ...documents,
+                {
+                  type: "text",
+                  text:
+                    files.length > 1
+                      ? "Transcribí los ejercicios de estos archivos, en orden: son páginas del mismo práctico o parcial."
+                      : "Transcribí los ejercicios de este documento.",
+                },
+              ],
             },
           ],
         },
-      ],
-    }),
+        { signal },
+      ),
+    { route: "assessments/read-pdf", signal },
   );
 
   if (response.stop_reason === "refusal") {

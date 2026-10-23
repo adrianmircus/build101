@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AgentError, generateVersion } from "@/lib/agent/generate";
 import { PROFILES } from "@/lib/profiles";
 import { isSupport } from "@/lib/supports";
+import { cutShort, deadline } from "@/lib/agent/client";
 
 // Validates GenerationRequest (lib/contract.ts) before spending an AI call.
 const RequestBody = z.object({
@@ -23,6 +24,9 @@ const RequestBody = z.object({
     .optional(),
 });
 
+// The AI call has 280 s (deadline below); the rest is margin to answer.
+export const maxDuration = 300;
+
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status });
 }
@@ -34,9 +38,12 @@ export async function POST(request: Request) {
     return error("El pedido no es válido: revisá el tema, los ejercicios y los perfiles.", 400);
   }
 
+  const signal = deadline(request, 280);
   try {
-    return Response.json(await generateVersion(parsed.data));
+    return Response.json(await generateVersion(parsed.data, signal));
   } catch (e) {
+    const cut = cutShort(e, signal);
+    if (cut) return error(cut.message, cut.status);
     if (e instanceof AgentError) return error(e.message, 502);
     if (e instanceof Anthropic.AuthenticationError) return error("Falta configurar la API key de la IA.", 500);
     if (e instanceof Anthropic.RateLimitError) return error("La IA está saturada. Esperá unos segundos y reintentá.", 429);

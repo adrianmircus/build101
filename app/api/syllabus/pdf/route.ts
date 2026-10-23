@@ -1,9 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getClient } from "@/lib/agent/client";
+import { cutShort, deadline, getClient } from "@/lib/agent/client";
 import type { SyllabusPdfResponse } from "@/lib/contract";
 
 // Vercel cuts off bodies larger than 4.5 MB: leave some margin.
 const MAX_BYTES = 4 * 1024 * 1024;
+
+// The upload has 50 s (deadline below); the rest is margin to answer.
+export const maxDuration = 60;
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status });
@@ -17,11 +20,14 @@ export async function POST(request: Request) {
   if (file.type !== "application/pdf") return error("El archivo tiene que ser un PDF.", 400);
   if (file.size > MAX_BYTES) return error("El PDF pesa más de 4 MB. Probá con una versión más liviana.", 413);
 
+  const signal = deadline(request, 50);
   try {
-    const uploaded = await getClient().files.upload({ file });
+    const uploaded = await getClient().files.upload({ file }, { signal });
     const response: SyllabusPdfResponse = { fileId: uploaded.id, name: file.name };
     return Response.json(response);
   } catch (e) {
+    const cut = cutShort(e, signal);
+    if (cut) return error(cut.message, cut.status);
     if (e instanceof Anthropic.AuthenticationError) return error("Falta configurar la API key de la IA.", 500);
     if (e instanceof Anthropic.APIError) return error(`No pudimos subir el PDF (${e.status}). Reintentá.`, 502);
     console.error(e);
