@@ -40,6 +40,66 @@ Si el navegador ya tenía datos guardados, tocá «Restaurar datos de ejemplo» 
 - **Voz:** Web Speech API para el dictado y ElevenLabs para leer en voz alta.
 - **Datos:** sin base de datos. Grupos, estudiantes, prácticos, respuestas y notas viven en el `localStorage` del navegador (`lib/groups/store.ts`). Para la demo alcanza; en producción iría a una base.
 
+## Infraestructura
+
+> **Planificada.** Hoy la app corre en Vercel, los datos viven en el `localStorage` del navegador y la IA va directo a la API de Anthropic. Esta es la infraestructura hacia la que vamos: **Vercel** sirve la app y **AWS** pone todo lo demás, en São Paulo (`sa-east-1`), la región más cercana a Uruguay.
+
+```mermaid
+flowchart TB
+  subgraph NAV["Navegador (Uruguay)"]
+    UI["Next.js en el cliente"]
+    LOCAL["MediaPipe (mirada) y Web Speech (dictado)<br/>todo local: el video no sale de la compu"]
+  end
+
+  subgraph VERCEL["Vercel · funciones en gru1 (São Paulo)"]
+    APP["Next.js 16<br/>páginas, /api/*, server actions"]
+    OIDC["Token OIDC de Vercel<br/>uno por entorno"]
+  end
+
+  subgraph AWS["AWS · sa-east-1 (São Paulo)"]
+    IAM["IAM<br/>un rol por entorno, permisos mínimos"]
+    AURORA[("Aurora PostgreSQL Serverless v2<br/>+ RDS Data API")]
+    S3[("S3 cifrado con KMS<br/>PDFs y fotos de prácticos y programas")]
+    DDB[("DynamoDB<br/>límites de intentos y de pedidos a la IA")]
+    BEDROCK["Amazon Bedrock<br/>Claude: IA principal"]
+    SEC["Secrets Manager + KMS"]
+    OBS["CloudWatch · Budgets<br/>CloudTrail · GuardDuty"]
+  end
+
+  subgraph EXT["Servicios externos"]
+    ANTH["API de Anthropic<br/>respaldo de la IA"]
+    ELEVEN["ElevenLabs<br/>voz rioplatense"]
+  end
+
+  UI -->|HTTPS| APP
+  UI -->|"subida directa con URL prefirmada"| S3
+  APP --> OIDC
+  OIDC -->|"AssumeRoleWithWebIdentity"| IAM
+  IAM -.->|"credenciales temporales"| APP
+  APP -->|"SQL por HTTPS (Data API)"| AURORA
+  APP --> S3
+  APP --> DDB
+  APP -->|"prompts sin nombres de estudiantes"| BEDROCK
+  APP -.->|"si Bedrock falla"| ANTH
+  APP -->|"leer en voz alta"| ELEVEN
+  AURORA --- SEC
+```
+
+| Pieza | Dónde | Para qué |
+|---|---|---|
+| App (páginas, rutas `/api/*`, server actions) | Vercel, funciones en `gru1` | Lo de hoy, sin cambios; las funciones corren en São Paulo, al lado de los datos. Se mantienen los previews por PR. |
+| Acceso a AWS | Vercel OIDC → IAM | Sin claves fijas: cada entorno de Vercel canjea su token por credenciales temporales de un rol que solo ve sus recursos. |
+| Base de datos | Aurora PostgreSQL Serverless v2 + Data API | Instituciones, profes, grupos, estudiantes, prácticos, versiones, entregas y notas. La Data API responde por HTTPS firmado con IAM: la base no queda abierta a internet. |
+| Archivos | S3 con KMS | PDFs y fotos que sube el profe y el programa de la materia. Se suben directo desde el navegador con URL prefirmada, sin el tope de 4,5 MB de Vercel. |
+| Límites | DynamoDB on-demand con TTL | Contadores del límite de intentos del login (`lib/auth/rateLimit.ts`) y de pedidos a la IA, compartidos entre todas las funciones. |
+| IA | Amazon Bedrock (Claude) | Proveedor principal. La API de Anthropic queda de respaldo en `withFallback` (`lib/agent/client.ts`). |
+| Secretos | Secrets Manager + KMS | Credenciales de la base y claves de servicios externos. |
+| Observabilidad | CloudWatch, Budgets, CloudTrail, GuardDuty | Logs y alarmas, alertas de gasto, auditoría de accesos y detección de amenazas. |
+| Voz | ElevenLabs | Voz rioplatense para «Escuchar», que no tiene equivalente en AWS. |
+
+- **Cuentas separadas** con AWS Organizations: administración, producción y staging. Los previews de Vercel usan staging y nunca tocan datos de producción.
+- **Datos de menores:** los perfiles son datos de salud. Todo va cifrado en reposo y en tránsito, y a la IA nunca le llegan nombres. Guardar los datos en Brasil es una transferencia internacional según la Ley 18.331, así que requiere revisión legal antes de cargar datos reales.
+
 ## Cómo está organizada
 
 ```
