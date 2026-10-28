@@ -11,7 +11,9 @@ Perfiles: `adhd` (TDAH), `dyslexia` (dislexia), `asd` (TEA), `motor` (motriz), `
 3. **Revisar.** Leé el borrador contra las fuentes: borrá lo que no aplique a una evaluación escrita y corregí lo que haga falta. El agente nunca lee los `.draft.md`.
 4. **Aprobar.** Copiá el borrador revisado a `data/profiles/adhd.md`. La próxima generación ya lo usa, sin reiniciar.
 
-El script nunca pisa `<perfil>.md`; si ya hay un borrador, lo reemplaza.
+El script nunca pisa `<perfil>.md`. Si ya hay un borrador generado por el script, lo reemplaza; si lo escribió una persona (no tiene el encabezado «BORRADOR generado por npm run profiles:…»), no lo toca y avisa.
+
+El borrador lista solo lo que cambia el texto de la consigna. Lo que no cambia lo que se evalúa pero no se resuelve en el texto (más tiempo, pausas, contestar en computadora) y lo que sí cambia lo que se evalúa (calculadora, tabla de hechos, menos ejercicios) quedan en las notas para el revisor, dentro del comentario del principio, con su fuente. Ahí el especialista puede revisar lo que se dejó afuera.
 
 Si ya existe `<perfil>.md`, el borrador marca con ⚠ lo que contradice algo aprobado y lo junta en una sección al principio. Un especialista decide cuál queda.
 
@@ -27,8 +29,8 @@ npm run profiles:research -- adhd --materia matematica
 
 1. **Buscar.** Claude busca y lee páginas **solo** de los sitios de `research-sites.json`, con un tope de búsquedas y de lecturas (`--max-busquedas`, 5 por defecto; `--max-lecturas`, 8 por defecto). La búsqueda lleva solo el nombre del perfil y la materia, nunca nada de un estudiante.
 2. **Guardar.** Cada página leída queda en `data/profiles/adhd/sources/web/`, con su URL en `fuentes.json`. Esa carpeta no se commitea (son textos de terceros).
-3. **Destilar.** Después destila todas las fuentes del perfil, las del equipo y las de la web, en `adhd.draft.md`. Las fuentes web aparecen con su URL.
-4. **Revisar y aprobar.** Igual que antes: un especialista revisa el borrador contra las fuentes y lo copia a `adhd.md`. Hasta entonces, nada de esto llega a un estudiante.
+3. **Destilar.** Después destila las páginas de la web en su propio borrador, `adhd.web.draft.md`, con la URL de cada una. No toca `adhd.draft.md`, que es el del equipo.
+4. **Revisar y aprobar.** Un especialista revisa el borrador contra las fuentes y pasa a mano a `adhd.md` lo que se sostenga. No se copia entero: reemplazaría lo aprobado. Hasta entonces, nada de esto llega a un estudiante.
 
 La búsqueda usa Claude Sonnet 5.5, que alcanza para elegir y leer páginas y cuesta la mitad. El destilado sigue con Opus 5.5, porque saca las citas textuales que después se citan en público. Cada llamada imprime los tokens y la cantidad de búsquedas y lecturas, que se cobran aparte. Necesita `ANTHROPIC_API_KEY`: la búsqueda web no pasa por OpenRouter.
 

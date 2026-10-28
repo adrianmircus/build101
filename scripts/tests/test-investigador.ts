@@ -1,7 +1,7 @@
 // Pruebas sin IA del agente investigador: sitios permitidos, páginas leídas y borrador con contradicciones.
 // Correr con: npx tsx scripts/tests/test-investigador.ts
 import { allowedDomains, fileName, isAllowed, readPages, readSites } from "../research-profiles.mjs";
-import { draftMarkdown } from "../distill-profiles.mjs";
+import { DRAFTS, draftMarkdown, isGenerated, withTitles } from "../distill-profiles.mjs";
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown) {
@@ -71,11 +71,12 @@ check("archivo: pdf", fileName("https://anep.edu.uy/docs/Guía%20DUA.pdf", pdf),
 check("archivo: largo recortado", fileName(`https://cast.org/${"a".repeat(200)}`, text).length <= 84, true);
 
 // Borrador
-const adaptation = (text: string, contradicts: string | null) => ({
+const adaptation = (text: string, contradicts: string | null, scope = "text", quote = "cita") => ({
   category: "Enunciado",
+  scope,
   adaptation: text,
   page: null,
-  quote: "cita",
+  quote,
   contradicts,
 });
 const draft = draftMarkdown("adhd", "TDAH", [
@@ -95,6 +96,62 @@ check("borrador: fuente del equipo con su archivo", draft.includes("- [F1] Guía
 const clean = draftMarkdown("adhd", "TDAH", [{ file: "guia.pdf", title: "Guía", adaptations: [adaptation("Enunciados cortos", null)] }]);
 check("borrador: sin contradicciones no hay sección", clean.includes("Contradice"), false);
 check("borrador: dice la materia", clean.includes("(Matemática)"), true);
+check("borrador: lo generó el destilado", clean.includes("generado por npm run profiles:distill"), true);
+check("borrador: se puede reemplazar", isGenerated(clean), true);
+
+// Lo que no va en el texto de la consigna
+const mixed = draftMarkdown(
+  "adhd",
+  "TDAH",
+  [
+    {
+      file: "chadd-org-math.pdf",
+      title: "Accommodations for Math Assignments",
+      url: "https://chadd.org/math.pdf",
+      adaptations: [
+        adaptation("Verbo de la consigna en negrita", null),
+        adaptation("Más tiempo", "Dar 25 % más de tiempo", "outside_text"),
+        adaptation("Permitir calculadora", null, "changes_assessment", "use a calculator --> always"),
+      ],
+    },
+  ],
+  { script: "research" },
+);
+const reviewerNotes = mixed.slice(mixed.indexOf("<!--"), mixed.indexOf("-->") + 3);
+const list = mixed.slice(mixed.indexOf("## Adaptaciones"));
+check("alcance: lo del texto va en la lista", list.includes("- Verbo de la consigna en negrita"), true);
+check("alcance: fuera del texto, solo en las notas", [reviewerNotes.includes("Más tiempo"), list.includes("Más tiempo")], [true, false]);
+check(
+  "alcance: lo que cambia lo evaluado, solo en las notas",
+  [reviewerNotes.includes("Descartadas porque cambian lo que se evalúa"), list.includes("calculadora")],
+  [true, false],
+);
+check("alcance: las notas dicen qué contradicen", reviewerNotes.includes('Contradice lo aprobado: "Dar 25 % más de tiempo"'), true);
+check("alcance: una cita no cierra el comentario", reviewerNotes.includes('"use a calculator -- > always"'), true);
+check("alcance: no hay contradicciones fuera de la lista", mixed.includes("## ⚠ Contradice lo aprobado"), false);
+check("investigador: lo dice el encabezado", mixed.includes("generado por npm run profiles:research"), true);
+check("investigador: no se copia entero", mixed.includes("no copies el archivo entero"), true);
+check("investigador: su propio archivo", DRAFTS.research.file("adhd"), "adhd.web.draft.md");
+check("investigador: el borrador del equipo", DRAFTS.distill.file("adhd"), "adhd.draft.md");
+
+// Un borrador escrito a mano no se pisa
+check("a mano: sin el encabezado del script", isGenerated("# ADHD\n\n<!--\nBORRADOR. El agente NO lo usa. Lo escribió una sesión…\n-->\n"), false);
+
+// fuentes.json se queda con el título del documento
+check(
+  "títulos: el del destilado reemplaza la URL",
+  withTitles(
+    {
+      "chadd-org-math.pdf": { url: "https://chadd.org/math.pdf", title: "https://chadd.org/math.pdf", leida: "2026-10-28" },
+      "otro.txt": { url: "https://cast.org/", title: "CAST", leida: "2026-10-28" },
+    },
+    [{ file: "chadd-org-math.pdf", title: "Accommodations for Math Assignments", url: "https://chadd.org/math.pdf" }, { file: "guia.pdf", title: "Guía" }],
+  ),
+  {
+    "chadd-org-math.pdf": { url: "https://chadd.org/math.pdf", title: "Accommodations for Math Assignments", leida: "2026-10-28" },
+    "otro.txt": { url: "https://cast.org/", title: "CAST", leida: "2026-10-28" },
+  },
+);
 
 console.log(failed === 0 ? "\nTodo OK" : `\n${failed} pruebas fallaron`);
 process.exit(failed === 0 ? 0 : 1);
