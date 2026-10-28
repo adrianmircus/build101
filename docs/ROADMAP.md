@@ -203,34 +203,170 @@ La IA no busca en vivo mientras arma la prueba de un estudiante. Un "agente inve
   - Si las estrellas premian solo acertar, desmotivan a quien más le cuesta.
   - Si premian dar feedback sin tope, ensucian los datos del motor.
   - Por eso se miden las dos cosas desde el primer día (ver métricas).
-- **Alcance para marzo.** Con las capas 5 y 6, marzo queda muy cargado. El piloto llega con la gamificación completa y con la práctica periódica solo en Matemática, usando el banco de ejercicios. Física y Química entran en la práctica después del piloto.
+- **Alcance para marzo.** Con las capas 5 y 6, marzo queda muy cargado, y enero también: ahí se juntan el motor que aprende, la versión por estudiante (con la revisión por diferencias, «por qué esta versión» y el costo por estudiante) y el arranque de la práctica periódica, que sigue en febrero. El piloto llega con la gamificación completa y con la práctica periódica solo en Matemática, usando el banco de ejercicios. Física y Química entran en la práctica después del piloto.
 
-## Hoja de ruta sugerida (nov 2026 a mar 2027)
-1. **Noviembre:**
-   - base de datos y login reales
-   - registro de eventos
-   - guardar lo que generó la IA junto con el diff del profe
-   - rechazo con motivo
-   - temas del programa y etiquetas de error guardados por ejercicio, como base del modelo de dominio
-   - el conocimiento de los perfiles pasa de los `.md` a la base, con versiones (los `.md` quedan como exportación)
-2. **Diciembre:**
-   - micro-feedback del estudiante y señales implícitas
-   - catálogo de perillas derivado de los `.md`
-   - **gamificación v1:** estrellas por completar y por dar feedback (con tope), y caras al ver la corrección del profe
-   - empieza la validación pedagógica de Física y Química, y del estilo de refuerzo por perfil
-   - **agente investigador v1:** busca fuentes en los sitios permitidos y arma borradores con cita, para acelerar esa validación. Lo aprueba un especialista.
-3. **Enero:**
-   - preferencias por estudiante, bandit con priors por perfil y memoria de preferencias aprobada por el profe
-   - capa de personalización por estudiante
-   - modelo de dominio por tema
-   - banco de ejercicios armado con las pruebas aprobadas
-4. **Febrero:**
-   - Física y Química en las pruebas del profe
-   - revisión por diferencias para el profe y pantalla de "por qué esta versión"
-   - **práctica periódica v1 en Matemática:** autocorrección, caras al instante, aprobación semanal del plan por grupo y generación en lote
-   - estrellas por progreso y rachas
-   - medición del costo por estudiante y por semana
-5. **Marzo:** piloto con un colegio. A partir de ahí se juntan los datos para la etapa C y se extiende la práctica a Física y Química.
+## Hoja de ruta (nov 2026 a mar 2027)
+El plan se divide en 12 épicas, de la A a la L. El estado de cada tarea se sigue en el kanban de Notion del equipo; acá queda qué se hace, en qué orden y cuándo una épica está terminada.
+
+### Resumen
+| Épica | Meses | Objetivo | Terminada cuando | Depende de |
+|---|---|---|---|---|
+| A · Base de producción | Nov | Base de datos, login real y autorización por institución | Los flujos y la demo andan sin `localStorage` | — |
+| B · Registro de feedback | Nov | No perder más feedback del profe | Se guarda el original de la IA, el diff y el rechazo con motivo | A |
+| C · Producto, pedagogía y legal | Nov–Dic | Especialistas, colegio piloto y marco legal | Hay validadores, colegio, consentimiento y revisión legal | — |
+| D · Feedback del estudiante y señales | Dic | Escuchar al estudiante y medir el uso | Se registran feedback, tiempos, abandonos y uso de apoyos | A, B |
+| E · Perillas | Dic | Convertir los perfiles en opciones que el motor pueda elegir | El prompt recibe perillas en vez del perfil entero | — |
+| F · Gamificación v1 | Dic | Estrellas y refuerzo positivo | El estudiante ve estrellas y caras accesibles sin revelar su perfil | C, D |
+| G · Agente investigador v1 | Dic | Buscar evidencia en la web con aprobación de especialista | Primer borrador con citas revisado por un especialista | C |
+| H · Motor que aprende | Ene | Preferencias por estudiante que aprenden del feedback | Cada generación elige perillas según el estudiante | B, D, E |
+| I · Una versión por estudiante | Ene | Pasar de versión por combinación a versión por estudiante | El profe revisa por diferencias y el costo por prueba está medido | E, H |
+| J · Práctica periódica v1, Matemática | Ene–Feb | Prácticas cortas sobre los temas flojos | El estudiante recibe y resuelve su práctica semanal aprobada | A, B, C |
+| K · Ciencias exactas | Feb | Sumar Física y Química | Se puede adaptar un práctico de Física y uno de Química | C |
+| L · Piloto | Mar | Piloto con un colegio | Profes capacitados, QA completo y métricas visibles | Todas |
+
+### Por dónde arrancar
+Las dependencias dejan tres frentes en paralelo desde la primera semana:
+- **Back (A):** la base de staging, el esquema inicial y la interfaz de datos que reemplace `lib/groups/store.ts`.
+- **Front y Back (B):** guardar el original de la IA y el diff del profe, y el rechazo con motivo. Es un cambio aditivo en `lib/contract.ts` sobre el store actual, y pasa a la base cuando A esté lista. Es lo más barato y empieza a juntar datos ya.
+- **Producto (C y E):** quién valida los perfiles de ciencias, el colegio del piloto, la revisión legal, los motivos de rechazo y el catálogo de perillas sacado de `data/profiles/*.md`.
+
+### A · Base de producción (Nov)
+- **Objetivo:** base de datos, login real y autorización por institución.
+- **Terminada cuando:** los flujos y la demo andan sin `localStorage`.
+- **Tareas:**
+  - Crear la base de staging (Aurora PostgreSQL, `sa-east-1`). `Back · Alta`
+  - Esquema inicial: instituciones, profes, grupos, estudiantes, evaluaciones, versiones, entregas y notas. `Back · Alta`
+  - Interfaz de datos que reemplace `lib/groups/store.ts` (`localStorage`) por llamadas a la API. `Back · Alta`
+  - La UI usa la nueva capa de datos, y la demo sigue con datos fijos. `Front · Alta`
+  - Pasar el programa del curso (`lib/syllabus/store.ts`) a la base. `Back · Media`
+  - Pasar el conocimiento de los perfiles (`data/profiles/*.md`) a la base, con versiones; los `.md` quedan como exportación. `Back · Media`
+  - Login real con roles de profe, estudiante y admin (reemplaza `lib/auth/accounts.ts`). `Back · Alta`
+  - Autorización por institución en cada ruta de `app/api/`. `Back · Alta`
+  - Guardar los tokens de cada llamada en la base (hoy solo van a `console.info`). `Back · Media`
+  - Verificar que la demo guiada sigue andando después de la migración. `QA · Alta`
+
+### B · Registro de feedback (Nov)
+- **Objetivo:** no perder más feedback del profe.
+- **Terminada cuando:** se guarda el original de la IA, el diff y el rechazo con motivo.
+- **Tareas:**
+  - Tabla de eventos (tipo, estudiante pseudonimizado, versión, datos, fecha). `Back · Alta`
+  - Guardar el contenido original de la IA al generar. `Back · Alta`
+  - Guardar el diff cuando el profe edita una versión (`AssessmentDetail.tsx`). `Front · Alta`
+  - Botón «Rechazar» con motivos de una lista cerrada. `Front · Alta`
+  - Definir la lista de motivos de rechazo. `Producto · Alta`
+  - Historial de aprobaciones: quién y cuándo. `Back · Media`
+  - Etiquetar cada ejercicio con su unidad del programa y sus errores (`lib/results/catalog.ts`). `Back · Media`
+
+### C · Producto, pedagogía y legal (Nov–Dic)
+- **Objetivo:** especialistas, colegio piloto y marco legal.
+- **Terminada cuando:** hay validadores, colegio, consentimiento y revisión legal.
+- **Tareas:**
+  - Definir quién valida los perfiles de ciencias, y en qué plazo. `Reuniones · Alta`
+  - Juntar prácticos reales de Física y Química de los profes. `Producto · Alta`
+  - Elegir el colegio del piloto y la fecha. `Reuniones · Alta`
+  - Borrador del consentimiento informado para las familias. `Legal · Alta`
+  - Revisión legal de la Ley 18.331 y del almacenamiento en `sa-east-1`. `Legal · Alta`
+  - Validar con especialistas el estilo de refuerzo y el estado neutro para los errores. `Reuniones · Media`
+  - Definir con los profes la frecuencia y el largo de la práctica. `Reuniones · Media`
+  - Escribir las preguntas de feedback para el estudiante (1 o 2 toques). `Producto · Media`
+  - Armar la lista de sitios confiables para el agente investigador. `Producto · Media`
+  - Decidir si los estudiantes sin diagnóstico entran en el piloto. `Producto · Media`
+
+### D · Feedback del estudiante y señales (Dic)
+- **Objetivo:** escuchar al estudiante y medir el uso.
+- **Terminada cuando:** se registran feedback, tiempos, abandonos y uso de apoyos.
+- **Tareas:**
+  - Componente de feedback al terminar (toques o voz, accesible). `Front · Alta`
+  - Medir el tiempo por ejercicio (agregar `startedAt`). `Front · Media`
+  - Registrar el uso de lectura en voz alta, mirada y dictado. `Front · Media`
+  - Registrar los abandonos. `Front · Media`
+  - Pregunta «¿le sirvió?» cuando el profe corrige. `Front · Media`
+  - Endpoint para guardar eventos, validado con zod. `Back · Alta`
+
+### E · Perillas (Dic)
+- **Objetivo:** convertir los perfiles en opciones que el motor pueda elegir.
+- **Terminada cuando:** el prompt recibe perillas en vez del perfil entero.
+- **Tareas:**
+  - Sacar el catálogo de perillas de `data/profiles/*.md` (perilla, valores y perfiles habilitados). `Producto · Alta`
+  - Esquema de perillas en `lib/contract.ts` (cambio aditivo). `Back · Alta`
+  - El prompt de `lib/agent/prompt.ts` recibe perillas en lugar del perfil entero. `Back · Media`
+  - Aplicar en código las perillas de presentación (tipografía, ítems por página, voz). `Front · Media`
+
+### F · Gamificación v1 (Dic)
+- **Objetivo:** estrellas y refuerzo positivo.
+- **Terminada cuando:** el estudiante ve estrellas y caras accesibles sin revelar su perfil.
+- **Tareas:**
+  - Diseño de las estrellas y de las caras (verde y estado neutro). `Front · Media`
+  - Componente de resultado por ejercicio (`aria-live`, sin animaciones si el estudiante las desactiva, no solo color). `Front · Media`
+  - Reglas y contador de estrellas (completar, feedback con tope). `Back · Media`
+  - Mostrar las caras cuando el estudiante ve la corrección del profe. `Front · Media`
+  - Sumar la gamificación a la demo guiada, con datos fijos. `Front · Baja`
+  - QA: la gamificación no permite deducir el perfil. `QA · Media`
+
+### G · Agente investigador v1 (Dic)
+- **Objetivo:** buscar evidencia en la web con aprobación de especialista.
+- **Terminada cuando:** hay un primer borrador con citas revisado por un especialista.
+- **Tareas:**
+  - Extender `scripts/distill-profiles.mjs` con búsqueda web y `allowed_domains`. `Back · Media`
+  - Que el borrador marque las recomendaciones que contradicen algo ya aprobado. `Back · Baja`
+  - Tope de búsquedas (`max_uses`) y registro de costo. `Back · Media`
+  - Primera corrida para TDAH y dislexia en ciencias, con revisión de un especialista. `Producto · Media`
+
+### H · Motor que aprende (Ene)
+- **Objetivo:** preferencias por estudiante que aprenden del feedback.
+- **Terminada cuando:** cada generación elige perillas según el estudiante.
+- **Tareas:**
+  - Tabla de preferencias (estudiante, perilla y valor, con α y β). `Back · Alta`
+  - Punto de partida por perfil, calculado con los datos acumulados. `Back · Alta`
+  - Definir la recompensa (aprobado sin edición, feedback, rendimiento). `Producto · Alta`
+  - Elegir perillas con Thompson sampling al generar. `Back · Alta`
+  - Borrar lo aprendido de un estudiante cuando se pide. `Back · Alta`
+  - Notas de preferencia: Claude resume las ediciones del profe. `Back · Media`
+  - Pantalla donde el profe aprueba las notas de preferencia. `Front · Media`
+  - Pantalla «por qué esta versión». `Front · Media`
+
+### I · Una versión por estudiante (Ene)
+- **Objetivo:** pasar de versión por combinación a versión por estudiante.
+- **Terminada cuando:** el profe revisa por diferencias y el costo por prueba está medido.
+- **Tareas:**
+  - Separar la versión base de la capa por estudiante (`lib/groups/versions.ts`). `Back · Alta`
+  - Llamado corto por estudiante, con caché de prompts. `Back · Alta`
+  - Vista de revisión por diferencias para el profe. `Front · Alta`
+  - Medir el costo por prueba y por estudiante. `Back · Media`
+
+### J · Práctica periódica v1, Matemática (Ene–Feb)
+- **Objetivo:** prácticas cortas sobre los temas flojos.
+- **Terminada cuando:** el estudiante recibe y resuelve su práctica semanal aprobada.
+- **Tareas:**
+  - Modelo de dominio por estudiante y por tema. `Back · Alta`
+  - Banco de ejercicios armado con las pruebas aprobadas. `Back · Alta`
+  - Generar variantes en lote (API por lotes). `Back · Media`
+  - Verificar las respuestas con código (`numberCheck`, mathjs). `Back · Alta`
+  - Pantalla del profe para aprobar el plan semanal del grupo. `Front · Alta`
+  - Pantalla del estudiante para resolver la práctica, con autocorrección. `Front · Alta`
+  - Programar la generación y el envío semanal. `Back · Media`
+  - Estrellas por progreso y rachas suaves. `Front · Baja`
+
+### K · Ciencias exactas (Feb)
+- **Objetivo:** sumar Física y Química.
+- **Terminada cuando:** se puede adaptar un práctico de Física y uno de Química.
+- **Tareas:**
+  - La materia como parámetro (prompt, programa, catálogo de errores). `Back · Alta`
+  - KaTeX con `mhchem` para química. `Front · Media`
+  - Lectura en voz alta de fórmulas químicas (`lib/speech/latexSpeech.ts`). `Front · Media`
+  - Reglas de mirada y dictado que no hablen solo de parábolas. `Back · Media`
+  - Verificador de unidades para Física. `Back · Media`
+
+### L · Piloto (Mar)
+- **Objetivo:** piloto con un colegio.
+- **Terminada cuando:** los profes están capacitados, el QA está completo y las métricas se ven.
+- **Tareas:**
+  - Panel de métricas (aprobadas sin edición, prácticas completadas, abandono). `Front · Media`
+  - Configurar la prueba A/B (perillas aprendidas frente a las del perfil base). `Back · Media`
+  - Capacitar a los profes del colegio piloto. `Reuniones · Alta`
+  - QA de punta a punta antes del piloto. `QA · Alta`
+
+Después del piloto se juntan los datos para la etapa C del motor y la práctica periódica se extiende a Física y Química.
 
 ## Cómo sabremos que funciona
 - **Métrica principal:** el porcentaje de versiones aprobadas sin edición tiene que subir con el tiempo para un mismo estudiante.
@@ -250,9 +386,9 @@ La IA no busca en vivo mientras arma la prueba de un estudiante. Un "agente inve
 
 ## Decisiones abiertas para el equipo
 - ¿"Ciencias exactas" en marzo son Física y Química, o solo Matemática más Física?
-- ¿El estudiante sin diagnóstico entra en el piloto de marzo o después?
-- ¿Quién valida los `.md` de ciencias y cuándo?
-- ¿Quién valida con especialistas el estilo de refuerzo, incluido el estado neutro para los errores?
-- ¿Qué frecuencia y qué largo debería tener la práctica periódica? Propuesta: 2 por semana, unos 10 minutos.
+- ¿El estudiante sin diagnóstico entra en el piloto de marzo o después? (tarea en C)
+- ¿Quién valida los `.md` de ciencias y cuándo? (tarea en C)
+- ¿Quién valida con especialistas el estilo de refuerzo, incluido el estado neutro para los errores? (tarea en C)
+- ¿Qué frecuencia y qué largo debería tener la práctica periódica? Propuesta: 2 por semana, unos 10 minutos. (tarea en C)
 - ¿Les sirve que el profe apruebe el plan semanal por grupo en lugar de cada ejercicio?
-- ¿Qué sitios entran en la lista de fuentes confiables del agente investigador, y quién la mantiene?
+- ¿Qué sitios entran en la lista de fuentes confiables del agente investigador, y quién la mantiene? (tarea en C)
