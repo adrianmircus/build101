@@ -69,6 +69,8 @@ El perfil clínico (TDAH, dislexia, etc.) define **qué perillas están habilita
   - Un modelo de recompensa entre estudiantes que predice si una versión se va a aprobar o le va a servir al estudiante (por ejemplo gradient boosting sobre las perillas y las señales).
   - Recién con miles de pruebas aprobadas tendría sentido evaluar un fine-tuning. Probablemente no haga falta.
 
+**Cada decisión queda registrada con su porqué.** Cuando el motor cambia una perilla, guarda qué cambió, qué eventos lo llevaron a eso y con cuánta confianza. Así el profe puede ver la evolución de cada estudiante (épica M) sin que la IA invente explicaciones después.
+
 ### 4. Una prueba por estudiante, sin que explote el costo ni la revisión
 - **Costo:** se mantiene una adaptación base por combinación de perfiles, como hoy y aprovechando la caché de prompts que ya está en `lib/agent/client.ts`. Encima va una capa por estudiante:
   - Las perillas de presentación (tipografía, ítems por página, voz) se aplican en código, sin IA.
@@ -203,10 +205,10 @@ La IA no busca en vivo mientras arma la prueba de un estudiante. Un "agente inve
   - Si las estrellas premian solo acertar, desmotivan a quien más le cuesta.
   - Si premian dar feedback sin tope, ensucian los datos del motor.
   - Por eso se miden las dos cosas desde el primer día (ver métricas).
-- **Alcance para marzo.** Con las capas 5 y 6, marzo queda muy cargado, y enero también: ahí se juntan el motor que aprende, la versión por estudiante (con la revisión por diferencias, «por qué esta versión» y el costo por estudiante) y el arranque de la práctica periódica, que sigue en febrero. El piloto llega con la gamificación completa y con la práctica periódica solo en Matemática, usando el banco de ejercicios. Física y Química entran en la práctica después del piloto.
+- **Alcance para marzo.** Con las capas 5 y 6, marzo queda muy cargado, y enero también: ahí se juntan el motor que aprende, la versión por estudiante (con la revisión por diferencias, «por qué esta versión» y el costo por estudiante) y el arranque de la práctica periódica, que sigue en febrero. Febrero carga además Ciencias exactas (K) y la vista de evolución del estudiante (M). El piloto llega con la gamificación completa, la vista de evolución y la práctica periódica solo en Matemática, usando el banco de ejercicios. Física y Química entran en la práctica después del piloto.
 
 ## Hoja de ruta (nov 2026 a mar 2027)
-El plan se divide en 12 épicas, de la A a la L. El estado de cada tarea se sigue en el kanban de Notion del equipo; acá queda qué se hace, en qué orden y cuándo una épica está terminada.
+El plan se divide en 13 épicas, de la A a la M. M va última para no cambiar las letras que ya están en Notion, aunque se hace en febrero. El estado de cada tarea se sigue en el kanban de Notion del equipo; acá queda qué se hace, en qué orden y cuándo una épica está terminada.
 
 ### Resumen
 | Épica | Meses | Objetivo | Terminada cuando | Depende de |
@@ -223,6 +225,7 @@ El plan se divide en 12 épicas, de la A a la L. El estado de cada tarea se sigu
 | J · Práctica periódica v1, Matemática | Ene–Feb | Prácticas cortas sobre los temas flojos | El estudiante recibe y resuelve su práctica semanal aprobada | A, B, C |
 | K · Ciencias exactas | Feb | Sumar Física y Química | Se puede adaptar un práctico de Física y uno de Química | C |
 | L · Piloto | Mar | Piloto con un colegio | Profes capacitados, QA completo y métricas visibles | Todas |
+| M · Evolución del estudiante | Feb | Que el profe vea cómo avanza cada estudiante y por qué cambió su adaptación | El profe ve los avances y cada decisión del motor con su porqué, también con teclado y lector de pantalla | B, D, H, J |
 
 ### Por dónde arrancar
 Las dependencias dejan tres frentes en paralelo desde la primera semana:
@@ -320,6 +323,7 @@ Las dependencias dejan tres frentes en paralelo desde la primera semana:
   - Punto de partida por perfil, calculado con los datos acumulados. `Back · Alta`
   - Definir la recompensa (aprobado sin edición, feedback, rendimiento). `Producto · Alta`
   - Elegir perillas con Thompson sampling al generar. `Back · Alta`
+  - Registrar cada decisión del motor con su evidencia: perilla, valor anterior y nuevo, eventos que la causaron y confianza. `Back · Alta`
   - Borrar lo aprendido de un estudiante cuando se pide. `Back · Alta`
   - Notas de preferencia: Claude resume las ediciones del profe. `Back · Media`
   - Pantalla donde el profe aprueba las notas de preferencia. `Front · Media`
@@ -366,6 +370,20 @@ Las dependencias dejan tres frentes en paralelo desde la primera semana:
   - Capacitar a los profes del colegio piloto. `Reuniones · Alta`
   - QA de punta a punta antes del piloto. `QA · Alta`
 
+### M · Evolución del estudiante (Feb)
+- **Objetivo:** que el profe vea cómo avanza cada estudiante y cómo la IA fue cambiando sus adaptaciones.
+- **Terminada cuando:** el profe abre a un estudiante y ve sus avances y cada decisión del motor, con su porqué y lo que pasó después, también con teclado y lector de pantalla.
+- **Tareas:**
+  - Definir qué cuenta como hito: cambio de perilla, nota de preferencia aprobada, tema que pasa a dominado o a flojo, el estudiante se separa del punto de partida de su perfil. `Producto · Alta`
+  - Endpoint que arma la línea de tiempo de un estudiante (nodos y conexiones) a partir del registro de eventos, autorizado solo para los profes de su grupo. `Back · Alta`
+  - Explicación en lenguaje simple de cada decisión, armada con plantillas a partir de los datos registrados (no la redacta la IA después). `Back · Media`
+  - Vista de nodos conectados en carriles (rendimiento por tema, feedback, decisiones de la IA). Cada hito se conecta con la evidencia que lo causó y con lo que pasó después. `Front · Alta`
+  - Versión accesible de la misma vista: lista cronológica que se recorre con teclado y lector de pantalla. `Front · Alta`
+  - Desde un hito, el profe puede revertir la decisión o fijar una perilla, y eso le llega al motor como feedback. `Front · Media`
+  - Exportar la historia de un estudiante cuando la familia la pide (Ley 18.331), y borrarla junto con lo aprendido. `Back · Media`
+  - Sumar la vista a la demo guiada con un estudiante ficticio y datos fijos. `Front · Media`
+  - QA: la vista no aparece en el acceso del estudiante, no deja deducir el perfil y no le manda nombres a la IA. `QA · Alta`
+
 Después del piloto se juntan los datos para la etapa C del motor y la práctica periódica se extiende a Física y Química.
 
 ## Cómo sabremos que funciona
@@ -382,6 +400,7 @@ Después del piloto se juntan los datos para la etapa C del motor y la práctica
   - si sube la práctica completada sin que baje en los estudiantes que más fallan
   - si el feedback del estudiante sigue variado (y no es todo "sí")
   - tasa de abandono después de un ejercicio incorrecto
+- **Vista de evolución:** cuántos profes la abren y cuántas decisiones del motor revierten. Las reversiones dicen dónde se equivoca el motor.
 - **Prueba A/B en el piloto:** una parte de las pruebas con perillas aprendidas y otra con las del perfil base, comparando las métricas.
 
 ## Decisiones abiertas para el equipo
@@ -392,3 +411,4 @@ Después del piloto se juntan los datos para la etapa C del motor y la práctica
 - ¿Qué frecuencia y qué largo debería tener la práctica periódica? Propuesta: 2 por semana, unos 10 minutos. (tarea en C)
 - ¿Les sirve que el profe apruebe el plan semanal por grupo en lugar de cada ejercicio?
 - ¿Qué sitios entran en la lista de fuentes confiables del agente investigador, y quién la mantiene? (tarea en C)
+- ¿Quién más ve la evolución de un estudiante: solo los profes del grupo, o también el equipo de inclusión o la dirección del colegio?

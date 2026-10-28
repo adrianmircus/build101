@@ -15,6 +15,7 @@ El código todavía arrastra decisiones de hackathon: los datos viven en el `loc
 - **Gamificación:** estrellas y refuerzo positivo para el estudiante.
 - **Práctica periódica:** prácticas cortas generadas por el sistema para reforzar los temas flojos de cada estudiante.
 - **Agente investigador:** busca evidencia en internet y propone cambios a los perfiles, que aprueba un especialista.
+- **Evolución del estudiante:** una vista para el profe con los avances de cada estudiante y cada decisión de la IA, con su porqué.
 
 Qué cambia al escribir código:
 - Pensar en varias instituciones, varios profes y muchos grupos, no en un solo navegador.
