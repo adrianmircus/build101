@@ -4,6 +4,7 @@ import { AgentError, generateVersion } from "@/lib/agent/generate";
 import { PROFILES } from "@/lib/profiles";
 import { isSupport } from "@/lib/supports";
 import { cutShort, deadline } from "@/lib/agent/client";
+import { isRejectReason, REJECT_REASONS } from "@/lib/feedback/reasons";
 
 // Validates GenerationRequest (lib/contract.ts) before spending an AI call.
 const RequestBody = z.object({
@@ -20,6 +21,12 @@ const RequestBody = z.object({
       course: z.string().max(200),
       units: z.array(z.object({ title: z.string().max(300), contents: z.string().max(20_000) })).max(50),
       pdfFileId: z.string().max(200).optional(),
+    })
+    .optional(),
+  retry: z
+    .object({
+      reasons: z.array(z.string().refine(isRejectReason)).min(1).max(REJECT_REASONS.length),
+      previous: z.string().max(50_000),
     })
     .optional(),
 });

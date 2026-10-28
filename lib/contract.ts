@@ -1,6 +1,7 @@
 // Front ↔ agent contract. SHARED between Dev A and Dev B: changing it requires telling the other dev.
 // Proposal: one call to POST /api/generate for each version of the assessment.
 // Student names never travel: only the exercises and the combination of profiles.
+import type { RejectReasonId } from "@/lib/feedback/reasons";
 import type { ProfileId } from "@/lib/profiles";
 import type { Support } from "@/lib/supports";
 
@@ -37,6 +38,8 @@ export type GenerationRequest = {
   // "Menos ítems": numbers of the original's exercises that stay, chosen by the teacher. Missing: all of them.
   keep?: number[];
   syllabus?: SyllabusForAI;
+  // The teacher rejected the previous version: why (closed list) and the text that was rejected. Never names.
+  retry?: { reasons: RejectReasonId[]; previous: string };
 };
 
 export type SyllabusPdfResponse = {
