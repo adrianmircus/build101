@@ -37,6 +37,8 @@ yarn-error.log*
 # claude code (config personal; lo compartido es .claude/agents, CLAUDE.md y AGENTS.md)
 .claude/settings.local.json
 CLAUDE.local.md
+# worktrees que crean las sesiones de Claude: cada uno es un checkout aparte, con su propia rama
+.claude/worktrees/
 
 # vercel
 .vercel
