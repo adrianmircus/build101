@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx scripts/tests/test-acceso.ts && tsx scripts/tests/test-ejercicios.ts && tsx --conditions=react-server scripts/tests/test-login-limit.ts",
+    "test": "node scripts/tests/run.mjs",
     "postinstall": "node scripts/copy-mediapipe.mjs",
     "profiles:distill": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/distill-profiles.mjs"
   },
