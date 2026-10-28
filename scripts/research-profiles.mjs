@@ -25,6 +25,9 @@ import {
 } from "./distill-profiles.mjs";
 
 export const SITES_FILE = path.join(FOLDER, "research-sites.json");
+// Searching and picking pages doesn't need Opus, and reading them is where the tokens go. Distilling the quotes
+// that end up cited in public stays on Opus (distill-profiles.mjs).
+const RESEARCH_MODEL = "claude-sonnet-5-5";
 // allowed_domains takes at most 64 plain hostnames.
 const MAX_DOMAINS = 64;
 // A long server-tool turn can come back as pause_turn: we send it back so the server continues it, up to this many times.
@@ -125,7 +128,7 @@ async function research(api, profile, subject, domains, limits) {
       model: api.model,
       max_tokens: 16000,
       ...api.extra,
-      output_config: { effort: "high" },
+      output_config: { effort: "medium" },
       system: system(SUBJECTS[subject].prompt, limits.fetches),
       tools: [
         { type: "web_search_20260209", name: "web_search", allowed_domains: domains, max_uses: limits.searches },
@@ -192,7 +195,8 @@ async function main() {
   if (state !== "aprobada") {
     console.log(`⚠ La lista de sitios permitidos está en estado "${state}": falta que el equipo la apruebe (épica C).`);
   }
-  const api = connect({ direct: true });
+  const search = connect({ direct: true, model: RESEARCH_MODEL });
+  const distill = connect({ direct: true });
 
   for (const id of ids) {
     if (!existsSync(path.join(FOLDER, `${id}.md`))) {
@@ -200,15 +204,17 @@ async function main() {
       continue;
     }
     const profile = profileName(id);
-    console.log(`· ${id}: buscando evidencia para ${profile} en ${SUBJECTS[subject].label} (${domains.length} sitios permitidos)…`);
+    console.log(
+      `· ${id}: buscando evidencia para ${profile} en ${SUBJECTS[subject].label} con ${search.model} (${domains.length} sitios permitidos)…`,
+    );
     try {
-      const { pages, errors } = readPages(await research(api, profile, subject, domains, limits));
+      const { pages, errors } = readPages(await research(search, profile, subject, domains, limits));
       for (const error of errors) console.log(`  error de la herramienta (${error})`);
       if (savePages(id, pages, domains) === 0) {
         console.log(`· ${id}: no leyó ninguna página útil, no destilo.`);
         continue;
       }
-      await distillProfile(api, id, subject);
+      await distillProfile(distill, id, subject);
     } catch (e) {
       console.log(`· ${id}: error: ${e instanceof Error ? e.message : e}`);
     }

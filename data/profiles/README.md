@@ -30,7 +30,7 @@ npm run profiles:research -- adhd --materia matematica
 3. **Destilar.** Después destila todas las fuentes del perfil, las del equipo y las de la web, en `adhd.draft.md`. Las fuentes web aparecen con su URL.
 4. **Revisar y aprobar.** Igual que antes: un especialista revisa el borrador contra las fuentes y lo copia a `adhd.md`. Hasta entonces, nada de esto llega a un estudiante.
 
-Cada llamada imprime los tokens y la cantidad de búsquedas y lecturas, que se cobran aparte. Necesita `ANTHROPIC_API_KEY`: la búsqueda web no pasa por OpenRouter.
+La búsqueda usa Claude Sonnet 5.5, que alcanza para elegir y leer páginas y cuesta la mitad. El destilado sigue con Opus 5.5, porque saca las citas textuales que después se citan en público. Cada llamada imprime los tokens y la cantidad de búsquedas y lecturas, que se cobran aparte. Necesita `ANTHROPIC_API_KEY`: la búsqueda web no pasa por OpenRouter.
 
 La lista de sitios arranca como borrador (`"estado": "borrador"`) y el script avisa hasta que el equipo la apruebe con especialistas.
 

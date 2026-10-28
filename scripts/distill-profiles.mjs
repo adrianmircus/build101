@@ -60,7 +60,8 @@ Rules:
 - If the document recommends nothing applicable, return an empty list.`;
 
 // The model and client to call. `direct` skips OpenRouter: the research agent needs Anthropic's web tools.
-export function connect({ direct = false } = {}) {
+// `model` picks another model on Anthropic's API (Opus by default).
+export function connect({ direct = false, model = "claude-opus-5-5" } = {}) {
   if (OPENROUTER_KEY && !direct) {
     return {
       client: new Anthropic({ baseURL: "https://openrouter.ai/api", authToken: OPENROUTER_KEY, apiKey: null }),
@@ -71,7 +72,7 @@ export function connect({ direct = false } = {}) {
   }
   return {
     client: new Anthropic(),
-    model: "claude-opus-5-5",
+    model,
     extra: { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" },
   };
 }
