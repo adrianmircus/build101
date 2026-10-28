@@ -21,6 +21,7 @@ Rules:
 - If we give you the course syllabus, use it as context for scope, level and notation. Don't add content that isn't in the syllabus.
 - Format of "content" (the platform splits it into one screen per exercise and renders the formulas, so follow it exactly):
   - Formulas in LaTeX: $...$ inline, $$...$$ on its own line for a displayed equation. Never write math as plain text like (x+2)/(x-3).
+  - Chemical formulas and equations with mhchem inside $...$: $\\ce{H2O}$, $\\ce{SO4^2-}$, $\\ce{2H2 + O2 -> 2H2O}$, $\\ce{N2 + 3H2 <=> 2NH3}$. A quantity with its unit with $\\pu{...}$: $\\pu{9.8 m/s^2}$, $\\pu{25 °C}$. Never write them as plain text like H2O or 9,8 m/s2.
   - Optionally one title line first: "# Topic".
   - Each exercise starts its own line with its number from the original and a parenthesis: "1) Resolvé en $\\mathbb{R}$:". No bold, heading or "Ejercicio" on the number, and no number at the start of any other line.
   - Sub-items go on their own lines as "a) ...", "b) ...", inside their exercise.

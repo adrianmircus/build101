@@ -2,6 +2,8 @@
 
 import katex from "katex";
 import "katex/dist/katex.min.css";
+// \ce{…} and \pu{…} for chemistry formulas and units (mhchem). There is a single KaTeX (overrides in package.json), so it reaches rehype-katex too.
+import "katex/contrib/mhchem";
 
 // KaTeX with HTML and MathML and nothing on top: no aria-label or role="math", so NVDA with MathCAT can
 // navigate the formula and send it to braille. The Spanish reading goes in a separate audio button.
