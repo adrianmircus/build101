@@ -1,6 +1,7 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { GenerationRequest, SyllabusForAI } from "@/lib/contract";
+import { rejectReasonPrompt } from "@/lib/feedback/reasons";
 import { GRAPH_FORMAT } from "./graph";
 import type { Support } from "@/lib/supports";
 import type { ProfileData } from "./profiles";
@@ -67,6 +68,14 @@ function syllabusText(syllabus: SyllabusForAI): string {
   return `<syllabus>\nSubject: ${syllabus.subject}\nCourse: ${syllabus.course}\n${units ? `\n${units}\n` : ""}</syllabus>`;
 }
 
+// The teacher rejected the previous version. The reasons come from a closed list (lib/feedback/reasons.ts):
+// they say what to fix, never loosen the rules.
+function retryText(retry: NonNullable<GenerationRequest["retry"]>): string {
+  const reasons = retry.reasons.map((r) => `- ${rejectReasonPrompt(r)}`).join("\n");
+  const previous = retry.previous ? `\n<rejected_version>\n${retry.previous}\n</rejected_version>` : "";
+  return `The teacher rejected a previous version of this adaptation for these reasons:\n${reasons}${previous}\nWrite a new version that fixes that. All the rules still apply: don't change the math or what is assessed, and don't add adaptations that aren't in the profile data.`;
+}
+
 export function buildMessage(
   request: GenerationRequest,
   profiles: ProfileData[],
@@ -108,6 +117,7 @@ export function buildMessage(
     voice && !gaze && "adapt it for a student who answers by dictating",
   ].filter(Boolean);
   parts.push(`For the ${kind} above: ${goals.join(", and ")}.`);
+  if (request.retry) parts.push(retryText(request.retry));
 
   blocks.push({ type: "text", text: parts.join("\n\n") });
   return blocks;

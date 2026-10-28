@@ -3,6 +3,7 @@ import type { GenerationRequest, GenerationResponse, GraphSpec } from "@/lib/con
 import { isDemo } from "@/lib/demo/mode";
 import { usesGaze } from "@/lib/profiles";
 import { syllabusForAI } from "@/lib/syllabus/store";
+import { pendingRetry } from "./history";
 import { getData, updateVersion } from "./store";
 import { keepExercises } from "@/lib/results/exercises";
 import { versionLabel } from "./versions";
@@ -176,8 +177,14 @@ export async function generatePending(assessmentId: string) {
           supports: version.supports,
           keep: version.keep,
           syllabus,
+          retry: pendingRetry(version),
         });
-        updateVersion(assessmentId, index, { status: "ready", content, changes, questions, questionsStale: false, approved: false });
+        updateVersion(
+          assessmentId,
+          index,
+          { status: "ready", content, changes, questions, questionsStale: false, approved: false },
+          { type: "generated", at: new Date().toISOString(), content, changes, ...(questions ? { questions } : {}) },
+        );
       } catch (e) {
         updateVersion(assessmentId, index, { status: "error", error: e instanceof Error ? e.message : undefined });
       } finally {
