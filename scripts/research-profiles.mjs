@@ -1,7 +1,7 @@
 // Research agent: searches the web for evidence on each profile, only in the allowed sites of
 // data/profiles/research-sites.json, saves the pages it read in data/profiles/<id>/sources/web/ and distills them
-// with the rest of the sources into data/profiles/<id>.draft.md. Nothing reaches a student until a specialist
-// reviews the draft and copies it to <id>.md.
+// into data/profiles/<id>.web.draft.md, its own file: it never touches the team's <id>.draft.md. Nothing reaches a
+// student until a specialist reviews the draft and moves what holds up to <id>.md.
 //
 //   npm run profiles:research -- adhd                                   one profile, matematica
 //   npm run profiles:research -- adhd dyslexia --materia fisica
@@ -18,6 +18,7 @@ import {
   WEB_INDEX,
   connect,
   distillProfile,
+  draftBlocked,
   profileName,
   readArgs,
   usageLine,
@@ -203,6 +204,12 @@ async function main() {
       console.log(`· ${id}: no existe data/profiles/${id}.md. Lo salteo.`);
       continue;
     }
+    // Before searching, so a draft it can't write doesn't cost a search.
+    const blocked = draftBlocked(id, "research");
+    if (blocked) {
+      console.log(`· ${id}: ${blocked}`);
+      continue;
+    }
     const profile = profileName(id);
     console.log(
       `· ${id}: buscando evidencia para ${profile} en ${SUBJECTS[subject].label} con ${search.model} (${domains.length} sitios permitidos)…`,
@@ -214,7 +221,7 @@ async function main() {
         console.log(`· ${id}: no leyó ninguna página útil, no destilo.`);
         continue;
       }
-      await distillProfile(distill, id, subject);
+      await distillProfile(distill, id, subject, { script: "research" });
     } catch (e) {
       console.log(`· ${id}: error: ${e instanceof Error ? e.message : e}`);
     }
