@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "node scripts/tests/run.mjs",
     "postinstall": "node scripts/copy-mediapipe.mjs",
-    "profiles:distill": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/distill-profiles.mjs"
+    "profiles:distill": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/distill-profiles.mjs",
+    "profiles:research": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/research-profiles.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
