@@ -12,6 +12,8 @@
   --color-foreground: var(--foreground);
   /* Lexend (loaded in app/layout.tsx): wide letter spacing, plain zero that can't be mistaken for ∅. */
   --font-sans: var(--font-lexend), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  /* Landing motion curve (docs/LANDING.md): fast start, long soft landing. Class `ease-soft`. */
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html {
@@ -216,6 +218,51 @@ li {
   }
   to {
     translate: 0 -12px;
+  }
+}
+
+/* ---------- Landing (components/landing, .claude/skills/landing-page-design) ---------- */
+
+/* Sections rise 32px into place once (components/landing/Reveal.tsx). Visible unless the component hid them. */
+.reveal {
+  transition:
+    opacity 700ms var(--ease-soft),
+    transform 700ms var(--ease-soft);
+}
+.reveal[data-pending] {
+  opacity: 0;
+  transform: translateY(32px);
+}
+
+/* Tagline words (components/landing/TaglineReveal.tsx): indigo-400 on indigo-950 is about 5:1, white when lit. */
+.tagline-word {
+  color: #818cf8;
+  transition: color 300ms var(--ease-soft);
+}
+.tagline-word[data-lit] {
+  color: #ffffff;
+}
+
+/* Mobile menu links (components/landing/Nav.tsx): each rises 24px, 60ms after the previous one (B7). */
+.menu-in {
+  /* 220ms each with 60ms steps: the four links are in place within 400ms. */
+  animation: menu-in 220ms var(--ease-soft) both;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+/* The sheet's new version rises into place when the visitor picks another profile (B7). */
+.sheet-in {
+  animation: sheet-in 500ms var(--ease-soft) both;
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
 

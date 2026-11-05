@@ -27,18 +27,24 @@ function wave(y: number, amplitude: number) {
 // Slow and low-contrast so it doesn't compete with the form. Animated by default; it only
 // stops with the system's reduced-motion setting (see the login backdrop block in globals.css).
 // "dim" (landing): there is no card on top, so the drawings step back to keep the headline legible.
-export function MathBackdrop({ variant = "full" }: { variant?: "full" | "dim" }) {
+// "still" (new landing, docs/LANDING.md): like "dim" but nothing moves, so it never competes with the hero.
+export function MathBackdrop({ variant = "full" }: { variant?: "full" | "dim" | "still" }) {
+  const moves = variant !== "still";
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-indigo-950">
-      <div className={variant === "dim" ? "absolute inset-0 opacity-35 lg:opacity-45" : "absolute inset-0"}>
+      <div className={variant === "full" ? "absolute inset-0" : "absolute inset-0 opacity-35 lg:opacity-45"}>
         {/* eslint-disable-next-line @next/next/no-img-element -- decorative SVG, no optimization needed */}
-        <img src="/login-math.svg" alt="" className="login-reveal absolute inset-0 h-full w-full object-cover" />
+        <img
+          src="/login-math.svg"
+          alt=""
+          className={`${moves ? "login-reveal " : ""}absolute inset-0 h-full w-full object-cover`}
+        />
 
         <svg className="absolute inset-x-0 bottom-0 h-1/2 w-full" viewBox="0 0 1440 400" preserveAspectRatio="none">
-          <g className="login-wave-slow">
+          <g className={moves ? "login-wave-slow" : undefined}>
             <path d={wave(300, 70)} stroke="#a5b4fc" strokeOpacity="0.25" strokeWidth="2" fill="none" />
           </g>
-          <g className="login-wave">
+          <g className={moves ? "login-wave" : undefined}>
             <path
               d={wave(250, 110)}
               stroke="#fcd34d"
@@ -53,14 +59,13 @@ export function MathBackdrop({ variant = "full" }: { variant?: "full" | "dim" })
         {SYMBOLS.map((sym) => (
           <span
             key={sym.s}
-            className="login-float absolute select-none font-serif italic text-indigo-100/20"
+            className={`${moves ? "login-float " : ""}absolute select-none font-serif italic text-indigo-100/20`}
             style={{
               left: `${sym.left}%`,
               top: `${sym.top}%`,
               fontSize: sym.size,
               rotate: `${sym.r}deg`,
-              animationDuration: `${sym.dur}s`,
-              animationDelay: `${sym.delay}s`,
+              ...(moves && { animationDuration: `${sym.dur}s`, animationDelay: `${sym.delay}s` }),
             }}
           >
             {sym.s}

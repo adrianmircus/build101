@@ -108,5 +108,7 @@ export function speechText(markdown: string): string {
     .replace(/\s*\n\s*/g, ". ")
     .replace(/\s+([.,;:?!])/g, "$1")
     .replace(/,([.;:?!])/g, "$1")
+    // A line that already ends in a stop doesn't get a second one from the line break ("lanzamiento..", "pelota?.").
+    .replace(/([.;:?!])\.+/g, "$1")
     .trim();
 }

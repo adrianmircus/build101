@@ -1,0 +1,155 @@
+{
+  "type": "worksheet",
+  "topic": "Función cuadrática",
+  "original": "1) Una pelota se lanza hacia arriba desde el piso. Su altura, en metros, es $h(t) = -5t^2 + 20t$, donde $t$ es el tiempo en segundos desde el lanzamiento.\na) ¿Cuál es la altura máxima que alcanza la pelota?\nb) ¿En qué momento vuelve a tocar el piso?\nc) Graficá $h$.",
+  "interests": [],
+  "supports": [],
+  "provisional": true,
+  "provisionalNote": "Escrito por Claude a mano el 04/11/2026, siguiendo data/profiles/*.md y lib/agent/prompt.ts, porque la clave de la API estaba vencida. Regenerar con: npx tsx --conditions=react-server --env-file=.env.local scripts/demo-fixture.ts --landing (eso pisa este archivo y saca la marca).",
+  "generatedAt": null,
+  "versions": {
+    "adhd": {
+      "profiles": ["adhd"],
+      "content": "# Función cuadrática\n\n1) Una pelota se lanza hacia arriba desde el piso. Su altura, en metros, es $h(t) = -5t^2 + 20t$, donde $t$ es el tiempo en segundos desde el lanzamiento.\na) ¿Cuál es la altura máxima que alcanza la pelota?\nb) ¿En qué momento vuelve a tocar el piso?\nc) **Graficá** $h$.\n\n**Antes de entregar:**\n☐ ¿Respondí todos los ejercicios e incisos?\n☐ ¿Revisé mis respuestas?\n☐ ¿Incluí las unidades cuando correspondía?",
+      "changes": [
+        {
+          "what": "Puse en negrita el verbo de la consigna del inciso c (**Graficá**).",
+          "why": "El perfil TDAH pide resaltar en negrita el verbo de la acción solicitada, sin otros énfasis. Los incisos a y b son preguntas sin verbo de acción, así que quedan como están (Fuente: [F1], §7.1.1, p. 29; [F2], consideración 3.2; [R], punto 4)."
+        },
+        {
+          "what": "Dejé el ejercicio en un bloque propio, con el enunciado y sus tres incisos juntos.",
+          "why": "El perfil TDAH pide presentar cada ejercicio en un bloque visual propio y no separar la consigna de la información necesaria para resolverla (Fuente: [F3], art. 10 c, p. 16; [R], punto 3)."
+        },
+        {
+          "what": "Agregué al final una lista breve de revisión general, con el ítem de unidades.",
+          "why": "El perfil TDAH pide una lista de revisión general igual para todo el práctico. Incluí el recordatorio de unidades porque el ejercicio tiene magnitudes: metros y segundos (Fuente: [F1], p. 29; [F2], consideración 6.2; [R], punto 6)."
+        }
+      ]
+    },
+    "dyslexia": {
+      "profiles": ["dyslexia"],
+      "content": "# Función cuadrática\n\n1) Una pelota se lanza hacia arriba desde el piso.\nSu altura, en metros, es $h(t) = -5t^2 + 20t$.\nEn esa fórmula, $t$ es el tiempo en segundos desde el lanzamiento.\n\na) ¿Cuál es la altura máxima que alcanza la pelota?\nb) ¿En qué momento vuelve a tocar el piso?\nc) **Graficá** $h$.",
+      "changes": [
+        {
+          "what": "Partí el enunciado en tres oraciones cortas, una por idea: el lanzamiento, la fórmula de la altura y qué es $t$.",
+          "why": "El perfil dislexia pide dividir los enunciados extensos en oraciones breves sin alterar los datos ni las condiciones (Fuente: [F3], p. 3; [F1], \"Sentence structures\"; [R], regla 1)."
+        },
+        {
+          "what": "Separé la situación de las preguntas con una línea en blanco, sin cambiar el orden de los datos.",
+          "why": "En problemas con contexto, el perfil dislexia pide separar visualmente la descripción de la situación de lo que se pregunta (Fuente: [F1], \"Sentence structures\"; [R], regla 7)."
+        },
+        {
+          "what": "Puse en negrita el verbo del inciso c (**Graficá**).",
+          "why": "El perfil dislexia permite usar negrita de forma moderada para destacar acciones, sin destacar números ni condiciones (Fuente: [F2], \"Readable fonts\", p. 1; [R], regla 5)."
+        }
+      ]
+    },
+    "asd": {
+      "profiles": ["asd"],
+      "content": "# Función cuadrática\n\n1) Una pelota se lanza hacia arriba desde el piso.\nLa altura de la pelota, en metros, es $h(t) = -5t^2 + 20t$.\nEn esa fórmula, $t$ es el tiempo en segundos desde el lanzamiento.\n\na) ¿Cuál es la altura máxima que alcanza la pelota?\nb) ¿En qué momento vuelve a tocar el piso la pelota?\nc) Graficá $h$.\n\n☐ ¿Leí la consigna completa?\n☐ ¿Respondí lo que se solicita?\n☐ ¿Revisé mi respuesta?",
+      "changes": [
+        {
+          "what": "Escribí una idea por oración y cada oración en un renglón propio.",
+          "why": "El perfil TEA pide dividir las oraciones extensas en unidades breves, en renglones separados, sin separar una condición de aquello a lo que se refiere (Fuente: [F2], pp. 16 y 17; [R], regla 02)."
+        },
+        {
+          "what": "Usé siempre \"la pelota\" para nombrar el mismo objeto, en lugar de \"su altura\".",
+          "why": "El perfil TEA pide usar términos consistentes para un mismo referente: repetir está bien (Fuente: [F2], p. 10; [F3], p. 28; [R], regla 05)."
+        },
+        {
+          "what": "Separé la situación de las preguntas con una línea en blanco, manteniendo el orden del enunciado.",
+          "why": "El perfil TEA pide separar visualmente el contexto de las preguntas cuando mejora la lectura, sin reagrupar los datos (Fuente: [F1], \"Sentence structures\"; [R], regla 10)."
+        },
+        {
+          "what": "Agregué al final una lista breve de autorrevisión general.",
+          "why": "En prácticos, el perfil TEA permite una lista de autorrevisión igual para todo el práctico, sin pasos de resolución (Fuente: [F5], p. 47; [R], regla 13)."
+        }
+      ]
+    },
+    "motor": {
+      "profiles": ["motor"],
+      "content": "**Pregunta 1** (ejercicio 1)\n\nUna pelota se lanza hacia arriba desde el piso. Su altura, en metros, es $h(t) = -5t^2 + 20t$, con $t$ en segundos. ¿Cuál es la altura máxima que alcanza la pelota?\n\n- **A)** $20$ metros\n- **B)** $2$ metros\n\n**Pregunta 2** (ejercicio 1)\n\nUna pelota se lanza hacia arriba desde el piso. Su altura, en metros, es $h(t) = -5t^2 + 20t$, con $t$ en segundos. ¿En qué momento vuelve a tocar el piso?\n\n- **A)** A los $2$ segundos\n- **B)** A los $4$ segundos\n\n**Pregunta 3** (ejercicio 1)\n\n¿Cuál es la gráfica de $h(t) = -5t^2 + 20t$?\n\n- **A)** Parábola que abre hacia abajo, con vértice en $(2, 20)$ (Gráfica de y = -5*x^2 + 20*x con los puntos Raíz (0, 0), Raíz (4, 0), Vértice (2, 20))\n- **B)** Parábola que abre hacia arriba, con vértice en $(2, -20)$ (Gráfica de y = 5*x^2 - 20*x con los puntos Raíz (0, 0), Raíz (4, 0), Vértice (2, −20))",
+      "changes": [
+        {
+          "what": "Los incisos a y b pasaron a opción múltiple",
+          "why": "El estudiante responde con la mirada y no puede escribir el desarrollo"
+        },
+        {
+          "what": "Inciso c: graficar pasó a elegir la gráfica de $h$",
+          "why": "El estudiante no puede dibujar, pero puede elegir una gráfica. La otra opción es la de un error típico de signo"
+        }
+      ],
+      "questions": [
+        {
+          "exercise": 1,
+          "stem": "Una pelota se lanza hacia arriba desde el piso. Su altura, en metros, es $h(t) = -5t^2 + 20t$, con $t$ en segundos. ¿Cuál es la altura máxima que alcanza la pelota?",
+          "options": [
+            { "id": "A", "text": "$20$ metros" },
+            { "id": "B", "text": "$2$ metros" }
+          ],
+          "answer": "A"
+        },
+        {
+          "exercise": 1,
+          "stem": "Una pelota se lanza hacia arriba desde el piso. Su altura, en metros, es $h(t) = -5t^2 + 20t$, con $t$ en segundos. ¿En qué momento vuelve a tocar el piso?",
+          "options": [
+            { "id": "A", "text": "A los $2$ segundos" },
+            { "id": "B", "text": "A los $4$ segundos" }
+          ],
+          "answer": "B"
+        },
+        {
+          "exercise": 1,
+          "stem": "¿Cuál es la gráfica de $h(t) = -5t^2 + 20t$?",
+          "options": [
+            {
+              "id": "A",
+              "text": "Parábola que abre hacia abajo, con vértice en $(2, 20)$",
+              "graph": {
+                "functions": [{ "expr": "-5*x^2 + 20*x" }],
+                "points": [
+                  { "x": 0, "y": 0, "label": "Raíz" },
+                  { "x": 4, "y": 0, "label": "Raíz" },
+                  { "x": 2, "y": 20, "label": "Vértice" }
+                ],
+                "window": { "xMin": -1, "xMax": 5, "yMin": -24, "yMax": 24 }
+              }
+            },
+            {
+              "id": "B",
+              "text": "Parábola que abre hacia arriba, con vértice en $(2, -20)$",
+              "graph": {
+                "functions": [{ "expr": "5*x^2 - 20*x" }],
+                "points": [
+                  { "x": 0, "y": 0, "label": "Raíz" },
+                  { "x": 4, "y": 0, "label": "Raíz" },
+                  { "x": 2, "y": -20, "label": "Vértice" }
+                ],
+                "window": { "xMin": -1, "xMax": 5, "yMin": -24, "yMax": 24 }
+              }
+            }
+          ],
+          "answer": "A"
+        }
+      ]
+    },
+    "dysgraphia": {
+      "profiles": ["dysgraphia"],
+      "content": "# Función cuadrática\n1) Una pelota se lanza hacia arriba desde el piso. Su altura, en metros, es $h(t) = -5t^2 + 20t$, donde $t$ es el tiempo en segundos desde el lanzamiento.\na) ¿Cuál es la altura máxima que alcanza la pelota?\nb) ¿En qué momento vuelve a tocar el piso?\nc) Decí las raíces, el vértice y hacia dónde abre la parábola de $h$. Con lo que digas, la plataforma arma la gráfica.",
+      "changes": [
+        {
+          "what": "Inciso c: graficar pasó a decir las raíces, el vértice y hacia dónde abre la parábola",
+          "why": "El estudiante responde dictando y no puede graficar; la plataforma arma la gráfica con lo que dice"
+        },
+        {
+          "what": "Los incisos a y b quedan igual que en el original",
+          "why": "Se pueden responder en voz alta sin cambiar la consigna."
+        },
+        {
+          "what": "Sin adaptaciones extra para Disgrafía",
+          "why": "El estudiante responde dictando en la plataforma, pero todavía no hay datos cargados para otras adaptaciones de ese perfil."
+        }
+      ]
+    }
+  }
+}
