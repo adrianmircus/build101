@@ -1,19 +1,19 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { addTransitionType, startTransition, useEffect, useRef, useState, ViewTransition } from "react";
 import { AiProgress } from "@/components/ui/AiProgress";
 import { FunctionGraph } from "@/components/ui/FunctionGraph";
 import { MathMarkdown } from "@/components/ui/MathMarkdown";
 import { MathText } from "@/components/ui/MathText";
 import { Breadcrumbs, Loading, NotFound } from "@/components/ui/States";
-import { approveButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
-import { TAB_SLIDE } from "@/components/ui/transitions";
+import { approveButton, dangerButton, field, primaryButton, secondaryButton } from "@/components/ui/styles";
+import { BACK, TAB_SLIDE } from "@/components/ui/transitions";
 import { DEMO_EXAMPLE } from "@/lib/demo/example";
 import { isDemo } from "@/lib/demo/mode";
 import { generatePending } from "@/lib/groups/generate";
 import { checkNumbers, issueText } from "@/lib/groups/numberCheck";
-import { updateVersion, useData } from "@/lib/groups/store";
+import { removeAssessment, updateVersion, useData } from "@/lib/groups/store";
 import type { Version } from "@/lib/groups/types";
 import { TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
 import { usesGaze, usesVoice } from "@/lib/profiles";
@@ -37,6 +37,9 @@ const STATUS_COLOR: Record<Version["status"], string> = {
 export function AssessmentDetail() {
   const { groupId, assessmentId } = useParams<{ groupId: string; assessmentId: string }>();
   const data = useData();
+  const router = useRouter();
+  // While leaving after deleting: shows "Cargando…" instead of "not found" for the worksheet that's gone.
+  const [removing, setRemoving] = useState(false);
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState<string | null>(null);
   // If the number check flagged something, approving asks the teacher to confirm they reviewed it.
@@ -56,7 +59,7 @@ export function AssessmentDetail() {
     focusTo.current = null;
   });
 
-  if (!data) return <Loading />;
+  if (!data || removing) return <Loading />;
   const group = data.groups.find((g) => g.id === groupId);
   const assessment = data.assessments.find((a) => a.id === assessmentId && a.groupId === groupId);
   if (!group || !assessment) return <NotFound what="ese práctico" />;
@@ -493,6 +496,22 @@ export function AssessmentDetail() {
         </ViewTransition>
 
         <Grades assessment={assessment} group={group} />
+
+        <div className="mt-12 border-t-2 border-slate-200 pt-6">
+          <button
+            type="button"
+            className={dangerButton}
+            onClick={() => {
+              const what = TYPE_LABEL[assessment.type].toLowerCase();
+              if (!confirm(`¿Eliminar el ${what} «${assessment.topic}»? Se borran sus versiones, las notas y las respuestas de los estudiantes. No se puede deshacer.`)) return;
+              setRemoving(true);
+              router.replace(`/grupos/${group.id}`, { transitionTypes: BACK });
+              removeAssessment(assessment.id);
+            }}
+          >
+            Eliminar {TYPE_LABEL[assessment.type].toLowerCase()}
+          </button>
+        </div>
       </div>
 
       {version.status === "ready" && version.approved && written && (

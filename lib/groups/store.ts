@@ -121,6 +121,11 @@ export function createAssessment(assessment: Omit<Assessment, "id" | "createdAt"
   return id;
 }
 
+// Removes the worksheet with its versions, grades and student answers.
+export function removeAssessment(assessmentId: string) {
+  save((d) => ({ ...d, assessments: d.assessments.filter((a) => a.id !== assessmentId) }));
+}
+
 export function updateVersion(assessmentId: string, index: number, changes: Partial<Version>) {
   save((d) => ({
     ...d,
