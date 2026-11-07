@@ -104,7 +104,8 @@ export async function generateVersion(input: GenerationRequest): Promise<Generat
 
   const blocks = buildMessage(request, withData, { gaze, voice, supports });
   const params = (api: Api) => ({
-    model: api.model,
+    // The fast model: on Netlify a request can't last more than 60 s, and Opus takes longer on a full worksheet.
+    model: api.fastModel,
     ...api.extra,
     max_tokens: 16000,
     system: SYSTEM,

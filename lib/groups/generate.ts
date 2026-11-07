@@ -19,11 +19,13 @@ async function requestVersion(request: GenerationRequest): Promise<GenerationRes
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  if (!response.ok) {
-    const json = await response.json().catch(() => null);
-    throw new Error(json?.error ?? `La IA respondió con un error (${response.status}). Reintentá.`);
-  }
-  return response.json();
+  const json = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(json?.error ?? `La IA respondió con un error (${response.status}). Reintentá.`);
+  // The route answers 200 at once and sends the result at the end (app/api/generate/route.ts): errors come in the
+  // body, and a body cut off halfway means the server ran out of time.
+  if (!json) throw new Error("La IA tardó demasiado en responder. Reintentá.");
+  if (json.error) throw new Error(json.error);
+  return json;
 }
 
 // When each precomputed version "arrives", in ms: one by one, like a real generation.

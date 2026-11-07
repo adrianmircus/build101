@@ -34,17 +34,29 @@ export async function POST(request: Request) {
     return error("El pedido no es válido: revisá el tema, los ejercicios y los perfiles.", 400);
   }
 
-  try {
-    return Response.json(await generateVersion(parsed.data));
-  } catch (e) {
-    if (e instanceof AgentError) return error(e.message, 502);
-    if (e instanceof Anthropic.AuthenticationError) return error("Falta configurar la API key de la IA.", 500);
-    if (e instanceof Anthropic.RateLimitError) return error("La IA está saturada. Esperá unos segundos y reintentá.", 429);
-    if (e instanceof Anthropic.NotFoundError) {
-      return error("No encontramos el PDF del temario. Volvé a subirlo en Mi materia.", 502);
-    }
-    if (e instanceof Anthropic.APIError) return error(`La IA respondió con un error (${e.status}). Reintentá.`, 502);
-    console.error(e);
-    return error("No pudimos generar esta versión. Reintentá.", 500);
-  }
+  // On Netlify, the edge (where proxy.ts runs) cuts a response that hasn't started within 40 s, and a long worksheet
+  // takes longer. So the 200 goes out right away, a space every few seconds keeps it alive (JSON allows leading
+  // whitespace) and the result comes at the end. Errors come in the body as { error }.
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(encoder.encode(" "));
+      const keepAlive = setInterval(() => controller.enqueue(encoder.encode(" ")), 5_000);
+      const result = await generateVersion(parsed.data).catch((e: unknown) => ({ error: errorMessage(e) }));
+      clearInterval(keepAlive);
+      controller.enqueue(encoder.encode(JSON.stringify(result)));
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+}
+
+function errorMessage(e: unknown): string {
+  if (e instanceof AgentError) return e.message;
+  if (e instanceof Anthropic.AuthenticationError) return "Falta configurar la API key de la IA.";
+  if (e instanceof Anthropic.RateLimitError) return "La IA está saturada. Esperá unos segundos y reintentá.";
+  if (e instanceof Anthropic.NotFoundError) return "No encontramos el PDF del temario. Volvé a subirlo en Mi materia.";
+  if (e instanceof Anthropic.APIError) return `La IA respondió con un error (${e.status}). Reintentá.`;
+  console.error(e);
+  return "No pudimos generar esta versión. Reintentá.";
 }

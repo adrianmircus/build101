@@ -17,9 +17,9 @@ export const MODEL = ONLY_OPENROUTER ? OPENROUTER_MODEL : ANTHROPIC_MODEL;
 // Fast model for long, bounded tasks (adapting an already-read worksheet, setting up a problem): it writes several
 // times faster than Opus at half the cost. What matters (the math not changing) is checked by the verifier.
 // Same provider as getClient(), which it is used with.
-export const FAST_MODEL = ONLY_OPENROUTER
-  ? process.env.OPENROUTER_FAST_MODEL || "anthropic/claude-sonnet-5.5"
-  : "claude-sonnet-5-5";
+const OPENROUTER_FAST_MODEL = process.env.OPENROUTER_FAST_MODEL || "anthropic/claude-sonnet-5.5";
+const ANTHROPIC_FAST_MODEL = "claude-sonnet-5-5";
+export const FAST_MODEL = ONLY_OPENROUTER ? OPENROUTER_FAST_MODEL : ANTHROPIC_FAST_MODEL;
 
 // Server-side refusal fallback: it only exists on Anthropic's API. OpenRouter rejects the `fallbacks` field with a 400.
 const DIRECT_EXTRA = { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
@@ -46,6 +46,8 @@ export function getClient(): Anthropic {
 export type Api = {
   client: Anthropic;
   model: string;
+  // FAST_MODEL on this same provider.
+  fastModel: string;
   // Only for Anthropic's API: OpenRouter rejects the refusal-fallback beta.
   extra: { betas?: string[]; fallbacks?: "default" };
   // false through OpenRouter: files uploaded to Anthropic's Files API (file_id) aren't visible there.
@@ -56,10 +58,22 @@ export type Api = {
 // A 404 isn't retried: it's a missing file, and changing provider doesn't fix it.
 export async function withFallback<T>(call: (api: Api) => Promise<T>): Promise<T> {
   const backup = getOpenRouter();
-  const viaOpenRouter: Api | null = backup && { client: backup, model: OPENROUTER_MODEL, extra: {}, files: false };
+  const viaOpenRouter: Api | null = backup && {
+    client: backup,
+    model: OPENROUTER_MODEL,
+    fastModel: OPENROUTER_FAST_MODEL,
+    extra: {},
+    files: false,
+  };
   if (ONLY_OPENROUTER) return call(viaOpenRouter!);
   try {
-    return await call({ client: getAnthropic(), model: ANTHROPIC_MODEL, extra: DIRECT_EXTRA, files: true });
+    return await call({
+      client: getAnthropic(),
+      model: ANTHROPIC_MODEL,
+      fastModel: ANTHROPIC_FAST_MODEL,
+      extra: DIRECT_EXTRA,
+      files: true,
+    });
   } catch (e) {
     const retryable =
       (e instanceof Anthropic.APIError && !(e instanceof Anthropic.NotFoundError)) || e instanceof Anthropic.APIConnectionError;
