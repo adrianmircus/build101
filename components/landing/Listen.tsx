@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { MathText } from "@/components/ui/MathText";
 import { browserSpeak, type Playback } from "@/lib/speech/voice";
 
 const noop = () => () => {};
 
 // "Así suena un práctico". With the recorded audio (scripts/landing-audio.ts) it's the browser's own player.
 // Without it, the system's Spanish voice reads the same words, as the app does when ElevenLabs isn't set up.
-// Never plays by itself. The words read are always shown next to it.
-export function Listen({ text, src }: { text: string; src?: string }) {
+// Never plays by itself. Below it, the exercise that is read, with its formulas drawn (`display`).
+export function Listen({ text, display, src }: { text: string; display: string; src?: string }) {
   const speechSupported = useSyncExternalStore(noop, () => "speechSynthesis" in window, () => false);
   const [playing, setPlaying] = useState(false);
   const playback = useRef<Playback | null>(null);
@@ -42,7 +43,7 @@ export function Listen({ text, src }: { text: string; src?: string }) {
           </button>
         )
       )}
-      <p className="mt-8 max-w-3xl text-lg text-indigo-100">{text}</p>
+      <MathText text={display} className="mt-8 max-w-3xl text-lg text-indigo-100" />
     </div>
   );
 }

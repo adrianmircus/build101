@@ -4,7 +4,7 @@
 export const STEPS = [
   {
     title: "Marcás los perfiles de tu grupo",
-    body: "TDAH, dislexia, TEA, motriz o disgrafía, y se pueden combinar. Si sumás sus gustos, los problemas con contexto hablan de lo que les interesa.",
+    body: "Se pueden combinar distintas necesidades específicas de aprendizaje. Además podés agregar tópicos de su preferencia y los problemas con contexto hablan de lo que les interesa.",
   },
   {
     title: "Cargás el práctico como siempre",
@@ -43,7 +43,7 @@ export const AUDIENCES: Audience[] = [
     items: [
       {
         benefit: "Un perfil, todos sus profes.",
-        detail: "El equipo de inclusión carga el perfil del estudiante una vez y lo usan todos sus profesores.",
+        detail: "El equipo de inclusión educativa carga el perfil del estudiante una vez y lo usan todos sus profesores.",
       },
       {
         benefit: "Todo el colegio a la vista.",
@@ -65,8 +65,8 @@ export const AUDIENCES: Audience[] = [
     title: "Para familias",
     items: [
       { benefit: "Lo puede escuchar.", detail: "Con un botón, el práctico se lee en voz alta, fórmulas incluidas." },
-      { benefit: "Responde como mejor puede.", detail: "Escribiendo, dictando o con la mirada si tiene una dificultad motriz." },
-      { benefit: "Sin etiquetas.", detail: "En su pantalla no aparece el nombre de su perfil." },
+      { benefit: "Responde a su manera.", detail: "Escribiendo, dictando o con la mirada en casos de estudiantes con dificultad motriz." },
+      { benefit: "Sin etiquetas.", detail: "En su pantalla no aparece la adaptación según el perfil." },
       {
         benefit: "Sabés qué tiene para hacer.",
         detail: "Ves los prácticos pendientes de tu hijo o hija y cómo le fue, sin ver los de nadie más.",
@@ -123,7 +123,7 @@ export const FAQ = [
   },
   {
     q: "¿Para qué materias y años sirve?",
-    a: "Arrancamos con matemática de 6.º de bachillerato, con el programa de Uruguay. Después vienen el resto de los años y otras materias.",
+    a: "Arrancamos con matemática de bachillerato, con el programa de Uruguay. Después vienen el resto de los años y otras materias.",
   },
   {
     q: "¿El estudiante ve su diagnóstico?",

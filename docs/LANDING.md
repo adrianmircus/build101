@@ -138,7 +138,7 @@ Las marcas **[P]** son promesas: funciones que todavía no existen (ver *Funcion
 
 ### Problema → solución
 - **Título:** *El mismo práctico no se lee igual en toda la clase*
-- *En un grupo de 6.º conviven estudiantes con TDAH, con dislexia o con TEA, alguien que no puede escribir a mano y alguien que responde mejor hablando. Adaptar cada práctico para cada uno lleva un tiempo que casi nunca hay, y muchas veces termina en una sola versión para todos.*
+- *En un mismo grupo conviven estudiantes con TDAH, con dislexia o con TEA, alguien que no puede escribir a mano y alguien que responde mejor hablando. Adaptar cada práctico para cada uno lleva un tiempo que casi nunca hay, y muchas veces esto implica una misma versión para todos.*
 - **Solución (destacada):** *Tiza.ai hace ese trabajo: arma una versión del práctico para cada perfil del grupo y te muestra cada cambio con su porqué.*
 
 ### Frase que se ilumina
@@ -147,7 +147,7 @@ Las marcas **[P]** son promesas: funciones que todavía no existen (ver *Funcion
 Decisión del usuario (04/11). Hoy es una promesa: la versión con mirada o dictado se queda con algunos ejercicios, y los apoyos hacen la versión más guiada (`lib/agent/prompt.ts`). Ver *Funciones prometidas*.
 
 ### Cómo funciona
-1. **Marcás los perfiles de tu grupo.** TDAH, dislexia, TEA, motriz o disgrafía, y se pueden combinar. Si sumás sus gustos, los problemas con contexto hablan de lo que les interesa.
+1. **Marcás los perfiles de tu grupo.** Se pueden combinar distintas necesidades específicas de aprendizaje. Además podés agregar tópicos de su preferencia y los problemas con contexto hablan de lo que les interesa.
 2. **Cargás el práctico como siempre.** Lo escribís o subís el PDF o unas fotos. Sale una versión por cada combinación de perfiles y apoyos del grupo, no una por alumno.
 3. **Revisás y aprobás.** Ves cada cambio con su porqué y editás lo que no te convenza. Sin tu aprobación no llega a nadie.
 
@@ -157,14 +157,14 @@ Decisión del usuario (04/11). Hoy es una promesa: la versión con mirada o dict
 - **Ves dónde se trabó cada uno.** Cargás la corrección por ejercicio y el análisis te marca qué repasar.
 
 ### Para colegios · acción: *Sumar mi colegio al piloto* (abre el mail a `hola@usetiza.app`)
-- **Un perfil, todos sus profes. [P]** El equipo de inclusión carga el perfil del estudiante una vez y lo usan todos sus profesores.
+- **Un perfil, todos sus profes. [P]** El equipo de inclusión educativa carga el perfil del estudiante una vez y lo usan todos sus profesores.
 - **Todo el colegio a la vista. [P]** La coordinación ve qué prácticos se adaptaron en cada grupo y quién los aprobó.
 - **Adaptaciones con respaldo.** Las de TDAH, dislexia y TEA salen de guías publicadas, entre ellas el protocolo de educación inclusiva del MEC (Decreto 350/022).
 
 ### Para familias · acción: *Pasáselo al colegio por WhatsApp*
 - **Lo puede escuchar.** Con un botón, el práctico se lee en voz alta, fórmulas incluidas.
-- **Responde como mejor puede.** Escribiendo, dictando o con la mirada si tiene una dificultad motriz.
-- **Sin etiquetas.** En su pantalla no aparece el nombre de su perfil.
+- **Responde a su manera.** Escribiendo, dictando o con la mirada en casos de estudiantes con dificultad motriz.
+- **Sin etiquetas.** En su pantalla no aparece la adaptación según el perfil.
 - **Sabés qué tiene para hacer. [P]** Ves los prácticos pendientes de tu hijo o hija y cómo le fue, sin ver los de nadie más.
 
 El botón de WhatsApp abre `https://wa.me/?text=` con un texto armado (*Mirá Tiza.ai, arma los prácticos de matemática para cada estudiante: {NEXT_PUBLIC_SITE_URL}*). No lleva datos de nadie.
@@ -190,7 +190,7 @@ El botón de WhatsApp abre `https://wa.me/?text=` con un texto armado (*Mirá Ti
 2. **¿La versión adaptada es más fácil?** Sin apoyos, el nivel es el mismo: cambia la presentación (enunciados más cortos, el verbo resaltado, un bloque por ejercicio). Si el estudiante responde con la mirada o dictando, cambia cómo responde y tiene menos ejercicios, así que se evalúa una parte del práctico. Si vos habilitás apoyos para un estudiante que los necesita, la versión sí es más guiada. Todo eso aparece en la lista de cambios para que lo revises.
 3. **¿A la IA le llegan datos de mis estudiantes?** Los nombres de la lista del grupo no le llegan nunca, y en el análisis de resultados cada estudiante figura como E1, E2 y así. Si subís un PDF o fotos, la IA los lee completos, así que conviene que no tengan datos personales. **[P]** Pronto los vamos a borrar automáticamente antes de que lleguen a la IA.
 4. **¿Qué perfiles cubre?** TDAH, dislexia, TEA, dificultad motriz (responde con la mirada) y disgrafía (responde dictando). Un estudiante puede tener más de uno.
-5. **¿Para qué materias y años sirve?** Arrancamos con matemática de 6.º de bachillerato, con el programa de Uruguay. **[P]** Después vienen el resto de los años y otras materias.
+5. **¿Para qué materias y años sirve?** Arrancamos con matemática de bachillerato, con el programa de Uruguay. **[P]** Después vienen el resto de los años y otras materias.
 6. **¿El estudiante ve su diagnóstico?** En su pantalla no aparece el nombre de su perfil. **[P]** Y el texto de su versión tampoco lo menciona.
 7. **¿Se puede imprimir?** Las versiones escritas aprobadas se imprimen o se guardan en PDF desde el navegador. Las de mirada y dictado se resuelven en pantalla, desde la cuenta del estudiante.
 8. **¿Qué hace falta para responder con la mirada o dictando?** Para la mirada, una computadora con cámara: antes de empezar se calibra mirando unos puntos en la pantalla, y hay un modo práctica con el mouse. Para dictar, un navegador con dictado, como Chrome o Edge. Si no lo tiene, puede escribir la respuesta.

@@ -76,9 +76,9 @@ export default function Home() {
             </h2>
             <div className="space-y-6 text-lg text-slate-700 sm:text-xl">
               <p>
-                En un grupo de 6.º conviven estudiantes con TDAH, con dislexia o con TEA, alguien que no puede escribir a
+                En un mismo grupo conviven estudiantes con TDAH, con dislexia o con TEA, alguien que no puede escribir a
                 mano y alguien que responde mejor hablando. Adaptar cada práctico para cada uno lleva un tiempo que casi
-                nunca hay, y muchas veces termina en una sola versión para todos.
+                nunca hay, y muchas veces esto implica una misma versión para todos.
               </p>
               <p className="font-semibold text-slate-900">
                 Tiza.ai hace ese trabajo: arma una versión del práctico para cada perfil del grupo y te muestra cada
@@ -156,7 +156,7 @@ export default function Home() {
             <p className="mt-6 mb-10 max-w-[680px] text-lg text-indigo-100 sm:text-xl">
               Con un botón, el estudiante lo escucha en voz alta, fórmulas incluidas. Esto es lo que se lee:
             </p>
-            <Listen text={listen.text} src={listen.src} />
+            <Listen text={listen.text} display={LANDING_EXAMPLE.original} src={listen.src} />
           </Reveal>
         </section>
 
@@ -242,7 +242,7 @@ export default function Home() {
             Tiza<span className="text-amber-300">.ai</span>
           </p>
           <p className="mt-12 text-lg text-indigo-100">
-            Prácticos de matemática para 6.º de bachillerato. Hecho en Montevideo.
+            Prácticos de matemática para bachillerato. Hecho en Montevideo.
           </p>
           <ul className="mt-6 flex flex-wrap gap-x-6">
             <li>
