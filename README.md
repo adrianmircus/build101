@@ -42,63 +42,21 @@ Si el navegador ya tenía datos guardados, tocá «Restaurar datos de ejemplo» 
 
 ## Infraestructura
 
-> **Planificada.** Hoy la app corre en Vercel, los datos viven en el `localStorage` del navegador y la IA va directo a la API de Anthropic. Esta es la infraestructura hacia la que vamos: **Vercel** sirve la app y **AWS** pone todo lo demás, en São Paulo (`sa-east-1`), la región más cercana a Uruguay.
-
-```mermaid
-flowchart TB
-  subgraph NAV["Navegador (Uruguay)"]
-    UI["Next.js en el cliente"]
-    LOCAL["MediaPipe (mirada) y Web Speech (dictado)<br/>todo local: el video no sale de la compu"]
-  end
-
-  subgraph VERCEL["Vercel · funciones en gru1 (São Paulo)"]
-    APP["Next.js 16<br/>páginas, /api/*, server actions"]
-    OIDC["Token OIDC de Vercel<br/>uno por entorno"]
-  end
-
-  subgraph AWS["AWS · sa-east-1 (São Paulo)"]
-    IAM["IAM<br/>un rol por entorno, permisos mínimos"]
-    AURORA[("Aurora PostgreSQL Serverless v2<br/>+ RDS Data API")]
-    S3[("S3 cifrado con KMS<br/>PDFs y fotos de prácticos y programas")]
-    DDB[("DynamoDB<br/>límites de intentos y de pedidos a la IA")]
-    BEDROCK["Amazon Bedrock<br/>Claude: IA principal"]
-    SEC["Secrets Manager + KMS"]
-    OBS["CloudWatch · Budgets<br/>CloudTrail · GuardDuty"]
-  end
-
-  subgraph EXT["Servicios externos"]
-    ANTH["API de Anthropic<br/>respaldo de la IA"]
-    ELEVEN["ElevenLabs<br/>voz rioplatense"]
-  end
-
-  UI -->|HTTPS| APP
-  UI -->|"subida directa con URL prefirmada"| S3
-  APP --> OIDC
-  OIDC -->|"AssumeRoleWithWebIdentity"| IAM
-  IAM -.->|"credenciales temporales"| APP
-  APP -->|"SQL por HTTPS (Data API)"| AURORA
-  APP --> S3
-  APP --> DDB
-  APP -->|"prompts sin nombres de estudiantes"| BEDROCK
-  APP -.->|"si Bedrock falla"| ANTH
-  APP -->|"leer en voz alta"| ELEVEN
-  AURORA --- SEC
-```
+> **En construcción.** Hoy los datos viven en el `localStorage` del navegador y la IA va directo a la API de Anthropic. El plan para pasar a una plataforma real, con cuentas, colegios y datos en el servidor, está en [`docs/PLATAFORMA.md`](docs/PLATAFORMA.md), y el avance en [`docs/PLATAFORMA-AVANCE.md`](docs/PLATAFORMA-AVANCE.md). Va con **Netlify** para la app y **Supabase** para todo lo demás, en São Paulo, la región más cercana a Uruguay.
 
 | Pieza | Dónde | Para qué |
 |---|---|---|
-| App (páginas, rutas `/api/*`, server actions) | Vercel, funciones en `gru1` | Lo de hoy, sin cambios; las funciones corren en São Paulo, al lado de los datos. Se mantienen los previews por PR. |
-| Acceso a AWS | Vercel OIDC → IAM | Sin claves fijas: cada entorno de Vercel canjea su token por credenciales temporales de un rol que solo ve sus recursos. |
-| Base de datos | Aurora PostgreSQL Serverless v2 + Data API | Instituciones, profes, grupos, estudiantes, prácticos, versiones, entregas y notas. La Data API responde por HTTPS firmado con IAM: la base no queda abierta a internet. |
-| Archivos | S3 con KMS | PDFs y fotos que sube el profe y el programa de la materia. Se suben directo desde el navegador con URL prefirmada, sin el tope de 4,5 MB de Vercel. |
-| Límites | DynamoDB on-demand con TTL | Contadores del límite de intentos del login (`lib/auth/rateLimit.ts`) y de pedidos a la IA, compartidos entre todas las funciones. |
-| IA | Amazon Bedrock (Claude) | Proveedor principal. La API de Anthropic queda de respaldo en `withFallback` (`lib/agent/client.ts`). |
-| Secretos | Secrets Manager + KMS | Credenciales de la base y claves de servicios externos. |
-| Observabilidad | CloudWatch, Budgets, CloudTrail, GuardDuty | Logs y alarmas, alertas de gasto, auditoría de accesos y detección de amenazas. |
-| Voz | ElevenLabs | Voz rioplatense para «Escuchar», que no tiene equivalente en AWS. |
+| App (páginas, rutas, Server Actions) | Netlify, con el adaptador oficial de Next.js y funciones en `gru` (São Paulo) | Sirve la app. Las funciones cortan a los 60 s, así que el trabajo largo de la IA va por trabajos en segundo plano. |
+| Base de datos | Supabase Postgres, `sa-east-1` | Instituciones, profes, grupos, estudiantes, prácticos, versiones, entregas y notas. Los permisos viven en la base: RLS y funciones que validan quién pide. |
+| Cuentas | Supabase Auth | Profes y admins con email; estudiantes con la tarjeta del grupo. Sin registro abierto: entra quien invita la institución. |
+| Archivos | Supabase Storage | PDFs y fotos de prácticos y programas, sin acceso directo: el servidor autoriza cada subida y cada lectura con URLs firmadas. |
+| Trabajos en segundo plano | Tabla de trabajos en Postgres y Supabase Cron | Generar versiones, leer PDFs y analizar resultados sin depender de que el profe tenga la pestaña abierta, con topes por institución. |
+| IA | API de Claude, con OpenRouter de respaldo (`lib/agent/client.ts`) | Cada llamada tiene plazo, se puede cancelar y registra los tokens. A la IA nunca le llegan nombres. |
+| Voz | ElevenLabs | Voz rioplatense para «Escuchar». |
+| Respaldos | Recuperación a un punto en el tiempo de Supabase, más una copia semanal de la base y diaria de los archivos fuera de Supabase | Volver atrás ante un error o una pérdida. |
 
-- **Cuentas separadas** con AWS Organizations: administración, producción y staging. Los previews de Vercel usan staging y nunca tocan datos de producción.
-- **Datos de menores:** los perfiles son datos de salud. Todo va cifrado en reposo y en tránsito, y a la IA nunca le llegan nombres. Guardar los datos en Brasil es una transferencia internacional según la Ley 18.331, así que requiere revisión legal antes de cargar datos reales.
+- **Entornos separados:** producción y staging son proyectos distintos de Supabase. Los deploy previews de Netlify usan staging y nunca tocan datos de producción.
+- **Datos de menores:** los perfiles son datos de salud (datos sensibles según la Ley 18.331). Todo va cifrado en reposo y en tránsito, se guarda lo mínimo y a la IA nunca le llegan nombres. Guardar los datos en Brasil es una transferencia internacional, así que requiere revisión legal antes de cargar datos reales.
 
 ## Cómo está organizada
 
@@ -220,6 +178,10 @@ Hoy hay borradores para TDAH, TEA y dislexia, y los `.md` aprobados todavía son
 |---|---|
 | `npm run dev` | Server de desarrollo |
 | `npm run build` / `npm start` | Build y server de producción |
-| `npm run lint` | ESLint (antes de pushear: `npx tsc --noEmit && npm run lint && npm test`) |
-| `npm test` | Tests sin IA: acceso a las APIs, límite de intentos del login y separación de ejercicios |
+| `npm run typecheck` | TypeScript, con las reglas estrictas para el código nuevo (`tsconfig.strict.json`) |
+| `npm run lint` | ESLint, con los límites de tamaño y las reglas entre capas |
+| `npm test` | Pruebas de unidad con Vitest, sin IA |
+| `npm run test:e2e` | Playwright sobre el build de producción: hoy recorre la demo guiada |
+| `npm run check:ticket` | Las compuertas de un ticket sobre los archivos que cambió |
+| `npm run check` | Todo, antes de pushear |
 | `npm run profiles:distill -- <perfil>` | Borrador de adaptaciones a partir de las fuentes del perfil |
