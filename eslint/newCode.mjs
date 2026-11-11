@@ -16,6 +16,7 @@ export const newCode = [
     plugins: { tiza: tizaPlugin },
     rules: {
       "tiza/no-legacy-imports": "error",
+      "tiza/static-import-target": "error",
       // Named exports only: renaming a default import silently breaks greps and refactors.
       "no-restricted-exports": ["error", { restrictDefaultExports: { direct: true, defaultFrom: true } }],
       "@typescript-eslint/no-explicit-any": "error",
@@ -28,6 +29,12 @@ export const newCode = [
         { "ts-ignore": true, "ts-expect-error": true, "ts-nocheck": true, "ts-check": false },
       ],
     },
+  },
+  // Browser-driven tests may import dynamically; they run outside the layered code.
+  {
+    files: ["tests/e2e/**"],
+    plugins: { tiza: tizaPlugin },
+    rules: { "tiza/static-import-target": "off" },
   },
   {
     files: ["lib/server/**/*.{ts,tsx}"],
