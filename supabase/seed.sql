@@ -1,0 +1,2 @@
+-- Intentionally empty for now: domain data for local development arrives with the domain tables.
+-- Tests create their own data with the factories in tests/factories/ and never rely on this file.

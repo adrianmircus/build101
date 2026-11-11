@@ -1,6 +1,6 @@
 # Runs on every PR and on pushes to main (a push to a branch with an open PR would run it twice).
 # A PR to main can only merge with both jobs green (branch protection).
-# Supabase (local database, integration tests and pgTAP) joins in T1.1.
+# The "Base" job runs Supabase local: migrations, pgTAP, integration tests and generated types.
 name: CI
 
 on:
@@ -61,3 +61,34 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  base:
+    name: Base
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      # The Supabase CLI comes from package.json (devDependency), so CI and local use the same version.
+      - run: npm ci
+      # Only what the app uses: db, auth, rest and storage. The rest of the stack is slow to pull
+      # and nothing here needs it.
+      - name: Supabase local
+        run: npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,mailpit,postgres-meta,supavisor
+      # db reset applies every migration from zero, the same path a fresh clone takes.
+      - name: Migraciones
+        run: npx supabase db reset
+      - name: pgTAP
+        run: npm run db:test
+      - name: Integración
+        run: npm run test:integration
+      - name: Tipos generados al día
+        run: |
+          npm run db:types
+          git diff --exit-code lib/server/db/types.ts
+      - name: Registros de Supabase
+        if: failure()
+        run: docker ps -a && for c in $(docker ps -aq); do docker logs --tail 50 "$c" 2>&1 | head -60; done

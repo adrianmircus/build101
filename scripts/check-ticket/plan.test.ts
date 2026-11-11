@@ -75,7 +75,7 @@ describe("buildPlan", () => {
   });
   it("supabase/ prende las pruebas de la base", () => {
     expect(ids(["supabase/migrations/001.sql"])).toEqual(["typecheck:run", "lint:skip", "tests:skip", "database:run"]);
-    expect(buildPlan(["supabase/tests/a.sql"]).at(-1)).toMatchObject({ command: "supabase", args: ["test", "db"] });
+    expect(buildPlan(["supabase/tests/a.sql"]).at(-1)).toMatchObject({ command: "npm", args: ["run", "db:test"] });
   });
   it("una carpeta que solo se llama parecido no cuenta como supabase/", () => {
     expect(ids(["lib/supabase/client.ts"])[3]).toEqual("database:skip");

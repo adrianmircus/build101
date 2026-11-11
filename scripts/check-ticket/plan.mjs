@@ -96,7 +96,7 @@ export function buildPlan(changed) {
   }
   steps.push(
     touchesDatabase
-      ? { id: "database", label: "Pruebas de la base (pgTAP)", command: "supabase", args: ["test", "db"] }
+      ? { id: "database", label: "Pruebas de la base (pgTAP)", command: "npm", args: ["run", "db:test"] }
       : { id: "database", label: "Pruebas de la base (pgTAP)", skipped: "no cambió nada bajo supabase/" },
   );
   return steps;
