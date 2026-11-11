@@ -34,6 +34,8 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
 const GLIDE = 250;
 // If the scroll never reports its end (browsers without scrollend), the step shows anyway after this.
 const SCROLL_LIMIT = 900;
+// Longest the tour waits for the page's own transition before showing anyway.
+const TRANSITION_LIMIT = 1500;
 
 type AnchorState = {
   anchor?: string;
@@ -56,9 +58,11 @@ const same = (a: Box | null, b: Box | null) =>
 // A point in the middle of the element: on a new page the highlight opens from there.
 const collapsed = (box: Box): Box => ({ top: box.top + box.height / 2, left: box.left + box.width / 2, width: 0, height: 0 });
 
-// The page's own view transition (the content sliding between pages) is still playing.
+// The page's own view transition (the content sliding between pages) is still playing. Only running or pending
+// ones count: a finished animation can stay in getAnimations() (fill mode) and used to hold the tour forever.
 const pageMoving = () =>
   document.getAnimations().some((a) => {
+    if (a.playState !== "running" && !a.pending) return false;
     const target = (a.effect as KeyframeEffect | null)?.pseudoElement ?? "";
     return target.startsWith("::view-transition") && !target.includes("demo-");
   });
@@ -112,7 +116,7 @@ function useAnchor(anchor: string | undefined, pathname: string): AnchorState {
       previous = box;
       // Settled: in place for a few frames, not scrolling and with the page's transition over. From then on it just
       // follows the element. Without a previous element, it first shows closed for one frame so it can open from there.
-      if (!settledAt && box && !scrolling && still >= 3 && !pageMoving()) {
+      if (!settledAt && box && !scrolling && still >= 3 && (!pageMoving() || now - start > TRANSITION_LIMIT)) {
         if (from) settledAt = now;
         else from = collapsed(box);
       }

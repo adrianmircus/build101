@@ -24,7 +24,7 @@ export default defineConfig<TestOptions>({
     // (see the "burbuja fuera de la pantalla" annotations).
     { name: "escritorio", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     // Pixel 7 is Chromium-based, so only one browser needs to be installed.
-    { name: "celular", use: { ...devices["Pixel 7"], viewTransitions: false } },
+    { name: "celular", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
     // The production build is what colleges see; the dev server hides problems (and adds its own overlay).

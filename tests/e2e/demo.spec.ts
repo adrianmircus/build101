@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { checkAccessibility } from "./support/a11y";
 import { expect, test } from "./support/fixtures";
-import { expectStep, expectVisibleFocus, tapInBubble } from "./support/tour";
+import { bubble, expectStep, expectVisibleFocus, tapInBubble } from "./support/tour";
 
 // Tabs like a keyboard user does until the target has focus. Focus does not start in the tour's bubble on steps with
 // a highlighted element, so it can take a few dozen presses to get across the page.
@@ -67,7 +67,9 @@ test("recorrido completo de la demo guiada", async ({ page }) => {
 
   await test.step("Etapa 3: tu revisión", async () => {
     // The versions take real seconds to come back from the fixtures: wait for the state, not for time.
-    await expectStep(page, "Un agente por perfil");
+    // "Un agente por perfil" closes by itself as soon as the versions are ready, so on a loaded machine it can be gone
+    // before its bubble settles: either it or the next step shows the generation went through.
+    await expect(bubble(page, "Un agente por perfil").or(bubble(page, "Cada cambio, con su porqué"))).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Práctico: Límites de funciones" })).toBeVisible();
     let dialog = await expectStep(page, "Cada cambio, con su porqué");
     await expect(page.getByRole("heading", { name: "Versión TDAH" })).toBeVisible();
