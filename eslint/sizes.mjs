@@ -26,7 +26,12 @@ export const sizes = [
   {
     // A describe() callback holds every case of a suite, so the function limit would only push tests
     // into arbitrary splits. The file limit still applies: a test file over 200 lines gets split.
-    files: ["**/*.test.{ts,tsx}"],
+    files: ["**/*.test.{ts,tsx}", "tests/e2e/**/*.spec.ts"],
     rules: { "tiza/function-size": "off" },
+  },
+  {
+    // Playwright fixtures receive a `use` callback that the React hooks rule mistakes for React.use().
+    files: ["tests/e2e/**/*.ts"],
+    rules: { "react-hooks/rules-of-hooks": "off" },
   },
 ];

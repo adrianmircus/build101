@@ -103,7 +103,7 @@ test("recorrido completo de la demo guiada", async ({ page }) => {
     // The student never sees a label that would reveal the profile (the tour's bubble is the teacher's guide).
     // Live innerText (a detached clone would include the scripts), minus the tour's own text.
     const studentText = await page.evaluate(() => {
-      const own = [...document.querySelectorAll('[role="dialog"], [role="status"]')].map((el) => (el as HTMLElement).innerText);
+      const own = [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="status"]')].map((el) => el.innerText);
       return own.reduce((text, part) => text.replace(part, ""), document.body.innerText);
     });
     expect(studentText).not.toMatch(/TDAH|dislexia|disgraf|motriz|\bTEA\b/i);
