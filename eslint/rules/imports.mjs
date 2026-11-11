@@ -7,16 +7,21 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 const EXT = /\.(?:ts|tsx|mjs|js)$/;
 // Windows device prefixes (\\?\C:\…, \\.\C:\…) name the same file as C:\….
 const DEVICE = /^\/\/[?.]\//;
-const CANDIDATES = ["", ".ts", ".tsx", ".mjs", ".js", "/index.ts", "/index.tsx"];
+const CANDIDATES = ["", ".ts", ".tsx", ".d.ts", ".mts", ".cts", ".mjs", ".js", "/index.ts", "/index.tsx"];
+// TypeScript maps a written .js/.jsx/.mjs/.cjs (or .ts/.tsx) to the source file, so "./x.js" is ./x.ts.
+const WRITTEN_EXT = /\.(?:d\.ts|[cm]?[jt]sx?)$/;
 
 /**
  * The real path of the file a spelling points to. realpath gives the file's real case and expands
- * 8.3 short names, so "@/LIB/server/x" or "C:/…/WORKTR~1/…" on Windows is judged as the file it is.
- * A path that matches no file can't be imported either, so its lexical form is enough.
+ * 8.3 short names, so "@/LIB/server/x.js" or "C:/…/WORKTR~1/…" on Windows is judged as the file it is.
+ * When no file matches, Windows still resolves it case-insensitively, so the path is compared in
+ * lowercase there (every layer root is lowercase). Elsewhere a missing file can't be imported at all.
  */
 function realFile(spelled) {
-  const hit = CANDIDATES.map((ext) => spelled + ext).find((candidate) => existsSync(candidate));
-  return hit ? realpathSync.native(hit) : spelled;
+  const stems = [spelled, spelled.replace(WRITTEN_EXT, "")];
+  const hit = stems.flatMap((stem) => CANDIDATES.map((ext) => stem + ext)).find((candidate) => existsSync(candidate));
+  if (hit) return realpathSync.native(hit);
+  return process.platform === "win32" ? spelled.toLowerCase() : spelled;
 }
 
 /** Repo-relative path without extension, or null for packages and paths outside the repo. */

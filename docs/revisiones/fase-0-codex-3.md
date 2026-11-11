@@ -35,3 +35,18 @@ R2 sigue abierto. Reproduje tres bypasses **P1 (alta)** desde `lib/domain`: ESLi
 `lint` y los 219 tests de ESLint pasan pese a estos bypasses. Sin cambios en archivos.
 
 Veredicto: no listo
+
+## Ronda 6
+
+**R2 sigue abierto — severidad alta.** Bypasses reproducidos desde `lib/domain`:
+
+- `@/LIB/server/log.js` → `lib/server/log.ts`.
+- `@/Lib/groups/store.js` → `lib/groups/store.ts`.
+
+En ambos, TypeScript resuelve y ESLint devuelve cero mensajes. También reproduje variantes con `.jsx`, `.d.ts`, rutas relativas, absolutas y prefijos `//?/` y `//./`.
+
+La sustitución de extensiones de TypeScript evita que `realFile` encuentre el archivo; conserva las mayúsculas y elude las reglas.
+
+Lint y las 224 pruebas existentes pasan.
+
+Veredicto: no listo

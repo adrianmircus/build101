@@ -87,6 +87,14 @@ describe.runIf(process.platform === "win32")("Windows spellings of the same file
     ["@/Lib/groups/store", LEGACY],
     [`//?/${cwd}/lib/server/log`, LAYERS],
     [`//./${cwd}/lib/groups/store`, LEGACY],
+    // TypeScript's extension substitution: a written .js/.jsx/.d.ts names the .ts source.
+    ["@/LIB/server/log.js", LAYERS],
+    ["@/Lib/groups/store.js", LEGACY],
+    ["../SERVER/log.jsx", LAYERS],
+    ["@/LIB/server/log.d.ts", LAYERS],
+    [`//?/${cwd}/LIB/server/log.js`, LAYERS],
+    // No such file: Windows would still match case-insensitively, so it's judged in lowercase.
+    ["@/LIB/Server/missing.js", LAYERS],
   ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
     expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
   });
