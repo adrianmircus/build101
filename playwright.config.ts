@@ -1,10 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
-import type { TestOptions } from "./tests/e2e/support/fixtures";
 
-const PORT = 3100;
+// Each worktree can pick its own port: two checkouts must not test each other's build.
+const PORT = Number(process.env.E2E_PORT ?? 3100);
 const CI = !!process.env.CI;
 
-export default defineConfig<TestOptions>({
+export default defineConfig({
   testDir: "tests/e2e",
   // The guided demo has real delays (several seconds per version), so each test gets a generous budget.
   timeout: 120_000,
@@ -30,7 +30,8 @@ export default defineConfig<TestOptions>({
     // The production build is what colleges see; the dev server hides problems (and adds its own overlay).
     command: `npm run build && npm run start -- -p ${PORT}`,
     url: `http://localhost:${PORT}`,
-    reuseExistingServer: !CI,
+    // Only when asked (E2E_REUSE=1): a server left over from another checkout would test someone else's build.
+    reuseExistingServer: process.env.E2E_REUSE === "1" && !CI,
     timeout: 600_000,
     env: {
       // Throwaway value: a production build refuses to sign sessions without one. It protects nothing real.
