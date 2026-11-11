@@ -103,7 +103,8 @@ function typeScriptReferences(text) {
     ...ref,
     fileName: ref.fileName.startsWith(".") || isAbsolute(ref.fileName) ? ref.fileName : `./${ref.fileName}`,
   }));
-  return [...info.importedFiles, ...references];
+  // `/// <reference types="react" />` names a package, judged like `import "react"`.
+  return [...info.importedFiles, ...references, ...info.typeReferenceDirectives];
 }
 
 /**

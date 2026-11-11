@@ -116,3 +116,22 @@ TypeScript carga `lib/server/log.ts`, sin diagnósticos en el archivo de prueba;
 Árbol de trabajo limpio.
 
 Veredicto: no listo
+
+## Ronda 11
+
+**R2 sigue parcialmente abierto.**
+
+- **Media:** [imports.mjs:100](/C:/Users/adrim/build101/.claude/worktrees/fase-0/eslint/rules/imports.mjs:100) omite `typeReferenceDirectives`. En dominio, esto pasa ESLint y TypeScript estricto sin mensajes:
+
+  ```ts
+  /// <reference types="react" />
+  export type View = React.ReactNode;
+  ```
+
+  También pasa `types="next"`. Es sintaxis habitual, plausible para un implementador honesto. Falta comprobar esas directivas mediante `ts.resolveTypeReferenceDirective`.
+
+- **Baja:** `import("../../node_modules/@types/react/index").ReactNode` también evade la prohibición de React en dominio; requiere una ruta inusual.
+
+No encontré otros problemas nuevos de alta/media fuera de las revisiones anteriores. Pasaron lint, **445 pruebas** y ambos chequeos de tipos. Árbol limpio.
+
+Veredicto: no listo
