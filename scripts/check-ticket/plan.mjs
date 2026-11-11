@@ -104,3 +104,14 @@ export function buildPlan(changed) {
 export function isSkipped(step) {
   return "skipped" in step;
 }
+
+/**
+ * Phase branch a ticket branch hangs from: `plataforma/t0-1-vitest` -> `plataforma/fase-0`.
+ * Returns null when the name does not follow the ticket convention.
+ * @param {string} branch
+ * @returns {string | null}
+ */
+export function phaseBranchFor(branch) {
+  const match = /^plataforma\/t(\d+)-\d+-[a-z0-9][a-z0-9-]*$/.exec(branch);
+  return match ? `plataforma/fase-${match[1]}` : null;
+}

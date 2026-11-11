@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPlan, collectChanged, isSkipped, normalizePath, parseArgs, parseNullSeparated, resolveBase } from "./plan.mjs";
+import { buildPlan, collectChanged, isSkipped, normalizePath, parseArgs, parseNullSeparated, phaseBranchFor, resolveBase } from "./plan.mjs";
 
 const ids = (changed: string[]) => buildPlan(changed).map((s) => `${s.id}:${isSkipped(s) ? "skip" : "run"}`);
 
@@ -72,5 +72,21 @@ describe("buildPlan", () => {
   });
   it("mezcla de todo: corre las cuatro", () => {
     expect(ids(["lib/a.ts", "supabase/x.sql"])).toEqual(["typecheck:run", "lint:run", "tests:run", "database:run"]);
+  });
+});
+
+describe("phaseBranchFor", () => {
+  it("deduce la rama de fase desde la de un ticket", () => {
+    expect(phaseBranchFor("plataforma/t0-1-vitest")).toEqual("plataforma/fase-0");
+    expect(phaseBranchFor("plataforma/t12-3-rls-de-grupos")).toEqual("plataforma/fase-12");
+  });
+  it("devuelve null con nombres que no siguen la convención", () => {
+    for (const name of ["main", "plataforma/fase-0", "plataforma/t0-vitest", "plataforma/t0-1-", "feature/t0-1-vitest", "plataforma/t0-1-Vitest", "plataforma/ta-1-x"]) {
+      expect(phaseBranchFor(name)).toEqual(null);
+    }
+  });
+  it("una rama sin rama de fase queda a cargo del runner, que cae a main", () => {
+    // The name alone says which phase branch to look for; whether it exists is checked against git.
+    expect(phaseBranchFor("plataforma/t9-1-algo")).toEqual("plataforma/fase-9");
   });
 });

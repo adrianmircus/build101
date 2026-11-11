@@ -1,7 +1,7 @@
 // Gates of a ticket: runs only what the ticket's changed files require, and stops at the first failure.
 // Usage: npm run check:ticket [-- --base <ref>]   (base also from TICKET_BASE, else merge-base with main)
 import { spawnSync } from "node:child_process";
-import { buildPlan, collectChanged, isSkipped, parseArgs, parseNullSeparated, resolveBase } from "./check-ticket/plan.mjs";
+import { buildPlan, collectChanged, isSkipped, parseArgs, parseNullSeparated, phaseBranchFor, resolveBase } from "./check-ticket/plan.mjs";
 
 const isWindows = process.platform === "win32";
 
@@ -20,10 +20,17 @@ function git(args) {
   return result.stdout;
 }
 
+// A ticket branch is cut from its phase branch, so that is the right base; main is the fallback.
+function defaultBaseRef() {
+  const phase = phaseBranchFor(git(["rev-parse", "--abbrev-ref", "HEAD"]).trim());
+  const exists = phase && run("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${phase}`], { stdio: "ignore" }).status === 0;
+  return exists ? phase : "main";
+}
+
 function findBase() {
   const { base: flag } = parseArgs(process.argv.slice(2));
   const env = process.env.TICKET_BASE || undefined;
-  const mergeBase = flag || env ? undefined : git(["merge-base", "HEAD", "main"]).trim();
+  const mergeBase = flag || env ? undefined : git(["merge-base", "HEAD", defaultBaseRef()]).trim();
   const base = resolveBase({ flag, env, mergeBase });
   if (!base) throw new Error("No se pudo calcular la base del diff. Pasá --base <ref> o definí TICKET_BASE.");
   return base;
