@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ruleIdsFor } from "./lint.helper";
+import { ruleIdsFor, ruleMessages } from "./lint.helper";
 
-const RESTRICTED = "no-restricted-imports";
+const RESTRICTED = "tiza/layers";
 
 // [file that imports, import source, forbidden?]
 const cases: Array<[string, string, boolean]> = [
@@ -60,5 +60,36 @@ describe("dependency rules between layers", () => {
   it("also covers re-exports", async () => {
     const ids = await ruleIdsFor('export { x } from "@/lib/server/log";\n', "components/a/B.tsx");
     expect(ids).toContain(RESTRICTED);
+  });
+});
+
+describe("layer rules cannot be sidestepped", () => {
+  const lint = (code: string, file: string) => ruleIdsFor(code, file);
+
+  it("flags a barrel that re-exports db/client", async () => {
+    expect(await lint('export * from "./client";\n', "lib/server/db/index.ts")).toContain(RESTRICTED);
+    expect(await lint('export { db } from "./client";\n', "lib/server/db/index.ts")).toContain(RESTRICTED);
+  });
+  it("accepts the barrel for what is not restricted", async () => {
+    expect(await lint('import { x } from "@/lib/server/db";\nexport const y = x;\n', "lib/server/services/a.ts")).not.toContain(RESTRICTED);
+  });
+  it("flags a dynamic import()", async () => {
+    expect(await lint('export const m = () => import("@/lib/server/log");\n', "components/a/B.tsx")).toContain(RESTRICTED);
+    expect(await lint('export const m = () => import("@/lib/client/x");\n', "components/a/B.tsx")).not.toContain(RESTRICTED);
+  });
+  it("sees through odd spellings of a path", async () => {
+    const code = 'import { x } from "../../lib/./server/log";\nexport const y = x;\n';
+    expect(await lint(code, "components/a/B.tsx")).toContain(RESTRICTED);
+    const up = 'import { x } from "../../components/../lib/server/log";\nexport const y = x;\n';
+    expect(await lint(up, "components/a/B.tsx")).toContain(RESTRICTED);
+  });
+  it("applies ./admin only to lib/server/repos/*.ts", async () => {
+    const code = 'import { x } from "./admin";\nexport const y = x;\n';
+    expect(await lint(code, "components/x/Page.tsx")).not.toContain(RESTRICTED);
+    expect(await lint(code, "lib/server/repos/groups.ts")).toContain(RESTRICTED);
+  });
+  it("reports the right message", async () => {
+    const messages = await ruleMessages('import { x } from "./admin";\nexport const y = x;\n', "lib/server/repos/groups.ts");
+    expect(messages.some((m) => m.includes("repos/admin"))).toBe(true);
   });
 });

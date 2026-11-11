@@ -12,8 +12,8 @@ import {
   type Store,
 } from "@/lib/auth/rateLimit";
 
-async function fail(times: number, ip: string, username: string, store: Store) {
-  for (let i = 0; i < times; i++) await recordFailure(ip, username, store);
+async function fail(times: number, who: { ip: string; username: string }, store: Store) {
+  for (let i = 0; i < times; i++) await recordFailure(who.ip, who.username, store);
 }
 
 // A fake clock the tests can move forward; each case builds its own store so none depends on another.
@@ -27,7 +27,7 @@ beforeEach(() => {
 describe("límite de intentos del login", () => {
   it("con 9 fallos todavía puede intentar", async () => {
     const store = memoryStore(clock);
-    await fail(MAX_PER_IP_AND_USER - 1, "1.1.1.1", "ana", store);
+    await fail(MAX_PER_IP_AND_USER - 1, { ip: "1.1.1.1", username: "ana" }, store);
     expect(await isLocked("1.1.1.1", "ana", store)).toEqual(false);
   });
 
@@ -35,7 +35,7 @@ describe("límite de intentos del login", () => {
     let store: Store;
     beforeEach(async () => {
       store = memoryStore(clock);
-      await fail(MAX_PER_IP_AND_USER, "1.1.1.1", "ana", store);
+      await fail(MAX_PER_IP_AND_USER, { ip: "1.1.1.1", username: "ana" }, store);
     });
 
     it("el intento 11 queda bloqueado", async () => {
@@ -58,9 +58,9 @@ describe("límite de intentos del login", () => {
 
   it("un acierto limpia los fallos anteriores", async () => {
     const store = memoryStore(clock);
-    await fail(5, "1.1.1.1", "camila", store);
+    await fail(5, { ip: "1.1.1.1", username: "camila" }, store);
     await recordSuccess("1.1.1.1", "camila", store);
-    await fail(MAX_PER_IP_AND_USER - 1, "1.1.1.1", "camila", store);
+    await fail(MAX_PER_IP_AND_USER - 1, { ip: "1.1.1.1", username: "camila" }, store);
     expect(await isLocked("1.1.1.1", "camila", store)).toEqual(false);
   });
 
@@ -81,7 +81,7 @@ describe("límite de intentos del login", () => {
       // The fallback logs a warning on every failure; keep the test output clean.
       vi.spyOn(console, "warn").mockImplementation(() => {});
       store = resilient(broken, memoryStore(clock));
-      await fail(MAX_PER_IP_AND_USER, "1.1.1.1", "paula", store);
+      await fail(MAX_PER_IP_AND_USER, { ip: "1.1.1.1", username: "paula" }, store);
     });
     afterEach(() => vi.restoreAllMocks());
 
@@ -98,7 +98,7 @@ describe("límite de intentos del login", () => {
     let store: Store;
     beforeEach(async () => {
       store = memoryStore(clock, 4);
-      await fail(MAX_PER_IP_AND_USER, "1.1.1.1", "ana", store);
+      await fail(MAX_PER_IP_AND_USER, { ip: "1.1.1.1", username: "ana" }, store);
     });
 
     it("antes del tope, el bloqueo está", async () => {

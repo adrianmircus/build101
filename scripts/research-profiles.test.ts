@@ -99,7 +99,7 @@ it("archivo: largo recortado", () => {
 });
 
 // Borrador
-const adaptation = (text: string, contradicts: string | null, scope = "text", quote = "cita") => ({
+const adaptation = (text: string, contradicts: string | null, { scope = "text", quote = "cita" } = {}) => ({
   category: "Enunciado",
   scope,
   adaptation: text,
@@ -156,8 +156,8 @@ const mixed = draftMarkdown(
       url: "https://chadd.org/math.pdf",
       adaptations: [
         adaptation("Verbo de la consigna en negrita", null),
-        adaptation("Más tiempo", "Dar 25 % más de tiempo", "outside_text"),
-        adaptation("Permitir calculadora", null, "changes_assessment", "use a calculator --> always"),
+        adaptation("Más tiempo", "Dar 25 % más de tiempo", { scope: "outside_text" }),
+        adaptation("Permitir calculadora", null, { scope: "changes_assessment", quote: "use a calculator --> always" }),
       ],
     },
   ],

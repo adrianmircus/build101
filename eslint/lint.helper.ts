@@ -15,3 +15,9 @@ export async function ruleIdsFor(code: string, filePath: string): Promise<string
 beforeAll(async () => {
   await ruleIdsFor("export const warm = 1;", "lib/domain/warm.ts");
 }, 60_000);
+
+/** Same as ruleIdsFor, but returns the message texts. */
+export async function ruleMessages(code: string, filePath: string): Promise<string[]> {
+  const [result] = await eslint.lintText(code, { filePath: resolve(root, filePath) });
+  return (result?.messages ?? []).map((m) => m.message);
+}

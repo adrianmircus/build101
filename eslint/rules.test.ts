@@ -107,3 +107,59 @@ describe("new code cannot import legacy code", () => {
     expect(await ruleIdsFor(imp("@/lib/groups/store"), "lib/profiles.ts")).not.toContain(LEGACY);
   });
 });
+
+describe("function size: wrappers and tests", () => {
+  const wrap = (open: string, close: string) => `${open}
+${body(60)}
+  return null;
+${close}
+`;
+
+  it("takes the variable name for memo and forwardRef components", async () => {
+    const file = "components/x/Panel.tsx";
+    expect(await ruleIdsFor(wrap("export const Panel = memo(function () {", "});"), file)).not.toContain(SIZE);
+    expect(await ruleIdsFor(wrap("export const Panel = memo(() => {", "});"), file)).not.toContain(SIZE);
+    const forward = wrap("export const Field = React.forwardRef((props, ref) => {", "});");
+    expect(await ruleIdsFor(forward, file)).not.toContain(SIZE);
+    expect(await ruleIdsFor(wrap("export const panel = memo(() => {", "});"), file)).toContain(SIZE);
+  });
+
+  it("exempts only the callbacks of describe, it, test and hooks in tests", async () => {
+    const suite = `describe("a", () => {\n${body(80)}\n  it("b", async () => {\n${body(60)}\n  });\n  beforeEach(() => {\n${body(60)}\n  });\n});\n`;
+    const ids = await ruleIdsFor(`import { describe, it, beforeEach } from "vitest";\n${suite}`, "lib/domain/x.test.ts");
+    expect(ids).not.toContain(SIZE);
+    const steps = `test("a", async () => {\n  await test.step("s", async () => {\n${body(60)}\n  });\n});\n`;
+    expect(await ruleIdsFor(steps, "tests/e2e/a.spec.ts")).not.toContain(SIZE);
+    const each = `it.each([1])("a", () => {\n${body(60)}\n});\n`;
+    expect(await ruleIdsFor(each, "lib/domain/x.test.ts")).not.toContain(SIZE);
+  });
+
+  it("still fails a long helper inside a test file", async () => {
+    const helper = `function setup() {\n${body(80)}\n  return 1;\n}\nit("a", () => { setup(); });\n`;
+    expect(await ruleIdsFor(helper, "lib/domain/x.test.ts")).toContain(SIZE);
+    expect(await ruleIdsFor(helper, "tests/e2e/a.spec.ts")).toContain(SIZE);
+  });
+});
+
+describe("new code: no non-null assertion and no @ts comments", () => {
+  const NON_NULL = "@typescript-eslint/no-non-null-assertion";
+  const BAN = "@typescript-eslint/ban-ts-comment";
+
+  it("flags the ! operator", async () => {
+    expect(await ruleIdsFor("export const f = (a: string | null) => a!.length;\n", "lib/domain/x.ts")).toContain(NON_NULL);
+  });
+  it.each(["@ts-ignore", "@ts-expect-error", "@ts-nocheck"])("flags %s", async (directive) => {
+    const code = `// ${directive} because of a reason\nexport const a: number = "x";\n`;
+    expect(await ruleIdsFor(code, "lib/server/x.ts")).toContain(BAN);
+  });
+  it("does not apply to legacy files", async () => {
+    expect(await ruleIdsFor("export const f = (a: string | null) => a!.length;\n", "lib/profiles.ts")).not.toContain(NON_NULL);
+  });
+});
+
+describe("new code: server-only in .tsx and strict scope", () => {
+  it("requires server-only in lib/server/**/*.tsx", async () => {
+    expect(await ruleIdsFor("export const A = () => null;\n", "lib/server/ui/A.tsx")).toContain(SERVER_ONLY);
+    expect(await ruleIdsFor('import "server-only";\nexport const A = () => null;\n', "lib/server/ui/A.tsx")).not.toContain(SERVER_ONLY);
+  });
+});

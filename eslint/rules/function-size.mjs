@@ -1,12 +1,45 @@
 // Counts code lines of a function (no blanks, no comment-only lines) and applies a bigger limit to
 // React components. A component is a function whose name starts with an uppercase letter, because
-// that is what React and the JSX transform rely on too.
+// that is what React and the JSX transform rely on too. `const X = memo(() => ...)` and
+// `forwardRef` wrappers take the variable's name, since the inner function is anonymous.
+
+const WRAPPERS = new Set(["memo", "forwardRef"]);
+const TEST_BLOCKS = new Set(["describe", "it", "test", "beforeEach", "afterEach", "beforeAll", "afterAll"]);
+
+function wrapperName(callee) {
+  if (callee.type === "Identifier") return callee.name;
+  if (callee.type === "MemberExpression" && callee.property.type === "Identifier") return callee.property.name;
+  return null;
+}
 
 function functionName(node) {
-  if (node.id) return node.id.name;
-  const parent = node.parent;
+  let current = node;
+  while (current.parent.type === "CallExpression" && WRAPPERS.has(wrapperName(current.parent.callee))) {
+    current = current.parent;
+  }
+  const wrapped = current !== node;
+  if (node.id && !wrapped) return node.id.name;
+  const parent = current.parent;
   if (parent.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
-  return null;
+  return node.id ? node.id.name : null;
+}
+
+// it("x", () => ...), describe.each(rows)("x", () => ...), test.step("x", async () => ...)
+function testRoot(callee) {
+  let current = callee;
+  while (current.type === "CallExpression" || current.type === "MemberExpression") {
+    current = current.type === "CallExpression" ? current.callee : current.object;
+  }
+  return current.type === "Identifier" ? current.name : null;
+}
+
+// The callback of a test block holds a whole suite or case, so it is not held to the function
+// limit. Helpers declared next to the tests still are.
+function isTestCallback(node) {
+  const parent = node.parent;
+  if (parent.type !== "CallExpression" || !parent.arguments.includes(node)) return false;
+  const root = testRoot(parent.callee);
+  return root !== null && TEST_BLOCKS.has(root);
 }
 
 function isComponentName(name) {
@@ -38,7 +71,11 @@ export const functionSize = {
     schema: [
       {
         type: "object",
-        properties: { max: { type: "integer" }, componentMax: { type: "integer" } },
+        properties: {
+          max: { type: "integer" },
+          componentMax: { type: "integer" },
+          exemptTestCallbacks: { type: "boolean" },
+        },
         additionalProperties: false,
       },
     ],
@@ -53,6 +90,7 @@ export const functionSize = {
     const sourceCode = context.sourceCode;
 
     function check(node) {
+      if (options.exemptTestCallbacks && isTestCallback(node)) return;
       const name = functionName(node);
       const component = isComponentName(name);
       const limit = component ? componentMax : max;

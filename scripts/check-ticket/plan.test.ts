@@ -63,6 +63,16 @@ describe("buildPlan", () => {
     expect(lint).toMatchObject({ command: "npx", args: ["eslint", "--no-warn-ignored", ...code] });
     expect(tests).toMatchObject({ command: "npx", args: ["vitest", "related", "--run", "--passWithNoTests", ...code] });
   });
+  it("un cambio en eslint/ corre las pruebas de las reglas, que vitest related no encuentra", () => {
+    const expected = ["typecheck:run", "lint:run", "tests:run", "eslint-tests:run", "database:skip"];
+    expect(ids(["eslint/rules/layers.mjs"])).toEqual(expected);
+    expect(ids(["eslint.config.mjs"])).toEqual(expected);
+    const step = buildPlan(["eslint/sizes.mjs"]).find((s) => s.id === "eslint-tests");
+    expect(step).toMatchObject({ command: "npx", args: ["vitest", "run", "eslint"] });
+  });
+  it("sin cambios en eslint/ no corre esa tanda", () => {
+    expect(ids(["lib/a.ts"])).not.toContain("eslint-tests:run");
+  });
   it("supabase/ prende las pruebas de la base", () => {
     expect(ids(["supabase/migrations/001.sql"])).toEqual(["typecheck:run", "lint:skip", "tests:skip", "database:run"]);
     expect(buildPlan(["supabase/tests/a.sql"]).at(-1)).toMatchObject({ command: "supabase", args: ["test", "db"] });
