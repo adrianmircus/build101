@@ -20,6 +20,25 @@ test.describe("chequeo de que el estudiante no ve su perfil", () => {
     await expect(expectNoProfileLabels(page)).rejects.toThrow(/Dislexia/);
   });
 
+  test("aria-roledescription con el perfil lo hace fallar", async ({ page }) => {
+    await page.setContent('<main><button aria-roledescription="Motriz">Seguir</button></main>');
+    await expect(expectNoProfileLabels(page)).rejects.toThrow(/Motriz/);
+  });
+
+  test("aria-valuetext con el perfil también lo hace fallar", async ({ page }) => {
+    await page.setContent(
+      '<main><div role="slider" tabindex="0" aria-label="Avance" aria-valuemin="0" aria-valuemax="10" aria-valuenow="3" aria-valuetext="TDAH"></div></main>',
+    );
+    await expect(expectNoProfileLabels(page)).rejects.toThrow(/TDAH/);
+  });
+
+  test("un slider con valuetext inocuo pasa", async ({ page }) => {
+    await page.setContent(
+      '<main><div role="slider" tabindex="0" aria-label="Avance" aria-valuemin="0" aria-valuemax="10" aria-valuenow="3" aria-valuetext="3 de 10"></div></main>',
+    );
+    await expectNoProfileLabels(page);
+  });
+
   test("lo que dice la burbuja del recorrido no cuenta", async ({ page }) => {
     await page.setContent(
       '<main><h1>Tu práctico</h1></main><div role="dialog" aria-labelledby="tour-1"><h2 id="tour-1">Perfil motriz</h2><p>TDAH</p></div>',
