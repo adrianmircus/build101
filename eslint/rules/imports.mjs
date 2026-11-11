@@ -90,11 +90,21 @@ export function staticTarget(source) {
   return null;
 }
 
-// `/// <reference path="…" />` pulls a file into the program just like an import does.
-// TypeScript reads the attributes in any order and case ("PATH", preserve="true" first).
-const REFERENCE = /^\/\s*<reference\b[^>]*?\bpath\s*=\s*["']([^"']+)["']/i;
-
 const literalOf = (node) => (node?.type === "Literal" && typeof node.value === "string" ? node.value : null);
+
+/**
+ * Everything TypeScript itself sees this file pull in, parsed by TypeScript (ts.preProcessFile): every
+ * import form and every `/// <reference path>`, however its attributes are written. The AST visitors
+ * below report most of them at the exact node; this pass catches whatever they don't recognize.
+ */
+function typeScriptReferences(text) {
+  const info = ts.preProcessFile(text, true, true);
+  const references = info.referencedFiles.map((ref) => ({
+    ...ref,
+    fileName: ref.fileName.startsWith(".") || isAbsolute(ref.fileName) ? ref.fileName : `./${ref.fileName}`,
+  }));
+  return [...info.importedFiles, ...references];
+}
 
 /**
  * Visitors that call `onSource(node, specifier)` for every way a TypeScript file can name another
@@ -102,7 +112,12 @@ const literalOf = (node) => (node?.type === "Literal" && typeof node.value === "
  * and triple-slash path references.
  */
 export function importVisitors(onSource, context) {
-  const report = (node, specifier) => specifier !== null && onSource(node, specifier);
+  const seen = new Set();
+  const report = (node, specifier) => {
+    if (specifier === null) return;
+    seen.add(specifier);
+    onSource(node, specifier);
+  };
   const fromDeclaration = (node) => report(node.source, literalOf(node.source));
   return {
     ImportDeclaration: fromDeclaration,
@@ -111,10 +126,13 @@ export function importVisitors(onSource, context) {
     ImportExpression: (node) => report(node.source, staticTarget(node.source)),
     TSImportType: (node) => report(node, literalOf(node.argument?.literal ?? node.argument)),
     TSExternalModuleReference: (node) => report(node, literalOf(node.expression)),
-    Program() {
-      for (const comment of context?.sourceCode.getAllComments() ?? []) {
-        const path = comment.type === "Line" ? REFERENCE.exec(comment.value)?.[1] : undefined;
-        if (path) report(comment, path.startsWith(".") || path.startsWith("/") ? path : `./${path}`);
+    "Program:exit"() {
+      const sourceCode = context?.sourceCode;
+      if (!sourceCode) return;
+      for (const ref of typeScriptReferences(sourceCode.text)) {
+        if (seen.has(ref.fileName)) continue;
+        const loc = { start: sourceCode.getLocFromIndex(ref.pos), end: sourceCode.getLocFromIndex(ref.end) };
+        report({ loc }, ref.fileName);
       }
     },
   };

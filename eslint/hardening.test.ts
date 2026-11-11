@@ -104,6 +104,8 @@ describe("every way TypeScript can name a module", () => {
     ['/// <reference path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
     ['/// <reference preserve="true" path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
     ['/// <reference PATH="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference preserve=">" path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference path="../groups/store.ts" />\nexport const y = 1;\n', LEGACY],
   ])("lib/domain/a.ts with %j trips %s", async (code, rule) => {
     expect(await ruleIdsFor(code, "lib/domain/a.ts")).toContain(rule);
   });

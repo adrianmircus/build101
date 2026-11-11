@@ -101,3 +101,18 @@ R2 sigue abierto. Reproduje tres escapes en memoria, sin modificar archivos. En 
   `tsconfig.json` incluye `.mts`, pero las [reglas de capas](eslint/layers.mjs:7) solo cubren `.ts` y `.tsx`.
 
 Veredicto: no listo
+
+## Ronda 10
+
+R2 sigue abierto. Reproducido en un archivo virtual `lib/domain/probe.ts`, sin escribir al disco:
+
+```ts
+/// <reference preserve=">" path="../server/log.ts" />
+export const probe = 1;
+```
+
+TypeScript carga `lib/server/log.ts`, sin diagnósticos en el archivo de prueba; ESLint devuelve **cero mensajes**. El `>` entre comillas corta la búsqueda de `path` en la regex de `eslint/rules/imports.mjs:95`.
+
+Árbol de trabajo limpio.
+
+Veredicto: no listo
