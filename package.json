@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node scripts/tests/run.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.strict.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "check:ticket": "node scripts/check-ticket.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e",
     "postinstall": "node scripts/copy-mediapipe.mjs",
     "profiles:distill": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/distill-profiles.mjs",
     "profiles:research": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/research-profiles.mjs"
@@ -28,16 +33,20 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/turbopack": "^4",
     "@types/katex": "^0.16.8",
-    "@types/node": "^20",
+    "@types/node": "^24.19.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^5.1.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "katex": "$katex"

@@ -1,0 +1,17 @@
+{
+  // New code (the platform layers) compiles with noUncheckedIndexedAccess. Legacy files join when
+  // they are migrated: turning it on repo-wide today gives ~600 errors in code that will be rewritten.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "lib/errors.ts",
+    "lib/domain/**/*.ts",
+    "lib/server/**/*.ts",
+    "lib/client/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}
