@@ -68,4 +68,15 @@ describe("defineRoute", () => {
     const response = await route(new Request("http://test/api/jobs/j7"), { params: Promise.resolve({ id: "j7" }) });
     expect(await response.json()).toEqual({ ok: true, data: "j7" });
   });
+
+  it("answers 500 INTERNAL with a request id when the schema transform throws", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const input = z.object({ raw: z.string().transform((text) => JSON.parse(text)) });
+    const route = defineRoute({ name: "t.transform", input, from: "json" }, async () => 1);
+    const response = await route(post(JSON.stringify({ raw: "{estudiante Ana" })));
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body).toMatchObject({ ok: false, code: "INTERNAL", requestId: expect.any(String) });
+    expect(JSON.parse(String(spy.mock.calls[0]?.[0]))).toMatchObject({ entry: "t.transform", requestId: body.requestId });
+  });
 });
