@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { KNOWN_UNREACHABLE_BUTTON_STEPS } from "../known-gaps";
 import { expect, test } from "./fixtures";
 
 // The tour's bubble is a non-modal dialog named after the step's title.
@@ -6,7 +7,7 @@ export function bubble(page: Page, title: string): Locator {
   return page.getByRole("dialog", { name: title });
 }
 
-async function insideViewport(page: Page, target: Locator): Promise<boolean> {
+export async function insideViewport(page: Page, target: Locator): Promise<boolean> {
   const box = await target.boundingBox();
   const size = page.viewportSize();
   return !!box && !!size && box.y >= 0 && box.y + box.height <= size.height && box.x >= 0 && box.x + box.width <= size.width;
@@ -41,11 +42,14 @@ export async function expectStep(page: Page, title: string, options: { takesFocu
   return dialog;
 }
 
-// Taps a bubble button. If it is off screen (see above) the tap would hang, so it falls back to Enter.
+// Taps a bubble button like a mouse or a finger would. If it is off screen, only the steps in known-gaps.ts may
+// fall back to Enter; any other step fails (softly, so the path still goes on).
 export async function tapInBubble(page: Page, dialog: Locator, name: string) {
   const button = dialog.getByRole("button", { name });
-  if (await insideViewport(page, button)) await button.click();
-  else await button.press("Enter");
+  if (await insideViewport(page, button)) return button.click();
+  const step = (await dialog.getByRole("heading").textContent()) ?? "";
+  expect.soft(KNOWN_UNREACHABLE_BUTTON_STEPS, `El botón «${name}» de «${step}» queda fuera de la pantalla`).toContain(step);
+  await button.press("Enter");
 }
 
 // The focus ring must be drawn: an outline or a shadow on an element that matches :focus-visible (WCAG 2.4.7).
