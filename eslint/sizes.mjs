@@ -23,4 +23,10 @@ export const sizes = [
     plugins: { tiza: tizaPlugin },
     rules: sizeRules(150),
   },
+  {
+    // A describe() callback holds every case of a suite, so the function limit would only push tests
+    // into arbitrary splits. The file limit still applies: a test file over 200 lines gets split.
+    files: ["**/*.test.{ts,tsx}"],
+    rules: { "tiza/function-size": "off" },
+  },
 ];

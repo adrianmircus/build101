@@ -37,8 +37,8 @@ const legacyRules = {
   "proxy.ts": ["complexity"],
   "scripts/distill-profiles.mjs": ["complexity", "max-lines", "max-params", "tiza/function-size"],
   "scripts/research-profiles.mjs": ["complexity", "max-params", "tiza/function-size"],
-  "scripts/tests/test-investigador.ts": ["max-params"],
-  "scripts/tests/test-login-limit.ts": ["max-params", "tiza/function-size"],
+  "scripts/research-profiles.test.ts": ["max-params"],
+  "lib/auth/rateLimit.test.ts": ["max-params"],
 };
 
 export const legacyFiles = Object.keys(legacyRules);
