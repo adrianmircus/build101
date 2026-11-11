@@ -13,3 +13,13 @@ No confirmé otros hallazgos nuevos de severidad alta o media introducidos por e
 Pasaron **416 pruebas**, lint y ambos chequeos de tipos. N1 se comprobó con CDP simulado; Chromium no pudo arrancar por `EPERM`, por lo que el intento adicional con Shadow DOM quedó sin confirmar. No modifiqué archivos; el árbol sigue limpio.
 
 Veredicto: no listo (bloqueantes: R2).
+
+## Ronda 4 (confirmación de R2)
+
+**R2: parcial.** El escape `@/../fase-0/...` quedó corregido, pero encontré otro bypass de severidad **media** en [imports.mjs:16](eslint/rules/imports.mjs:16): las rutas absolutas se descartan sin comprobar las capas.
+
+Desde `lib/domain/probe.ts`, importar `C:/Users/adrim/build101/.claude/worktrees/fase-0/lib/server/log` produce **cero avisos de ESLint y cero errores de TypeScript**, comprobado en memoria.
+
+Lint y las **217 pruebas** de ESLint pasan. Árbol limpio.
+
+Veredicto: no listo

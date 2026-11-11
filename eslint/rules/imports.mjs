@@ -1,7 +1,7 @@
 // Shared by the import-based rules: finds every module specifier (import, re-export and dynamic
 // import()) and resolves it to a repo-relative path, so a rule judges the real file and not the
 // spelling ("@/lib/x", "../x" or "../../lib/./x" are the same thing).
-import { dirname, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 const EXT = /\.(?:ts|tsx|mjs|js)$/;
 
@@ -11,9 +11,12 @@ export function resolveSource(rawSource, filename, cwd) {
   // slashes collapse, so "@//lib/x", "@///lib/x" and "..\\lib\\x" are the same module as "@/lib/x".
   const source = rawSource.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
   let path;
-  // Both forms resolve to an absolute path first and only then become repo-relative, so a spelling
-  // that leaves the repo and comes back ("@/../<repo folder>/lib/server/x") is still lib/server/x.
-  const base = source.startsWith("@/") ? cwd : source.startsWith(".") ? dirname(filename) : null;
+  // Every form resolves to an absolute path first and only then becomes repo-relative, so a spelling
+  // that leaves the repo and comes back ("@/../<repo folder>/lib/server/x") or an absolute path
+  // ("C:/…/lib/server/x", "/…/lib/server/x") is still lib/server/x.
+  // Backslashes are already slashes here, so a Windows drive path looks like "C:/…".
+  const absolute = isAbsolute(source) || /^[A-Za-z]:\//.test(source);
+  const base = source.startsWith("@/") ? cwd : source.startsWith(".") || absolute ? dirname(filename) : null;
   if (base === null) return null;
   const target = source.startsWith("@/") ? source.slice(2) : source;
   path = relative(cwd, resolve(base, target)).split(sep).join("/");

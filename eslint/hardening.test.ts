@@ -65,6 +65,9 @@ describe("paths that leave the repo and come back in", () => {
     [`@/../${repo}/lib/server/log`, LAYERS],
     [`@/../${repo}/lib/groups/store`, LEGACY],
     [`../../../${repo}/lib/server/log`, LAYERS],
+    // Absolute paths, in both separator styles.
+    [`${process.cwd().replaceAll("\\", "/")}/lib/server/log`, LAYERS],
+    [`${process.cwd().replaceAll("/", "\\")}\\lib\\groups\\store`, LEGACY],
   ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
     expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
   });
