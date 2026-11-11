@@ -6,7 +6,8 @@ const LEGACY = "tiza/no-legacy-imports";
 const SERVER_ONLY = "tiza/require-server-only";
 const STATIC = "tiza/static-import-target";
 
-const imp = (source: string) => `import { x } from "${source}";\nexport const y = x;\n`;
+// JSON.stringify keeps backslashes in the specifier instead of turning them into escape sequences.
+const imp = (source: string) => `import { x } from ${JSON.stringify(source)};\nexport const y = x;\n`;
 
 describe("aliases are normalized like relative paths", () => {
   it.each([
@@ -24,6 +25,54 @@ describe("aliases are normalized like relative paths", () => {
     expect(ids).not.toContain(LAYERS);
     expect(ids).not.toContain(LEGACY);
   });
+});
+
+describe("aliases and paths are canonicalized like TypeScript does", () => {
+  it.each([
+    ["lib/domain/a.ts", "@//lib/server/log", LAYERS],
+    ["lib/domain/a.ts", "@///lib/server/log", LAYERS],
+    ["lib/domain/a.ts", "@/lib\\server\\log", LAYERS],
+    ["lib/domain/a.ts", "@\\/lib//domain/../server\\log", LAYERS],
+    ["lib/domain/a.ts", "..\\server\\log", LAYERS],
+    ["lib/domain/a.ts", "..//server//log", LAYERS],
+    ["lib/server/services/x.ts", "@//lib/server/db//client", LAYERS],
+    ["lib/server/services/x.ts", "..\\db\\client", LAYERS],
+    ["lib/domain/a.ts", "@///lib/groups/store", LEGACY],
+    ["lib/domain/a.ts", "@/lib\\groups\\store", LEGACY],
+    ["lib/server/a.ts", "..\\groups\\store", LEGACY],
+    ["lib/server/a.ts", "..//groups//store", LEGACY],
+  ])("%s importing %s trips %s", async (file, source, rule) => {
+    expect(await ruleIdsFor(imp(source), file)).toContain(rule);
+  });
+  it("covers namespace imports and dynamic import() too", async () => {
+    const ns = 'import * as x from "@//lib/server/log";\nexport const y = x;\n';
+    expect(await ruleIdsFor(ns, "lib/domain/a.ts")).toContain(LAYERS);
+    const dyn = 'export const m = () => import("@///lib/groups/store");\n';
+    expect(await ruleIdsFor(dyn, "lib/domain/a.ts")).toContain(LEGACY);
+  });
+  it("still accepts harmless spellings", async () => {
+    const ids = await ruleIdsFor(imp("@//lib\\domain/../errors"), "lib/domain/a.ts");
+    expect(ids).not.toContain(LAYERS);
+    expect(ids).not.toContain(LEGACY);
+  });
+});
+
+describe(".tsx in new code", () => {
+  const dyn = "declare const name: string;\nexport const m = () => import(name);\n";
+  it("is an error anywhere in lib/domain, with an explanation", async () => {
+    const code = "export const a = 1;\n";
+    expect(await ruleIdsFor(code, "lib/domain/a.tsx")).toContain("no-restricted-syntax");
+    expect((await ruleMessages(code, "lib/domain/deep/a.tsx")).some((m) => m.includes("no admite archivos .tsx"))).toBe(true);
+    expect(await ruleIdsFor(code, "lib/domain/a.ts")).not.toContain("no-restricted-syntax");
+  });
+  it.each(["lib/domain/a.tsx", "lib/server/a.tsx", "lib/client/a.tsx", "tests/a.tsx"])(
+    "applies the new-code rules to %s",
+    async (file) => {
+      expect(await ruleIdsFor(dyn, file)).toContain(STATIC);
+      const any = "export const f = (x: any) => x as number;\n";
+      expect(await ruleIdsFor(any, file)).toContain("@typescript-eslint/no-explicit-any");
+    },
+  );
 });
 
 describe("dynamic import() targets", () => {

@@ -7,7 +7,10 @@ import { normalize } from "node:path/posix";
 const EXT = /\.(?:ts|tsx|mjs|js)$/;
 
 /** Repo-relative path without extension, or null for packages and paths outside the repo. */
-export function resolveSource(source, filename, cwd) {
+export function resolveSource(rawSource, filename, cwd) {
+  // Canonical spelling first, as TypeScript resolves it: backslashes are separators and repeated
+  // slashes collapse, so "@//lib/x", "@///lib/x" and "..\\lib\\x" are the same module as "@/lib/x".
+  const source = rawSource.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
   let path;
   // Aliases are normalized like relative paths: "@/lib/domain/../server/x" is lib/server/x.
   if (source.startsWith("@/")) path = normalize(source.slice(2));

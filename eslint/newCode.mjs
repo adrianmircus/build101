@@ -4,10 +4,10 @@ import { tizaPlugin } from "./plugin.mjs";
 const NEW_CODE = [
   "lib/errors.ts",
   "lib/errors.test.ts",
-  "lib/domain/**/*.ts",
+  "lib/domain/**/*.{ts,tsx}",
   "lib/server/**/*.{ts,tsx}",
   "lib/client/**/*.{ts,tsx}",
-  "tests/**/*.ts",
+  "tests/**/*.{ts,tsx}",
 ];
 
 export const newCode = [
@@ -27,6 +27,19 @@ export const newCode = [
       "@typescript-eslint/ban-ts-comment": [
         "error",
         { "ts-ignore": true, "ts-expect-error": true, "ts-nocheck": true, "ts-check": false },
+      ],
+    },
+  },
+  // The domain is pure TypeScript without React, so a .tsx file there is a mistake (and a way around the rules).
+  {
+    files: ["lib/domain/**/*.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Program",
+          message: "lib/domain no admite archivos .tsx: el dominio no usa React ni JSX. Usá .ts, o mové el componente a components/.",
+        },
       ],
     },
   },
