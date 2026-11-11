@@ -1,0 +1,29 @@
+﻿import { expect, test } from "./support/fixtures";
+import { expectNoProfileLabels } from "./support/student";
+
+// Self-test of the student check: it has to catch what a screen reader announces even when it is not on the screen.
+test.describe("chequeo de que el estudiante no ve su perfil", () => {
+  test("una página limpia pasa", async ({ page }) => {
+    await page.setContent('<main><h1>Tu práctico</h1><button aria-label="Seguir">Seguir</button></main>');
+    await expectNoProfileLabels(page);
+  });
+
+  test("aria-labelledby a un nodo oculto con el perfil lo hace fallar", async ({ page }) => {
+    await page.setContent(
+      '<main><button aria-labelledby="oculto">Seguir</button><span id="oculto" hidden>Motriz</span></main>',
+    );
+    await expect(expectNoProfileLabels(page)).rejects.toThrow(/Motriz/);
+  });
+
+  test("aria-describedby a un nodo oculto con el perfil también lo hace fallar", async ({ page }) => {
+    await page.setContent('<main><button aria-describedby="d">Seguir</button><span id="d" hidden>Dislexia</span></main>');
+    await expect(expectNoProfileLabels(page)).rejects.toThrow(/Dislexia/);
+  });
+
+  test("lo que dice la burbuja del recorrido no cuenta", async ({ page }) => {
+    await page.setContent(
+      '<main><h1>Tu práctico</h1></main><div role="dialog" aria-labelledby="tour-1"><h2 id="tour-1">Perfil motriz</h2><p>TDAH</p></div>',
+    );
+    await expectNoProfileLabels(page);
+  });
+});
