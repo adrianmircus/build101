@@ -9,8 +9,13 @@ Rama: `plataforma/fase-0`, desde `0244c25`.
 | Ticket | Estado | Rama | Quién | Migraciones | Hallazgos abiertos |
 |---|---|---|---|---|---|
 | Base | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | |
+<<<<<<< HEAD
 | T0.1 Vitest | Hecho | `plataforma/t0-1-vitest` | backend (Sonnet) | Sin migraciones | Umbral de cobertura (80 %) activo pero sin archivos todavía en lib/domain y lib/server/services. |
 | T0.2 ESLint | En curso | `plataforma/t0-2-eslint` | backend (Sonnet) | Sin migraciones | |
+=======
+| T0.1 Vitest | En curso | `plataforma/t0-1-vitest` | backend (Sonnet) | Sin migraciones | |
+| T0.2 ESLint | Hecho, a revisar | `plataforma/t0-2-eslint` | backend (Sonnet) | Sin migraciones | `lib/errors.ts:56` viola la regla de `as` (`ERROR_CODES as readonly string[]`); lo arregla quien toque `lib/errors.ts`, con `ERROR_CODES.some((c) => c === value)`. Hasta entonces `npm run lint` falla ahí |
+>>>>>>> plataforma/t0-2-eslint
 | T0.3 Playwright | En curso | `plataforma/t0-3-playwright` | frontend (Sonnet) | Sin migraciones | |
 | T0.4 CI | Pendiente | | | | |
 | T0.5 Esqueleto de capas | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | |
