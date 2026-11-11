@@ -9,7 +9,7 @@ Rama: `plataforma/fase-0`, desde `0244c25`.
 | Ticket | Estado | Rama | Quién | Migraciones | Hallazgos abiertos |
 |---|---|---|---|---|---|
 | Base | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | |
-| T0.1 Vitest | En curso | `plataforma/t0-1-vitest` | backend (Sonnet) | Sin migraciones | |
+| T0.1 Vitest | Hecho | `plataforma/t0-1-vitest` | backend (Sonnet) | Sin migraciones | Umbral de cobertura (80 %) activo pero sin archivos todavía en lib/domain y lib/server/services. |
 | T0.2 ESLint | En curso | `plataforma/t0-2-eslint` | backend (Sonnet) | Sin migraciones | |
 | T0.3 Playwright | En curso | `plataforma/t0-3-playwright` | frontend (Sonnet) | Sin migraciones | |
 | T0.4 CI | Pendiente | | | | |
