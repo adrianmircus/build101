@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ruleIdsFor, ruleMessages } from "./lint.helper";
 
@@ -54,6 +55,18 @@ describe("aliases and paths are canonicalized like TypeScript does", () => {
     const ids = await ruleIdsFor(imp("@//lib\\domain/../errors"), "lib/domain/a.ts");
     expect(ids).not.toContain(LAYERS);
     expect(ids).not.toContain(LEGACY);
+  });
+});
+
+describe("paths that leave the repo and come back in", () => {
+  // The worktree folder name is part of the spelling, so build it from the current repo.
+  const repo = basename(process.cwd());
+  it.each([
+    [`@/../${repo}/lib/server/log`, LAYERS],
+    [`@/../${repo}/lib/groups/store`, LEGACY],
+    [`../../../${repo}/lib/server/log`, LAYERS],
+  ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
+    expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
   });
 });
 
