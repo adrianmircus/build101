@@ -3,6 +3,7 @@
 // spelling ("@/lib/x", "../x" or "../../lib/./x" are the same thing).
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import ts from "typescript";
 
 const EXT = /\.(?:ts|tsx|mjs|js)$/;
 // Windows device prefixes (\\?\C:\…, \\.\C:\…) name the same file as C:\….
@@ -24,8 +25,47 @@ function realFile(spelled) {
   return process.platform === "win32" ? spelled.toLowerCase() : spelled;
 }
 
+const resolvers = new Map();
+
+/** TypeScript's own resolver with this repo's tsconfig (paths, moduleResolution), cached per root. */
+function typeScriptResolver(cwd) {
+  if (!resolvers.has(cwd)) {
+    const file = ts.findConfigFile(cwd, ts.sys.fileExists, "tsconfig.json");
+    const config = file ? ts.readConfigFile(file, ts.sys.readFile).config : {};
+    const options = ts.parseJsonConfigFileContent(config, ts.sys, file ? dirname(file) : cwd).options;
+    const cache = ts.createModuleResolutionCache(cwd, (name) => name, options);
+    resolvers.set(cwd, { options, cache });
+  }
+  return resolvers.get(cwd);
+}
+
+/**
+ * The file tsc would load for this specifier, whatever its spelling ("typescript/../../lib/x",
+ * "@/LIB/x.js", "\\\\?\\C:\\…"): the layer rules judge that file, never the text. Undefined when
+ * TypeScript can't resolve it (then nothing compiles either, and the lexical check below still runs).
+ */
+function viaTypeScript(rawSource, filename, cwd) {
+  const { options, cache } = typeScriptResolver(cwd);
+  const resolved = ts.resolveModuleName(rawSource, filename, options, ts.sys, cache).resolvedModule;
+  return resolved ? realpathSync.native(resolved.resolvedFileName) : undefined;
+}
+
+function repoRelative(absolute, cwd) {
+  const root = existsSync(cwd) ? realpathSync.native(cwd) : cwd;
+  const path = relative(root, absolute).split(sep).join("/");
+  // Outside the repo, or a package in node_modules: not our layers.
+  if (path === ".." || path.startsWith("../") || path.startsWith("node_modules/")) return null;
+  return path.replace(/\.d\.ts$/, "").replace(EXT, "").replace(/\/index$/, "");
+}
+
 /** Repo-relative path without extension, or null for packages and paths outside the repo. */
 export function resolveSource(rawSource, filename, cwd) {
+  const real = viaTypeScript(rawSource, filename, cwd);
+  if (real !== undefined) return repoRelative(real, cwd);
+  return resolveLexically(rawSource, filename, cwd);
+}
+
+function resolveLexically(rawSource, filename, cwd) {
   // Canonical spelling first, as TypeScript resolves it: backslashes are separators and repeated
   // slashes collapse, so "@//lib/x", "@///lib/x" and "..\\lib\\x" are the same module as "@/lib/x".
   const source = rawSource.replace(/\\/g, "/").replace(DEVICE, "").replace(/\/{2,}/g, "/");
@@ -36,10 +76,7 @@ export function resolveSource(rawSource, filename, cwd) {
   const base = source.startsWith("@/") ? cwd : source.startsWith(".") || absolute ? dirname(filename) : null;
   if (base === null) return null;
   const target = source.startsWith("@/") ? source.slice(2) : source;
-  const root = existsSync(cwd) ? realpathSync.native(cwd) : cwd;
-  const path = relative(root, realFile(resolve(base, target))).split(sep).join("/");
-  if (path === ".." || path.startsWith("../")) return null;
-  return path.replace(EXT, "").replace(/\/index$/, "");
+  return repoRelative(realFile(resolve(base, target)), cwd);
 }
 
 export const repoPath = (filename, cwd) => relative(cwd, filename).split(sep).join("/").replace(EXT, "");

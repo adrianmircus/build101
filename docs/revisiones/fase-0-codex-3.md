@@ -50,3 +50,18 @@ La sustitución de extensiones de TypeScript evita que `realFile` encuentre el a
 Lint y las 224 pruebas existentes pasan.
 
 Veredicto: no listo
+
+## Ronda 7
+
+R2 sigue abierto. **P2: bypass mediante rutas de paquete con `../`**, reproducido desde `lib/domain`:
+
+- `typescript/../../lib/server/log`
+- `typescript/../../lib/groups/store`
+- `@types/node/../../../lib/server/log`
+- `typescript/../../LIB/SERVER/LOG.js`
+
+ESLint queda sin mensajes y TypeScript resuelve los archivos reales. Los dos primeros también compilan sin diagnósticos. El resolver descarta estos specifiers como paquetes antes de normalizarlos.
+
+`npm run lint` y las 230 pruebas de ESLint pasan pese al bypass. Sin cambios en archivos.
+
+Veredicto: no listo

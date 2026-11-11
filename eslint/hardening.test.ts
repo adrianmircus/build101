@@ -74,6 +74,22 @@ describe("paths that leave the repo and come back in", () => {
   });
 });
 
+// A package specifier with ../ walks out of node_modules into the repo; TypeScript follows it.
+describe("package paths that climb back into the repo", () => {
+  it.each([
+    ["typescript/../../lib/server/log", LAYERS],
+    ["typescript/../../lib/groups/store", LEGACY],
+    ["@types/node/../../../lib/server/log", LAYERS],
+  ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
+    expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
+  });
+  it("still treats real packages as packages", async () => {
+    const ids = await ruleIdsFor(imp("zod"), "lib/domain/a.ts");
+    expect(ids).not.toContain(LAYERS);
+    expect(ids).not.toContain(LEGACY);
+  });
+});
+
 // Windows resolves these to the same file (case-insensitive, device prefixes, 8.3 short names), and so
 // does TypeScript there. On Linux they point to files that don't exist, so tsc fails and they aren't a bypass.
 describe.runIf(process.platform === "win32")("Windows spellings of the same file", () => {
