@@ -1,7 +1,7 @@
 import "server-only";
 import type { z } from "zod";
 import type { Result } from "@/lib/errors";
-import { invalidInput, newRequestId, runEntry } from "./run";
+import { invalidInput, newRequestId, parseInput, runEntry } from "./run";
 
 // Every Server Action is `export const x = defineAction({ name, input }, handler)` in an actions.ts
 // with "use server". The handler gets validated input and calls one service; it never trusts the
@@ -19,7 +19,7 @@ export function defineAction<S extends z.ZodType, T>(
 ): (raw: z.input<S>) => Promise<Result<T>> {
   return async function action(raw) {
     const requestId = newRequestId();
-    const parsed = spec.input.safeParse(raw);
+    const parsed = parseInput(spec.input, raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
     return runEntry(spec.name, requestId, () => handler(parsed.data));
   };
