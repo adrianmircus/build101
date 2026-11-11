@@ -11,7 +11,7 @@ Rama: `plataforma/fase-0`, desde `0244c25`.
 | Base | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | |
 | T0.1 Vitest | En curso | `plataforma/t0-1-vitest` | backend (Sonnet) | Sin migraciones | |
 | T0.2 ESLint | En curso | `plataforma/t0-2-eslint` | backend (Sonnet) | Sin migraciones | |
-| T0.3 Playwright | En curso | `plataforma/t0-3-playwright` | frontend (Sonnet) | Sin migraciones | |
+| T0.3 Playwright | Hecho | `plataforma/t0-3-playwright` | frontend (Sonnet) | Sin migraciones | La demo en celular no muestra la burbuja del recorrido tras navegar (transición de vista que no termina); burbuja fuera de pantalla en pasos altos; el foco no pasa a la burbuja en pasos con elemento resaltado |
 | T0.4 CI | Pendiente | | | | |
 | T0.5 Esqueleto de capas | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | |
 | T0.6 Compuerta de Netlify | Pendiente | | Orquestador y usuario | | |
