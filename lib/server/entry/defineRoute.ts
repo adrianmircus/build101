@@ -1,7 +1,7 @@
 import "server-only";
 import type { z } from "zod";
 import { fail, type FailureCode, type Result } from "@/lib/errors";
-import { invalidInput, newRequestId, parseInput, runEntry } from "./run";
+import { newRequestId, runValidated } from "./run";
 
 // Route Handlers exist for what Server Actions can't do well: polling (actions run one at a time per
 // client), webhooks, cron and streaming. Same contract as defineAction, answered as JSON.
@@ -48,8 +48,6 @@ export function defineRoute<S extends z.ZodType, T>(
     const params = (await context?.params) ?? {};
     const raw = await readRaw(request, spec.from);
     if (raw === undefined) return respond(fail("INVALID", "El pedido no es JSON válido.", { requestId }));
-    const parsed = parseInput(spec.input, raw);
-    if (!parsed.success) return respond(invalidInput(parsed.error, requestId));
-    return respond(await runEntry(spec.name, requestId, () => handler(parsed.data, { request, params })));
+    return respond(await runValidated({ entry: spec.name, requestId, schema: spec.input, raw }, (input) => handler(input, { request, params })));
   };
 }
