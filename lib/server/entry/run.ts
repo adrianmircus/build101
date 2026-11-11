@@ -42,3 +42,19 @@ export async function runEntry<T>(entry: string, requestId: string, work: () => 
     return toFailure(entry, requestId, error);
   }
 }
+
+/** Parse and run inside one try: a schema transform that throws is a bug like any other, not a crash. */
+type Parsing<S extends z.ZodType> = { entry: string; requestId: string; schema: S; raw: unknown };
+
+export async function runValidated<S extends z.ZodType, T>(
+  { entry, requestId, schema, raw }: Parsing<S>,
+  handler: (input: z.output<S>) => Promise<T>,
+): Promise<Result<T>> {
+  try {
+    const parsed = parseInput(schema, raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(await handler(parsed.data));
+  } catch (error) {
+    return toFailure(entry, requestId, error);
+  }
+}

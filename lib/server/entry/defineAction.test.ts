@@ -52,4 +52,22 @@ describe("defineAction", () => {
     const result = await action(JSON.parse('{"s":"ab"}'));
     expect(result).toMatchObject({ ok: false, fields: { n: "Este dato es obligatorio.", s: "Tiene que tener al menos 3 caracteres." } });
   });
+
+  it("answers INTERNAL with a request id and a log when the schema transform throws", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = vi.fn(async () => "never");
+    const action = defineAction({ name: "test.transform", input: z.string().transform((text) => JSON.parse(text)) }, handler);
+    const result = await action("{estudiante Ana");
+    expect(result).toMatchObject({ ok: false, code: "INTERNAL", message: MESSAGES.INTERNAL });
+    if (result.ok) throw new Error("expected a failure");
+    expect(handler).not.toHaveBeenCalled();
+    const raw = String(spy.mock.calls[0]?.[0]);
+    expect(JSON.parse(raw)).toMatchObject({ event: "entry.unexpected", entry: "test.transform", requestId: result.requestId, errorType: "SyntaxError" });
+    expect(raw).not.toContain("Ana");
+  });
+
+  it("lets redirect() thrown while parsing reach Next", async () => {
+    const schema = z.string().transform(() => redirect("/panel"));
+    await expect(defineAction({ name: "test.parse-redirect", input: schema }, async () => 1)("x")).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
+  });
 });
