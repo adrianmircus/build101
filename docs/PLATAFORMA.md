@@ -65,7 +65,8 @@ Cada una tiene un valor por defecto. Si nadie dice lo contrario, se sigue con es
 - **Planes.** Netlify Pro (región `gru`). Supabase Pro con PITR en producción, Free en staging.
 - **Previews.** Si se contrata Supabase Branching, cada preview de una rama con migraciones tiene su base. Sin Branching, esas ramas no generan preview: se prueban en CI con Supabase local.
 - **Respaldos.** Por defecto:
-  - un `pg_dump` cifrado por semana a Cloudflare R2, que se guarda 30 días, porque los backups de Supabase Pro duran 7;
+  - PITR de 7 días en producción. Con PITR prendido, Supabase deja de tomar los backups diarios: no se cuentan como un respaldo aparte;
+  - un `pg_dump` cifrado por semana a Cloudflare R2, que se guarda 30 días. Si hace falta una copia lógica diaria, se programa aparte;
   - una foto diaria de los buckets con manifiesto y hashes, en prefijos que no se sobrescriben, también 30 días.
 - **Errores en producción.** Sentry con su integración de Netlify.
 - **Email.** Resend como SMTP de Supabase Auth.
@@ -75,8 +76,17 @@ Cada una tiene un valor por defecto. Si nadie dice lo contrario, se sigue con es
   - es por finalidad: adaptar con IA, dictado con IA y análisis con IA;
   - sin consentimiento para adaptar, el estudiante recibe el original, marcado para el profe;
   - sin consentimiento para dictado, no ve el dictado, y se chequea cada vez que abre la tarea.
+  - el dictado del navegador (Web Speech) también manda audio a un tercero: pide el mismo consentimiento antes de prender el micrófono. Sin él, el estudiante escribe o elige, nunca se queda sin forma de responder.
+  - guardar el perfil (dato de salud) es una finalidad aparte de las de IA, con su propio consentimiento expreso y por escrito.
   
   Lo definen Producto y la revisión legal.
+- **Compuerta legal antes del primer dato real.** Antes de cargar el primer dato de un estudiante real tienen que estar aprobados:
+  - la evaluación de impacto (Decreto 64/020, art. 6: datos de menores y de personas con discapacidad);
+  - el consentimiento expreso y por escrito para datos sensibles (Ley 18.331, art. 18), y quién lo da por el menor;
+  - quién es responsable y quién encargado del tratamiento (la institución y Tiza), y la información que pide el art. 13;
+  - las transferencias a cada destino real (Supabase y Netlify en Brasil, Anthropic, OpenRouter, ElevenLabs, el proveedor del dictado del navegador; art. 23).
+  
+  Esto es T10.6, y ningún dato real entra antes de cerrarlo, aunque las fases 9 y T10.5 ya estén.
 - **Retención.** Por defecto:
   - perfiles, notas y consentimientos: mientras esté en la institución y un año más;
   - entregas y notas: tres años;
@@ -170,10 +180,10 @@ Tamaños, chequeados por ESLint:
 - Los archivos de hoy que pasan el límite van en una lista de excepciones que solo achica. El ticket que toca uno de esos archivos lo parte.
 - Un componente por archivo, con el mismo nombre. Los hooks van en `useAlgo.ts`.
 - Exports con nombre. `export default` solo donde Next lo pide.
-- TypeScript estricto con `noUncheckedIndexedAccess`. Nada de `any` ni de `as` para tapar errores de tipos.
+- TypeScript estricto. `noUncheckedIndexedAccess` se adopta de a poco: rige para el código nuevo (`lib/errors.ts`, `lib/domain`, `lib/server`, `lib/client`, `tests` y sus pruebas) por `tsconfig.strict.json`, y `npm run typecheck` corre los dos chequeos. Prenderlo en todo el repo daba unos 600 errores en archivos que se van a reescribir. El código nuevo no importa código viejo (regla de ESLint), porque lo importado entraría al chequeo estricto; para reutilizar algo viejo, se mueve a la capa nueva. Nada de `any` ni de `as` para tapar errores de tipos.
 - zod en todo borde: el input de Server Actions y Route Handlers, la salida de la IA, el `jsonb` que se lee de la base y la respuesta de cada RPC.
 - Errores esperados: `AppError(code, mensaje)`, con `code` en `NOT_FOUND | FORBIDDEN | INVALID | CONFLICT | RATE_LIMITED | UNAVAILABLE`. Las RPC levantan excepciones con esos códigos y el repo las traduce.
-- `defineAction(schema, handler)` y `defineRoute(schema, handler)` envuelven todo. Devuelven `Result<T>`, loguean lo inesperado con un id de pedido y muestran un mensaje genérico. Una Server Action vieja después de un deploy se muestra como «Se actualizó Tiza. Recargá la página.», sin perder lo que el usuario estaba escribiendo.
+- `defineAction(schema, handler)` y `defineRoute(schema, handler)` envuelven todo. Devuelven `Result<T>`, loguean lo inesperado con un id de pedido y muestran un mensaje genérico. Una Server Action vieja después de un deploy no llega a `defineAction`: Next la rechaza antes. Por eso lo resuelve el cliente: `callAction` (`lib/client/`) la reconoce y la convierte en «Se actualizó Tiza. Recargá la página.». El formulario guarda su borrador antes de ofrecer recargar, así no se pierde lo escrito. Se prueba entre dos builds reales en la fase 4.
 - Concurrencia: las filas editables tienen `revision`. Toda edición manda la que leyó. Si cambió, la respuesta es `CONFLICT` con «Alguien cambió esto mientras lo editabas. Recargá para ver lo último.».
 - Fechas en `timestamptz` UTC. Se muestran en `America/Montevideo`, que también define el «día» de los topes.
 - La UI va en español rioplatense. El código, los nombres y los comentarios, en inglés, como hoy. Los comentarios explican el porqué.
@@ -253,7 +263,7 @@ Las tablas tienen `id uuid` y `created_at`, y las editables, `updated_at` y `rev
 | `memberships` | Usuario, institución y rol (`admin`, `teacher`, `inclusion` o `student`) |
 | `invitations` | Email, rol, hash del token, estado y vencimiento |
 | `account_provisioning` | Una fila por cuenta de estudiante: estado (`pending`, `active`, `failed` o `deleted`), intentos e id de Auth |
-| `student_pseudonyms` | El seudónimo de cada estudiante. Feedback y eventos usan el seudónimo; borrar esta fila desvincula todo |
+| `student_pseudonyms` | El seudónimo de cada estudiante. Feedback y eventos usan el seudónimo. Borrar esta fila no alcanza para anonimizar: el texto libre, las fechas y las combinaciones raras pueden identificar, así que lo que queda se trata como dato personal salvo que el inventario diga, campo por campo, que se borró o se redactó |
 
 **Grupos y estudiantes**
 
@@ -275,17 +285,19 @@ Las tablas tienen `id uuid` y `created_at`, y las editables, `updated_at` y `rev
 |---|---|
 | `files` | Bucket, ruta inmutable, finalidad, la entidad dueña (FK según la finalidad), tamaño y tipo comprobados y estado (`reserved`, `ready` o `rejected`) |
 | `syllabi` | Programa del grupo: unidades con id estable (los temas), PDF y `revision` |
-| `assessments` | Tipo, tema, `subject_id`, estado (`draft`, `ready`, `published` o `archived`), `publish_at`, `due_at`, `source_id` y `revision` |
+| `assessments` | Tipo, tema, `subject_id`, instrucciones generales (lo que va antes del primer ejercicio, como «Elegí dos y justificá»), estado (`draft`, `ready`, `published` o `archived`), `publish_at`, `due_at`, `source_id` y `revision` |
 | `assessment_exercises` | Ejercicios del original: id estable, número, orden, texto, `topic_id` opcional y `revision` |
 | `versions` | Configuración (perfiles, apoyos, intereses, `keep`), estado, `stale`, `base_version_id`, `current_generation_id` (la generación completa vigente), `revision` y la revisión aprobada |
 | `version_exercises` | Ejercicio adaptado: id del ejercicio original, texto, cambios, `revision`, `current_generation_id` (vigente para ese ejercicio) y estado |
 | `version_questions` | Preguntas de mirada sin la respuesta, por id |
 | `question_keys` | La opción correcta de cada pregunta. Solo la leen el profe y la corrección |
 | `version_recipients` | Estudiante, versión, `valid_from` y `valid_to`. Así se sabe para quién era cada versión en cada momento |
-| `generations` | Tipo (`version`, `exercise` o `answer_key`), recurso objetivo, revisión objetivo, entradas guardadas tal cual (ejercicios, configuración, programa, `subject_id`, hash y revisión de los perfiles aprobados, versión del prompt), trabajos requeridos y estado (`running`, `done`, `failed`, `cancelled` o `superseded`) |
+| `generations` | Tipo (`version`, `exercise` o `answer_key`), recurso objetivo, revisión objetivo, `op_key` (ver «Idempotencia»), entradas guardadas tal cual (ejercicios, configuración, programa, `subject_id`, hash y revisión de los perfiles aprobados, versión del prompt), trabajos requeridos y estado (`running`, `done`, `failed`, `cancelled` o `superseded`) |
+| `operations` | Las operaciones con partes que no son una versión: leer un documento, leer el programa y analizar un grupo. Tipo, recurso, `op_key`, las partes requeridas (fijas al crearla), estado (`running`, `merging`, `done`, `failed` o `cancelled`) y el resultado del merge |
 | `generation_outputs` | La salida de la IA de cada ejercicio, tal cual llegó y antes de cualquier edición |
 | `version_events` | Solo agrega. Id propio y `op_id` único por operación. Tipos: `generated`, `edited` (con la revisión y el texto), `approved` (de una revisión concreta), `rejected` (con motivos), `regenerated` (con la instrucción) y `recipients_changed`. Única solo la combinación `generated` y `generation_id` |
-| `answer_keys` | Clave de respuestas y rúbrica por versión, con `revision`, su generación vigente y su aprobación |
+| `answer_keys` | Clave de respuestas y rúbrica por versión, con su generación vigente y su aprobación |
+| `answer_key_revisions` | Solo agrega. Cada revisión de la clave, inmutable, atada a la revisión de los ejercicios y a los ids de pregunta con que se generó o editó. Los intentos apuntan acá |
 
 **Entrega y resultados**
 
@@ -309,12 +321,12 @@ Las tablas tienen `id uuid` y `created_at`, y las editables, `updated_at` y `rev
 | `batch_runs` | Lotes enviados a un proveedor (práctica periódica e investigación, más adelante), con su id externo |
 | `ai_budgets`, `ai_reservations` y `ai_usage` | Tope diario, reservas por intento de proveedor y uso real. Sin datos de estudiantes |
 | `audit_log` | Quién vio o cambió datos sensibles: actor, acción, entidad, estudiantes y fecha |
-| `erasures` | Registro de supresiones (seudónimo y fecha, sin datos personales), para volver a aplicarlas después de restaurar |
+| `erasures` | Registro de supresiones (seudónimo y fecha, sin datos personales). Tiene una copia fuera de la base, que una restauración no puede volver atrás (ver «Respaldos») |
 | `sandbox_sessions` | Sesión guardada del profe anónimo mientras mira como Paula |
 | `rate_limits` | Contadores por clave y ventana |
 | `import_runs` | Importaciones desde el navegador, con el mapeo de ids |
 
-**Formato.** El original y cada versión son listas de ejercicios con id estable. El texto entero desaparece. Las respuestas, la corrección y los eventos apuntan a ids, no a posiciones. El parser de hoy (`lib/results/exercises.ts`) parte los originales, y el profe confirma el corte en «Lo que leyó la IA».
+**Formato.** El original y cada versión son unas instrucciones generales y una lista de ejercicios con id estable. El texto entero desaparece. Las respuestas, la corrección y los eventos apuntan a ids, no a posiciones. El parser de hoy (`lib/results/exercises.ts`) parte los originales, pero descarta lo que va antes del primer ejercicio: el parser nuevo lo guarda como instrucciones generales. El profe confirma el corte en «Lo que leyó la IA» sin perder texto. Las instrucciones viajan en la versión, la publicación, la revisión del profe y la impresión.
 
 **Orden de locks.** Toda operación que toca una versión toma los locks siempre en el mismo orden: la fila de `versions`, después la de `generations` y después las de `version_exercises`, por id. Así lo hacen iniciar, cancelar, editar, aprobar y completar.
 
@@ -324,17 +336,20 @@ Las tablas tienen `id uuid` y `created_at`, y las editables, `updated_at` y `rev
 - Regenerar ejercicios distintos convive. Regenerar el mismo ejercicio reemplaza la generación anterior de ese ejercicio.
 - La clave tiene su propia vigencia, y generarla no toca la de la adaptación.
 - Un resultado escribe solo si su generación es la vigente de su recurso y la `revision` del ejercicio es la que la generación esperaba. Una edición manual a mitad de camino gana, y el resultado queda como `generation_outputs` sin aplicar, visible para el profe.
+- **Estados terminales.** `done`, `failed`, `cancelled` y `superseded` no se reabren. Al llegar a uno, la generación cancela sus trabajos pendientes. Todo cambio de estado del recurso (`ready`, `error`) exige que esa generación siga siendo la vigente: un trabajo que sobrevive a una generación ya cerrada guarda su salida como `obsolete` y no toca el recurso.
 
 **Aprobar y publicar.**
 
 - **Aprobar.** Se aprueba una revisión concreta de la versión. Cualquier cambio posterior (texto, preguntas, destinatarios) deja la versión sin aprobar. Una versión compartida vuelve a aprobarse si cambia.
-- **Publicar.** `publish_version` verifica, en una transacción, cuatro cosas:
+- **Publicar.** `publish_version` verifica, en una transacción:
   - que la revisión vigente esté aprobada;
-  - que estén las partes que su `answer_mode` necesita (preguntas, si es mirada);
+  - que estén las partes que su `answer_mode` necesita (preguntas, si es mirada) y que ninguna esté desactualizada respecto de esa revisión;
+  - que la revisión de la clave corresponda a la revisión aprobada de los ejercicios y a sus ids de pregunta. Si cambia un ejercicio, su clave queda desactualizada y hay que regenerarla o confirmarla antes de publicar;
   - el consentimiento de cada destinatario;
   - las fechas.
   
-  Copia la revisión a `publications` y crea los intentos.
+  Copia la revisión a `publications` y crea los intentos, cada uno atado a esa publicación y a esa revisión de la clave.
+- **Qué clave hace falta.** En mirada, la opción correcta de cada pregunta es obligatoria. En escritura y dictado, la clave es opcional hasta la fase 7: la publicación mínima de la fase 4 no depende de la rúbrica, y el profe corrige a mano.
 - **Volver a publicar después de corregir.**
   - Un intento sin empezar pasa a la publicación nueva.
   - Uno empezado sigue con la vieja. El profe puede reasignar: eso crea un intento nuevo y deja el viejo guardado, con sus respuestas.
@@ -345,12 +360,15 @@ Qué se puede hacer con cada intento:
 | Situación | Leer | Guardar borrador | Entregar | Corregir |
 |---|---|---|---|---|
 | Antes de `publish_at` | No | No | No | No |
-| Publicado y en fecha | Sí | Sí | Sí | No |
-| Después de `due_at` | Sí | Sí | Sí, marcada tarde | Sí, las entregadas |
+| Publicado y en fecha, sin entregar | Sí | Sí | Sí | No |
+| Después de `due_at`, sin entregar | Sí | Sí | Sí, marcada tarde | No |
+| Entregado | Sí, solo lectura | No | No (repetir no hace nada) | Sí |
 | Publicación retirada | Solo lo entregado | No | No | Sí, lo entregado |
 | Intento reemplazado | Solo lo entregado | No | No | Sí, lo entregado |
 
-Cada guardado del borrador valida que los ids de ejercicio y pregunta sean de su publicación, y manda la `revision` del borrador.
+- Cada guardado del borrador valida que los ids de ejercicio y pregunta sean de su publicación, y manda la `revision` del borrador.
+- **Entregar** manda la `revision` del borrador que el estudiante vio guardada. Si el servidor tiene una más nueva (otra pestaña), responde `CONFLICT` y muestra lo último antes de entregar. Entregar congela las respuestas y es idempotente: dos clics entregan una vez.
+- Hoy `updateSubmission` (`lib/groups/store.ts`) ya rechaza cambios después de entregar; la base mantiene esa garantía.
 
 ### Trabajos en segundo plano
 
@@ -392,11 +410,14 @@ Toda llamada a la IA que pueda tardar más de 20 s es un trabajo. El resto tiene
 - **Terminar o fallar.** `complete_job` y `fail_job` exigen `running` y el `lock_token` vigente; si no, no escriben nada.
   - Un fallo reintentable vuelve a `queued` con espera de 30 s, 2 min y 8 min, más un ±20% al azar.
   - Uno no reintentable, o el último intento, pasa a `failed`.
-- **Efecto en la generación.** Con el lock de su generación tomado:
+- **Efecto en la generación.** Con el lock de su generación tomado, y solo si la generación sigue en `running`:
   - **Éxito.** Escribe el resultado si sigue vigente (`applied`) o lo guarda sin aplicar (`obsolete`).
-  - **Fallo terminal.** Pasa la generación a `failed`, el ejercicio o la versión a `error` con el mensaje para el profe, y libera las reservas.
-  - **Cancelar o reemplazar.** Pasa los trabajos pendientes a `cancelled`, borra sus tokens y libera las reservas no usadas.
-  - **Cierre.** Cuando terminan todos los trabajos requeridos, la generación pasa a `done` y su recurso a `ready` una sola vez, con un único evento `generated`.
+  - **Fallo terminal.** Pasa la generación a `failed`, cancela sus trabajos hermanos pendientes y pasa el ejercicio o la versión a `error` con el mensaje para el profe, si esa generación sigue siendo la vigente del recurso.
+  - **Cancelar o reemplazar.** Pasa los trabajos pendientes a `cancelled` y borra sus tokens.
+  - **Cierre.** Cuando terminan todos los trabajos requeridos, la generación pasa a `done` y su recurso a `ready` una sola vez, con un único evento `generated`, si sigue siendo la vigente.
+  - **Reservas.** Fallar, cancelar o reemplazar libera solo las reservas de intentos que nunca se enviaron. Una reserva `uncertain` no se libera nunca por estos caminos (ver «Presupuesto»).
+  - **Generación ya cerrada.** Un trabajo que termina cuando su generación ya está en un estado terminal guarda la salida como `obsolete` y no toca ni la generación ni el recurso.
+- **Operaciones con partes** (`operations`: leer un documento, leer el programa, analizar un grupo). Siguen la misma máquina. Las partes requeridas se fijan al crear la operación. El merge se encola una sola vez, cuando todas las partes terminaron bien, y consume exactamente ese conjunto. Si una parte falla del todo, la operación pasa a `failed` y cancela las que quedan.
   
   `/progress` no cuenta como activo ningún trabajo en estado terminal.
 - **Pruebas.** pgTAP con conexiones simultáneas:
@@ -407,15 +428,15 @@ Toda llamada a la IA que pueda tardar más de 20 s es un trabajo. El resto tiene
   - los dos últimos ejercicios que terminan juntos;
   - la cancelación con un resultado tardío;
   - dos regeneraciones de ejercicios distintos;
-  - una regeneración y una clave al mismo tiempo.
+  - una regeneración y una clave al mismo tiempo;
+  - un fallo terminal con un trabajo hermano que termina después;
+  - el merge de una operación con dos partes que terminan juntas.
 
-**Idempotencia.** Cada trabajo tiene una clave única por operación:
+**Idempotencia.** Hay dos niveles:
 
-- `gen:<generation_id>:<exercise_id>`
-- `key:<generation_id>`
-- `analyze:<hash de entradas>:<versión del analizador>`
-
-Un doble clic encuentra lo mismo. Pedir de nuevo con entradas distintas (por ejemplo, después de corregir más entregas) es otra operación. «Reintentar» crea una generación nueva.
+- **La operación.** El navegador manda un `op_key` (uuid) al pedir generar, regenerar, leer o analizar. La base lo hace único por institución y recurso, y lo guarda en `generations` u `operations` antes de crear nada. Un doble clic manda el mismo `op_key` y encuentra la misma generación. «Reintentar» manda uno nuevo.
+- **El trabajo.** Dentro de una operación, cada trabajo tiene su clave: `gen:<generation_id>:<exercise_id>`, `key:<generation_id>`, `part:<operation_id>:<n>` y `merge:<operation_id>`.
+- **El análisis.** Su identidad incluye la institución, el grupo, el hash de las entradas, la versión del analizador y la foto de qué seudónimo es cada estudiante (`lib/results/analyze.ts` los asigna hoy por posición). Esa foto no viaja a la IA. Si cambia la lista del grupo, es otro análisis.
 
 **Despachador y worker.**
 
@@ -436,13 +457,23 @@ Un doble clic encuentra lo mismo. Pedir de nuevo con entradas distintas (por eje
 **Presupuesto.**
 
 - **Una puerta para toda llamada paga.** `withBudget()` envuelve cada llamada a un proveedor, también el dictado, los comandos de voz y ElevenLabs.
-- **Reserva por intento de proveedor.** Antes de cada intento reserva una cota conservadora: tokens de entrada contados, más `max_tokens` de salida, al precio del modelo más caro de esa llamada. El respaldo por OpenRouter es otro intento con su propia reserva.
+- **Sin reintentos ocultos.** Los clientes del SDK se crean con `maxRetries: 0` (hoy `lib/agent/client.ts` usa el valor por defecto, 2). Cada envío HTTP que se pueda cobrar es un intento con su propia reserva, y los reintentos los decide `withBudget()`, no el SDK.
+- **Reserva por intento.** Antes de cada intento reserva una cota conservadora en la unidad de ese proveedor:
+  - para un modelo: tokens de entrada contados, más `max_tokens` de salida, al precio del modelo más caro de esa llamada;
+  - para ElevenLabs: los caracteres del texto, a su tarifa.
+  
+  El respaldo por OpenRouter es otro intento con su propia reserva.
+- **Concurrencia de lo sincrónico.** Dictado, comandos de voz y lectura en voz alta no pasan por `jobs`, así que tienen su propio tope de llamadas simultáneas por institución, además del presupuesto.
 - **Liquidar.** Con la respuesta, liquida con el uso real, de forma idempotente por id de intento.
 - **Respuesta perdida.** Si el pedido salió y no hay respuesta, la reserva queda como `uncertain` y se cobra la cota: nunca se libera sola. Un resultado tardío la liquida.
 - **El día.** La reserva cuenta en el día en que se creó.
 - **Sin presupuesto.** Sin presupuesto, el trabajo se aplaza hasta el día siguiente y el profe ve «Llegaste al tope de hoy».
 
-**Consentimiento.** Se chequea al encolar y en el worker antes de mandar nada a la IA. Revocarlo cancela, en la misma transacción, las generaciones pendientes que lo necesitaban.
+**Consentimiento.**
+
+- En los trabajos se chequea al encolar y en el worker antes de mandar nada a la IA. Revocarlo cancela, en la misma transacción, las generaciones pendientes que lo necesitaban.
+- En las llamadas sincrónicas (dictado, comandos de voz, lectura en voz alta) se chequea en cada llamada, no solo al abrir la tarea: una pestaña abierta después de revocar recibe `FORBIDDEN` y la UI pasa a escribir o elegir.
+- Esas rutas tampoco confían en el contenido que manda el navegador. Reciben el id del intento y del ejercicio. El servidor comprueba que el intento sea del estudiante y esté abierto, y lee él mismo el texto que hay que leer o el contexto del comando.
 
 **Lotes (para el roadmap).**
 
@@ -458,6 +489,12 @@ Un doble clic encuentra lo mismo. Pedir de nuevo con entradas distintas (por eje
 - **Por materia.** Cada materia tiene su carpeta `subjects/<id>/` con el prompt, la notación, el catálogo de errores y los verificadores. Hoy el `SYSTEM` de `lib/agent/prompt.ts` y el chequeo de números son de Matemática: pasan a `subjects/math/`. El servidor elige la materia por el `subject_id` del práctico, nunca por lo que manda el navegador.
 - **Proveedores.** `AiProvider` tiene dos implementaciones: `live` (Anthropic y OpenRouter de respaldo) y `fixture`. Para una institución `sandbox` el proveedor siempre es `fixture`, y lo decide el servidor por el tipo de institución. Los tests también usan `fixture`.
 - **Generar un ejercicio.** Va el original completo y el programa en el prefijo cacheado, y se pide adaptar solo el ejercicio N.
+- **Nombres dentro del contenido.** Sacar columnas no alcanza: un PDF, una foto, los intereses, una instrucción de regeneración o un dictado pueden traer un nombre («Adaptación para Paula»). Por eso a la IA nunca va el archivo crudo ni texto libre sin pasar por `prepareForProvider()`, que corre en el servidor antes de la primera llamada:
+  - quita los nombres de los estudiantes de esa institución y los encabezados típicos (nombre, fecha, grupo), con una redacción local que no usa IA;
+  - de un PDF o una foto, solo manda las páginas o el recorte que el profe confirmó;
+  - en texto libre (intereses, instrucciones, dictados) aplica la misma redacción, y avisa al profe si quitó algo.
+  
+  El original queda en Storage, separado de lo que se mandó, y `generations` guarda la versión redactada. La prueba usa documentos con nombres de la lista y comprueba que no llegan al `fixture`.
 - **Lo que guarda cada generación.** Las entradas tal cual, el hash y la revisión de los `data/profiles/*.md` aprobados y la versión del prompt. El agente investigador del roadmap va a proponer borradores aparte, que no cambian lo aprobado hasta que lo valide un especialista.
 
 ### Archivos
@@ -518,7 +555,7 @@ Storage no tiene políticas para usuarios: nadie lista, lee, sube ni borra direc
    1. La acción verifica que quien llama es el dueño anónimo de un sandbox vigente. No acepta ids como parámetro.
    2. Guarda la sesión del profe en `sandbox_sessions`: el refresh token cifrado, ligado al sandbox y al dueño, de un solo uso y con vencimiento. La cookie solo lleva un id opaco.
    3. Un cliente de administración sin sesión persistente genera el `magiclink` de Paula, y el cliente SSR del pedido lo verifica con `verifyOtp` (por `token_hash`), que deja las cookies de Paula.
-2. **Volver.** Consume la fila guardada, borra las cookies de Paula y restaura con `setSession`.
+2. **Volver.** Reclama la fila guardada (sin consumirla), renueva la sesión del profe con `refreshSession({ refresh_token })`, la deja en las cookies SSR y borra las de Paula. Recién con eso hecho consume la fila. Si Auth falla, la fila sigue y se puede reintentar. Solo la pestaña que reclamó puede renovar.
 3. **Prueba previa.** Se prueba con dos pestañas y con un refresco en el medio. T4.9 arranca con una prueba corta de este mecanismo; si no anda, se elige otro antes de seguir.
 
 **Purgas.**
@@ -532,9 +569,11 @@ Storage no tiene políticas para usuarios: nadie lista, lee, sube ni borra direc
 - **Inventario.** `docs/PRIVACIDAD-DATOS.md` lista cada tabla, archivo y derivado con datos de un estudiante, y qué pasa con cada uno al borrarlo. También lista qué recibe cada proveedor y para qué: Supabase, Netlify, Anthropic, OpenRouter, ElevenLabs, Resend, Sentry y Cloudflare. Toda tabla nueva entra al inventario en el mismo ticket que la crea, y una prueba compara el inventario con el esquema.
 - **Borrar un estudiante** (admin). Se recorre el inventario:
   - **Se borra:** perfil y su historial, notas, consentimientos, asignaciones, intentos, entregas, notas, archivos, cuenta de Auth, sus entradas en análisis de grupo y los datos que aprenda el motor.
-  - **Se desvincula:** el seudónimo, así el feedback y los eventos quedan anónimos.
+  - **Se desvincula:** el seudónimo. Eso no basta para que lo que queda sea anónimo: el inventario dice, campo por campo, qué se borra, qué se redacta (por ejemplo, una instrucción del profe que nombra al estudiante) y qué se conserva y por qué. Lo que no está justificado como disociado se borra.
   - **Versiones individuales:** se borran, porque siguen siendo atribuibles. Las compartidas se conservan sin él como destinatario.
-  - **Registro:** queda una fila en `erasures`.
+  - **Registro:** queda una fila en `erasures`, que se copia enseguida fuera de la base (ver «Respaldos»).
+  - **Primero la marca.** La baja se marca antes de borrar. Todo efecto pendiente (un trabajo de IA, una subida, un análisis) comprueba la marca al terminar y no escribe nada de esa persona.
+- **Exportar** no incluye datos de otros estudiantes: un análisis de grupo sale solo con la parte de ese estudiante.
 - **Exportar un estudiante** da un JSON con el mismo recorrido.
 - **Baja de una institución.** Exportación completa, después borrado con el mismo procedimiento y cierre de todas las sesiones.
 - **Incidentes.** `docs/INCIDENTES.md` dice cómo rotar claves, cerrar sesiones, revisar `audit_log` y a quién avisar.
@@ -552,9 +591,10 @@ Storage no tiene políticas para usuarios: nadie lista, lee, sube ni borra direc
 ### Despliegue y migraciones
 
 - **Una sola autoridad para staging y producción: CI.**
-  - Al mergear a `main`, aplica las migraciones a staging, corre las pruebas, aplica a producción y recién entonces dispara el deploy de producción de Netlify para ese mismo commit, con un build hook.
+  - Al mergear a `main`, aplica las migraciones a staging, corre las pruebas, aplica a producción y recién entonces publica en Netlify el build de ese mismo checkout, con `netlify deploy --build --prod` desde CI. Un build hook no sirve: construye la punta de la rama, que puede haber avanzado.
+  - Antes de publicar, CI comprueba que el SHA del build sea el de las migraciones aplicadas. El flujo de migrar y publicar no se cancela a mitad por un push nuevo: el siguiente espera.
   - La publicación automática de producción en Netlify queda apagada.
-  - Dos despliegues no corren a la vez (`concurrency` de GitHub Actions).
+  - Dos despliegues no corren a la vez (`concurrency` de GitHub Actions, sin `cancel-in-progress`).
 - **Expandir y contraer.** Un cambio incompatible va en cuatro pasos, cada uno en su deploy:
   1. migración que agrega, y código que escribe lo viejo y lo nuevo;
   2. trabajo de backfill;
@@ -570,14 +610,15 @@ Storage no tiene políticas para usuarios: nadie lista, lee, sube ni borra direc
 
 - **Base.**
   - PITR en producción: se pierden como mucho minutos de datos y el servicio vuelve en 4 horas.
-  - Backups diarios de Supabase (7 días) y un `pg_dump` cifrado semanal a R2 (30 días).
+  - Con PITR, Supabase no toma backups diarios aparte: producción queda con PITR de 7 días y un `pg_dump` cifrado semanal a R2 (30 días).
+- **Supresiones.** Cada fila de `erasures` se copia, en la misma acción que borra, a un registro fuera de la base (un objeto en R2 por supresión, sin datos personales). Ese registro cubre la ventana de todos los respaldos restaurables, también la baja de una institución, y una restauración no lo vuelve atrás.
 - **Archivos.**
   - Foto diaria de los buckets en R2: un prefijo por día que no se sobrescribe, con manifiesto de ruta, tamaño y hash, guardado 30 días. Se pierde como mucho un día.
   - Un script compara `files` con los objetos de la foto elegida y marca `missing` lo que falta.
 - **El runbook** incluye la configuración de Auth, las políticas de Storage, los secretos y los jobs de Cron, que no viven en la base.
 - **Al restaurar:**
   1. se pausan Cron y el worker con la bandera `jobs_paused`;
-  2. se vuelven a aplicar las supresiones de `erasures`;
+  2. se vuelven a aplicar las supresiones del registro externo, no las de la base restaurada;
   3. se reconcilian los archivos;
   4. se revisan los trabajos en `running`;
   5. recién después se abre el acceso y se reanuda.
@@ -693,7 +734,7 @@ Fuera de alcance: lo que no tiene que hacer aunque parezca relacionado.
 Dependencias nuevas: ninguna | <paquete> y por qué.
 ```
 
-Un ticket cambia como mucho unas 400 líneas en 12 archivos. Si da más, se parte.
+Un ticket cambia como mucho unas 400 líneas en 12 archivos. Si da más, se parte. Las filas marcadas **Macro** en las fases son paquetes: el contrato de su fase las parte en tickets con sus dependencias antes de repartir.
 
 ### Reglas para los implementadores
 
@@ -743,18 +784,19 @@ Una fase está terminada cuando, además, todo `npm run check` y los flujos obli
 - Las fases 6 y 7 pueden solaparse en tickets de front; sus tickets de back comparten tablas y van por turno de base.
 - La fase 4 incluye una publicación mínima (publicar una versión aprobada a sus destinatarios, sin fechas), que la fase 8 completa.
 - Staging (T1.0) y la región de Netlify (T0.6) necesitan al usuario y arrancan al principio.
-- No se cargan datos reales hasta cerrar la fase 9 y T10.5.
+- No se cargan datos reales hasta cerrar la fase 9, T10.5 y la compuerta legal de T10.6.
+- La revisión legal de T10.6 arranca ya, en paralelo, porque depende de terceros.
 
 ### Fase 0 · Cimientos (sin cambios visibles)
 
 | Ticket | Agente | Qué |
 |---|---|---|
 | T0.1 | backend | Vitest, pasando los 7 tests de `scripts/tests/` sin perder casos. `npm test`, `npm run check` y `npm run check:ticket` |
-| T0.2 | backend | ESLint: límites de tamaño y complejidad, reglas de dependencia entre capas, `noUncheckedIndexedAccess` y la lista de excepciones |
+| T0.2 | backend | ESLint: límites de tamaño y complejidad, reglas de dependencia entre capas, la frontera entre código nuevo y viejo y la lista de excepciones |
 | T0.3 | frontend | Playwright con el camino de la demo de hoy, como red de seguridad |
 | T0.4 | backend | GitHub Actions: tsc, lint, Vitest de unidad, build y Playwright (Supabase entra en T1.1) |
 | T0.5 | orquestador | Esqueleto de capas: carpetas, `lib/errors.ts`, `defineAction`, `defineRoute` y `lib/server/log.ts` |
-| T0.6 | orquestador y usuario | **Compuerta de Netlify.** En un deploy preview, una ruta de prueba hace un trabajo simulado de 45 a 50 s. Se prueba de tres formas: respondiendo 202 y trabajando en `after()` con el cliente ya cerrado, respondiendo con stream (plan B), y llamada desde Cron y desde el navegador. Cada forma, en frío y en caliente, y verificando la escritura final. También se prueban `cacheComponents`, `proxy.ts` y Partial Prefetching. El resultado elige cómo responde el worker |
+| T0.6 | orquestador y usuario | **Compuerta de Netlify.** En un deploy preview, una ruta de prueba hace un trabajo simulado de 45 a 50 s. Se prueban dos formas: respondiendo 202 y trabajando en `after()` con el cliente ya cerrado, y respondiendo con stream (plan B). Cada una llamada desde un servidor que corta enseguida (como hará `pg_net`) y desde el navegador, en frío y en caliente, y verificando la escritura final en Netlify Blobs. También se prueban `cacheComponents`, `proxy.ts` y Partial Prefetching. El resultado elige cómo responde el worker. La llamada real desde Supabase Cron se prueba en T3.3, cuando existe |
 | T0.7 | orquestador | Sumar a `AGENTS.md` una sección de arquitectura con las reglas de este spec, sin tocar lo que ya dice `CLAUDE.md` sobre producto y roadmap. Actualizar la infraestructura del README |
 
 ### Fase 1 · Base: esquema, privilegios, RLS y acceso a datos
@@ -766,7 +808,7 @@ Una fase está terminada cuando, además, todo `npm run check` y los flujos obli
 | T1.1 | backend | Supabase local, scripts `db:start`, `db:reset`, `db:types` y `db:test`, clientes, `seed.sql`, `tests/factories/` y Supabase en CI |
 | T1.2 | backend | Privilegios, RLS, RPC de escritura y pgTAP de identidad, grupos, estudiantes, inscripciones y seudónimos |
 | T1.3 | backend | Lecturas sensibles por RPC con `audit_log`, proyecciones sin datos sensibles y la prueba de reconstrucción |
-| T1.4 | backend | Prácticos, ejercicios, versiones, ejercicios adaptados, destinatarios, generaciones, salidas y eventos: RPC, triggers y pgTAP |
+| T1.4 | backend | **Macro.** Prácticos, ejercicios, versiones, ejercicios adaptados, destinatarios, generaciones, salidas y eventos: RPC, triggers y pgTAP |
 | T1.5 | backend | Publicaciones, asignaciones, intentos, entregas y notas; las RPC y DTO del estudiante; pgTAP y la prueba de fugas |
 | T1.6 | backend | Repos de grupos, estudiantes y perfiles, con integración y aislamiento |
 | T1.7 | backend | Repos de prácticos, versiones, publicaciones, entregas y notas, con integración y aislamiento |
@@ -787,7 +829,7 @@ Tandas: primero T1.1. Después T1.2 (con turno de base) junto con T1.8 y T1.9. D
 | T2.5 | backend | Aprovisionamiento de cuentas de estudiante con `provisioning_id`, la marca de borrado y la contraseña nueva por el profe. `reconcile_accounts` corre a mano hasta la fase 3 |
 | T2.6 | frontend | Login del estudiante con código de institución, y tarjetas de acceso imprimibles por grupo con QR al login |
 | T2.7 | backend | Límite de intentos en Postgres (sale Upstash) y límites de Supabase Auth configurados |
-| T2.8 | backend | Pasar a Supabase todo lo que usa la sesión vieja (`/api/tts`, `app/demo/*`, `app/estudiante/*`, `LoginScreen` y `lib/demo/steps.ts`). Recién entonces se borran `lib/auth/accounts.ts`, `signing.ts` y `session.ts`. La demo vieja sigue con su flag hasta T4.9 |
+| T2.8 | backend | Pasar a Supabase todo lo que usa la sesión vieja (`/api/tts`, `app/demo/*`, `app/estudiante/*`, `LoginScreen` y `lib/demo/steps.ts`). Recién entonces se borra `lib/auth/accounts.ts`. **Puente:** la demo de hoy sigue con su cookie firmada (`signing.ts` y `session.ts`), que desde este ticket solo puede abrir la demo y nunca da acceso a datos del servidor. Se borra en T4.15, cuando la demo corre sobre el sandbox. El Playwright de la demo de hoy tiene que seguir en verde al cerrar la fase 2 |
 
 ### Fase 3 · Motor de trabajos
 
@@ -800,7 +842,7 @@ Tandas: primero T1.1. Después T1.2 (con turno de base) junto con T1.8 y T1.9. D
 | T3.3 | backend | `/api/jobs/dispatch`, `/api/jobs/worker` y `/api/jobs/kick` según lo que decidió T0.6, Supabase Cron con `pg_net` y el secreto en Vault |
 | T3.4 | backend | `read_page`, `merge_document`, `extract_syllabus_part` y `merge_syllabus`, con pruebas de capacidad |
 | T3.5 | backend | `analyze_group_part` y `summarize_analysis`, con clave por hash de entradas y mapeo de seudónimos |
-| T3.6 | backend | Mantenimiento: `purge_sandboxes`, `purge_orphan_anonymous`, `cleanup_files`, `reconcile_accounts` y `expire_reservations` |
+| T3.6 | backend | **Macro, un ticket por tarea.** Mantenimiento: `purge_sandboxes`, `purge_orphan_anonymous`, `cleanup_files`, `reconcile_accounts` y `expire_reservations` |
 | T3.7 | backend | Monitor de la cola y alertas de trabajos fallados |
 
 ### Fase 4 · La app sobre el servidor (misma UI, otra fuente de datos)
@@ -811,8 +853,8 @@ Tandas: primero T1.1. Después T1.2 (con turno de base) junto con T1.8 y T1.9. D
 | Contratos | orquestador | Firmas de servicios y Server Actions para todo lo que hoy exportan `lib/groups/store.ts` y `lib/syllabus/store.ts`, y la publicación mínima |
 | T4.1 | backend | Servicios y acciones de grupos, estudiantes y perfiles |
 | T4.2 | frontend | `GroupsPanel`, `GroupDetail` y `Students` leen con Server Components y mutan con acciones |
-| T4.3 | backend | Servicios y acciones de prácticos y versiones con ejercicios en tabla. Mientras no llega la fase 5, la generación sigue por `/api/generate`, y su resultado se parte en ejercicios y se guarda como generación |
-| T4.4 | frontend | `NewAssessment` y `AssessmentDetail` sobre el servidor, partidos en componentes de menos de 150 líneas |
+| T4.3 | backend | Servicios y acciones de prácticos y versiones con ejercicios en tabla. **Puente:** mientras no llega la fase 5, la generación sigue por `/api/generate`, pero un pedido por ejercicio con plazo de 50 s (hoy admite 300 s y corta a los 280, que en Netlify no existen). El resultado se guarda como generación |
+| T4.4 | frontend | **Macro.** Primero partir `NewAssessment` (441 líneas) y `AssessmentDetail` (619) en componentes de menos de 150, sin cambiar de dónde leen; después, en otro ticket, pasarlos al servidor |
 | T4.5 | backend | Storage: buckets, reserva, firma, confirmación y lectura. «Leer el PDF» y «Programa» pasan a encolar sus trabajos |
 | T4.6 | frontend | Subida directa y avance de la lectura en `NewAssessment` y `SyllabusEditor` |
 | T4.7 | backend | Publicación mínima: `publish_version` sin fechas, con aprobación y consentimiento chequeados |
@@ -884,7 +926,7 @@ Tandas: primero T1.1. Después T1.2 (con turno de base) junto con T1.8 y T1.9. D
 | T9.2 | backend y frontend | Rol de inclusión: ve y edita perfiles y apoyos de toda la institución, sin notas ni entregas |
 | T9.3 | backend y frontend | Consentimientos por finalidad: cargar el formulario firmado, estado por estudiante, revocar (cancela lo pendiente) y el efecto en versiones, publicaciones, dictado y análisis |
 | T9.4 | frontend | Vista del registro de accesos para el admin |
-| T9.5 | backend | Exportar y borrar un estudiante recorriendo el inventario, `erasures`, baja de institución y `apply_retention` |
+| T9.5 | backend | **Macro: exportar, borrar, baja de institución y retención van en tickets separados.** Exportar y borrar un estudiante recorriendo el inventario, `erasures`, baja de institución y `apply_retention` |
 | T9.6 | frontend | Panel de la institución: miembros, roles, invitaciones pendientes y sacar a alguien (cierra sus sesiones) |
 | T9.7 | orquestador | `docs/INCIDENTES.md` y el inventario completo en `docs/PRIVACIDAD-DATOS.md` |
 
@@ -897,7 +939,7 @@ Tandas: primero T1.1. Después T1.2 (con turno de base) junto con T1.8 y T1.9. D
 | T10.3 | backend | Sentry, alertas de errores, de la cola y de gasto de IA |
 | T10.4 | backend | `pg_dump` semanal y foto diaria de los buckets a R2 con manifiesto, la reconciliación y la bandera `jobs_paused` |
 | T10.5 | revisor y QA | `/security-review`, auditoría de privilegios y RLS, planes de consulta con datos de tamaño real, prueba de carga de 100 versiones a la vez y simulacro de restauración con archivos y supresiones |
-| T10.6 | orquestador y usuario | Checklist de salida, revisión legal (Ley 18.331: guardar en Brasil es transferencia internacional) y piloto con un colegio |
+| T10.6 | orquestador y usuario | Checklist de salida, compuerta legal (ver «Decisiones a confirmar»: evaluación de impacto, consentimiento escrito, responsable y encargado, transferencias por destino) y piloto con un colegio |
 
 En total son unos 95 tickets.
 
@@ -915,7 +957,7 @@ En total son unos 95 tickets.
 - **Concurrencia.** Los protocolos de trabajos y versiones son lo más delicado. Tienen un orden de locks único, SQL escrito en el contrato y pruebas con conexiones simultáneas.
 - **Alcance.** Son once fases. Cada una deja la app andando y se puede mostrar, así que se puede frenar en cualquiera.
 - **Subagentes que se desvían.** Se mitiga con contratos revisados, archivos cerrados, el turno de base, las tandas que cierran juntas, el revisor que no vio la implementación y las compuertas automáticas.
-- **Datos de menores.** No se cargan datos reales hasta cerrar la fase 9 y T10.5.
+- **Datos de menores.** No se cargan datos reales hasta cerrar la fase 9, T10.5 y la compuerta legal de T10.6.
 
 ## Anexo A · Prompt base del implementador
 
@@ -998,7 +1040,7 @@ probar y cualquier decisión que tomaste que no estaba en el ticket.
 - **N14 · Anónimos.** Límites de Auth para el login anónimo, IP de la cabecera de Netlify, `purge_orphan_anonymous` y restricciones por tipo de institución.
 - **N15 · Aprovisionamiento.** Alta pública desactivada, `app_metadata.provisioning_id`, marca de borrado y contraseña inicial que no se guarda. La invitación exige el mismo email.
 - **N16 · Borrado.** Inventario de datos personales con su prueba, desvinculación por seudónimo y `erasures`, que se vuelve a aplicar al restaurar.
-- **N17 · Despliegue.** CI como única autoridad de migraciones, build hook del mismo commit, cuatro pasos de expandir y contraer, y regla de previews.
+- **N17 · Despliegue.** CI como única autoridad de migraciones, deploy del mismo commit (ver R3-10), cuatro pasos de expandir y contraer, y regla de previews.
 - **N18 · Plan B.** Respuesta con stream, rutas de jobs fuera del proxy y T0.6 con un trabajo de 45 a 50 s.
 - **N19 · DTO del estudiante.** Uno por contexto (incluido `interface`), lista de claves permitidas y consumidores nombrados.
 - **N20 · Resets.** Solo al cerrar una tanda, sin tickets corriendo, y con hash de migraciones en cada reporte.
@@ -1013,3 +1055,26 @@ probar y cualquier decisión que tomaste que no estaba en el ticket.
 - **N30 · Accesibilidad.** WCAG 2.2 AA como criterio, con una lista por flujo.
 
 La sección de roadmap y la regla de no reescribir `CLAUDE.md` (T0.7) responden a la revisión contra el `CLAUDE.md` nuevo.
+
+### Ronda 3
+
+Los hallazgos están en `docs/revisiones/plataforma-codex-3.md`.
+
+- **R3-1 · Cierre de generaciones.** Estados terminales que no se reabren, hermanos cancelados y todo cambio del recurso condicionado a que la generación siga vigente.
+- **R3-2 · Presupuesto.** `maxRetries: 0` en el SDK, reserva por envío HTTP, unidades por proveedor (caracteres en ElevenLabs), lo incierto nunca se libera y tope de concurrencia para lo sincrónico.
+- **R3-3 · Claves históricas.** `answer_key_revisions` inmutables atadas a la revisión de los ejercicios. Publicar comprueba la correspondencia. En la fase 4 la clave solo es obligatoria en mirada.
+- **R3-4 · Entregas.** Fila «Entregado» en la matriz, entrega con la revisión del borrador e idempotente, y corrección desde que hay entrega.
+- **R3-5 · Consentimiento sincrónico.** Chequeo en cada llamada de dictado, comandos y lectura, contenido resuelto en el servidor y consentimiento antes del micrófono del navegador.
+- **R3-6 · Nombres en el contenido.** `prepareForProvider()` redacta localmente antes de la primera llamada, y se guarda el original aparte.
+- **R3-7 · Anonimización.** Lo que queda después de borrar el seudónimo es personal salvo justificación por campo en el inventario. La exportación no lleva datos de otros.
+- **R3-8 · Supresiones.** Registro fuera de la base, marca antes de borrar y efectos pendientes que la comprueban.
+- **R3-9 · Compuerta legal.** Evaluación de impacto, consentimiento escrito, responsable y encargado, y transferencias por destino antes del primer dato real. La revisión arranca ya.
+- **R3-10 · Despliegue.** `netlify deploy --build --prod` desde el checkout de CI con verificación del SHA, sin build hook y sin cancelar a mitad.
+- **R3-11 · Puentes.** T0.6 sin Cron de Supabase (pasa a T3.3), la cookie de la demo de hoy hasta T4.15 y `/api/generate` por ejercicio con 50 s en la fase 4.
+- **R3-12 · Idempotencia.** `op_key` del navegador con alcance por institución y recurso, y la identidad del análisis con la foto de seudónimos.
+- **R3-13 · Operaciones compuestas.** Tabla `operations` con partes fijas y merge una sola vez.
+- **R3-14 · Volver de Paula.** `refreshSession`, reclamar y consumir al final.
+- **R3-15 · Acción vieja.** Lo resuelve el cliente (`callAction`) y el formulario guarda el borrador antes de recargar.
+- **R3-16 · Respaldos.** PITR sin backups diarios aparte.
+- **R3-17 · Tickets grandes.** T1.4, T3.6, T4.4 y T9.5 son macro y se parten en el contrato de su fase.
+- **R3-18 · Instrucciones generales.** Campo en `assessments` y en todo el recorrido, y el parser ya no las descarta.

@@ -53,7 +53,7 @@ export function fail(code: FailureCode, message: string, extra?: Omit<Failure, "
 }
 
 export function isErrorCode(value: unknown): value is ErrorCode {
-  return typeof value === "string" && (ERROR_CODES as readonly string[]).includes(value);
+  return ERROR_CODES.some((code) => code === value);
 }
 
 /** Unwraps a Result where a failure is a bug (tests, scripts). Never in request handling. */
