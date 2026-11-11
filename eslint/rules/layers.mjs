@@ -49,6 +49,6 @@ export const layers = {
         const message = check({ file, target, source });
         if (message !== undefined) context.report({ node, messageId: "forbidden", data: { message } });
       }
-    });
+    }, context);
   },
 };

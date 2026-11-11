@@ -90,18 +90,31 @@ export function staticTarget(source) {
   return null;
 }
 
-/** Visitors that call `onSource(node, specifier)` for every static module specifier. */
-export function importVisitors(onSource) {
-  const fromDeclaration = (node) => {
-    if (node.source && typeof node.source.value === "string") onSource(node.source, node.source.value);
-  };
+// `/// <reference path="…" />` pulls a file into the program just like an import does.
+const REFERENCE = /^\/\s*<reference\s+path\s*=\s*["']([^"']+)["']/;
+
+const literalOf = (node) => (node?.type === "Literal" && typeof node.value === "string" ? node.value : null);
+
+/**
+ * Visitors that call `onSource(node, specifier)` for every way a TypeScript file can name another
+ * module: import/export declarations, import(), type-only `import("…").T`, `import x = require("…")`
+ * and triple-slash path references.
+ */
+export function importVisitors(onSource, context) {
+  const report = (node, specifier) => specifier !== null && onSource(node, specifier);
+  const fromDeclaration = (node) => report(node.source, literalOf(node.source));
   return {
     ImportDeclaration: fromDeclaration,
     ExportNamedDeclaration: fromDeclaration,
     ExportAllDeclaration: fromDeclaration,
-    ImportExpression(node) {
-      const specifier = staticTarget(node.source);
-      if (specifier !== null) onSource(node.source, specifier);
+    ImportExpression: (node) => report(node.source, staticTarget(node.source)),
+    TSImportType: (node) => report(node, literalOf(node.argument?.literal ?? node.argument)),
+    TSExternalModuleReference: (node) => report(node, literalOf(node.expression)),
+    Program() {
+      for (const comment of context?.sourceCode.getAllComments() ?? []) {
+        const path = comment.type === "Line" ? REFERENCE.exec(comment.value)?.[1] : undefined;
+        if (path) report(comment, path.startsWith(".") || path.startsWith("/") ? path : `./${path}`);
+      }
     },
   };
 }

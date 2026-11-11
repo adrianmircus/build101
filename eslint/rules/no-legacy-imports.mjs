@@ -29,6 +29,6 @@ export const noLegacyImports = {
       if (target !== null && isLegacyTarget(target)) {
         context.report({ node, messageId: "legacy", data: { source } });
       }
-    });
+    }, context);
   },
 };

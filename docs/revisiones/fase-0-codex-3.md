@@ -65,3 +65,24 @@ ESLint queda sin mensajes y TypeScript resuelve los archivos reales. Los dos pri
 `npm run lint` y las 230 pruebas de ESLint pasan pese al bypass. Sin cambios en archivos.
 
 Veredicto: no listo
+
+## Ronda 8
+
+**Media: persiste un bypass** en [imports.mjs:94](/C:/Users/adrim/build101/.claude/worktrees/fase-0/eslint/rules/imports.mjs:94): los visitantes omiten `TSImportType`.
+
+Desde `lib/domain/r2-probe.ts`:
+
+```ts
+export type Probe =
+  import("typescript/../../lib/server/log").LogFields;
+```
+
+TypeScript resuelve `lib/server/log.ts`, compila sin diagnósticos con `strict` y `noUncheckedIndexedAccess`, y ESLint devuelve **cero mensajes**. El resolver nuevo no llega a ejecutarse para ese nodo.
+
+Las variantes de rutas probadas en imports convencionales fueron detectadas. No reproduje falsos positivos ni crashes introducidos por el cambio.
+
+- `npm run lint`: correcto, **15,53 s**.
+- `npx vitest run eslint`: **234 pruebas aprobadas**.
+- Sin cambios en archivos.
+
+Veredicto: no listo
