@@ -23,3 +23,15 @@ Desde `lib/domain/probe.ts`, importar `C:/Users/adrim/build101/.claude/worktrees
 Lint y las **217 pruebas** de ESLint pasan. Árbol limpio.
 
 Veredicto: no listo
+
+## Ronda 5
+
+R2 sigue abierto. Reproduje tres bypasses **P1 (alta)** desde `lib/domain`: ESLint sin mensajes y TypeScript resuelve el módulo.
+
+- Mayúsculas: `@/LIB/server/log` y `@/Lib/groups/store`.
+- Rutas Windows con prefijos `//?/C:/…` y `//./C:/…`, hacia `lib/server/log` y `lib/groups/store`.
+- Ruta corta 8.3: `C:/Users/adrim/build101/.claude/WORKTR~1/fase-0/lib/server/log` y su equivalente hacia `lib/groups/store`.
+
+`lint` y los 219 tests de ESLint pasan pese a estos bypasses. Sin cambios en archivos.
+
+Veredicto: no listo

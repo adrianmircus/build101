@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ruleIdsFor, ruleMessages } from "./lint.helper";
@@ -70,6 +71,27 @@ describe("paths that leave the repo and come back in", () => {
     [`${process.cwd().replaceAll("/", "\\")}\\lib\\groups\\store`, LEGACY],
   ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
     expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
+  });
+});
+
+// Windows resolves these to the same file (case-insensitive, device prefixes, 8.3 short names), and so
+// does TypeScript there. On Linux they point to files that don't exist, so tsc fails and they aren't a bypass.
+describe.runIf(process.platform === "win32")("Windows spellings of the same file", () => {
+  const cwd = process.cwd().replaceAll("\\", "/");
+  const shortCwd = () => {
+    const out = execSync(`for %I in ("${process.cwd()}") do @echo %~sI`, { shell: "cmd.exe" }).toString().trim();
+    return out.replaceAll("\\", "/");
+  };
+  it.each([
+    ["@/LIB/server/log", LAYERS],
+    ["@/Lib/groups/store", LEGACY],
+    [`//?/${cwd}/lib/server/log`, LAYERS],
+    [`//./${cwd}/lib/groups/store`, LEGACY],
+  ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
+    expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
+  });
+  it("follows 8.3 short names", async () => {
+    expect(await ruleIdsFor(imp(`${shortCwd()}/lib/server/log`), "lib/domain/a.ts")).toContain(LAYERS);
   });
 });
 
