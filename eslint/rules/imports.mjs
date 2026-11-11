@@ -91,7 +91,8 @@ export function staticTarget(source) {
 }
 
 // `/// <reference path="…" />` pulls a file into the program just like an import does.
-const REFERENCE = /^\/\s*<reference\s+path\s*=\s*["']([^"']+)["']/;
+// TypeScript reads the attributes in any order and case ("PATH", preserve="true" first).
+const REFERENCE = /^\/\s*<reference\b[^>]*?\bpath\s*=\s*["']([^"']+)["']/i;
 
 const literalOf = (node) => (node?.type === "Literal" && typeof node.value === "string" ? node.value : null);
 

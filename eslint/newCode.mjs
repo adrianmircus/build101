@@ -43,6 +43,17 @@ export const newCode = [
       ],
     },
   },
+  // The layers are .ts and .tsx only: other extensions (.mts, .cts, .js…) would sit outside the rules
+  // and the strict program while tsconfig still compiles them.
+  {
+    files: ["lib/domain/**/*.{mts,cts,js,mjs,cjs,jsx}", "lib/server/**/*.{mts,cts,js,mjs,cjs,jsx}", "lib/client/**/*.{mts,cts,js,mjs,cjs,jsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        { selector: "Program", message: "Las capas nuevas solo admiten .ts y .tsx: renombrá el archivo." },
+      ],
+    },
+  },
   // Browser-driven tests may import dynamically; they run outside the layered code.
   {
     files: ["tests/e2e/**"],

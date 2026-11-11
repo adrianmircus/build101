@@ -86,3 +86,18 @@ Las variantes de rutas probadas en imports convencionales fueron detectadas. No 
 - Sin cambios en archivos.
 
 Veredicto: no listo
+
+## Ronda 9
+
+R2 sigue abierto. Reproduje tres escapes en memoria, sin modificar archivos. En todos, TypeScript cargó `lib/server/log.ts` sin errores y ESLint devolvió **cero mensajes**:
+
+- En `lib/domain/probe.ts`: `/// <reference preserve="true" path="../server/log.ts" />`
+- En ese mismo archivo: `/// <reference PATH="../server/log.ts" />`
+
+  La [expresión regular](eslint/rules/imports.mjs:94) omite ambos formatos, que TypeScript acepta.
+
+- En `lib/domain/probe.mts`: `export type P = import("@/lib/server/log").LogFields;`
+
+  `tsconfig.json` incluye `.mts`, pero las [reglas de capas](eslint/layers.mjs:7) solo cubren `.ts` y `.tsx`.
+
+Veredicto: no listo

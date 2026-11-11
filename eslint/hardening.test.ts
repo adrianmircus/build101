@@ -91,11 +91,19 @@ describe("package paths that climb back into the repo", () => {
 });
 
 describe("every way TypeScript can name a module", () => {
+  it("judges .mts files too, and rejects them in the layers", async () => {
+    const code = 'export type P = import("@/lib/server/log").LogFields;\n';
+    const messages = await ruleMessages(code, "lib/domain/probe.mts");
+    expect(messages.some((m) => m.includes("solo admiten .ts y .tsx"))).toBe(true);
+    expect(await ruleIdsFor(code, "lib/domain/probe.mts")).toContain(LAYERS);
+  });
   it.each([
     ['export type P = import("typescript/../../lib/server/log").LogFields;\n', LAYERS],
     ['export type P = import("@/lib/groups/store").X;\n', LEGACY],
     ['import log = require("../server/log");\nexport const y = log;\n', LAYERS],
     ['/// <reference path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference preserve="true" path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference PATH="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
   ])("lib/domain/a.ts with %j trips %s", async (code, rule) => {
     expect(await ruleIdsFor(code, "lib/domain/a.ts")).toContain(rule);
   });

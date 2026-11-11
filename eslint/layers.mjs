@@ -4,7 +4,7 @@ import { tizaPlugin } from "./plugin.mjs";
 // patterns cannot do reliably (barrels, "./x/../y", dynamic import()).
 export const layers = [
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ["**/*.{ts,tsx,mts,cts}"],
     plugins: { tiza: tizaPlugin },
     rules: { "tiza/layers": "error" },
   },
