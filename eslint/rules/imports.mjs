@@ -59,6 +59,33 @@ function repoRelative(absolute, cwd) {
 }
 
 /** Repo-relative path without extension, or null for packages and paths outside the repo. */
+/**
+ * The npm package a specifier really loads, without the @types/ prefix ("@types/react" is react), or
+ * null for our own files. Judged on the file TypeScript resolves, so a path written into
+ * node_modules ("../../node_modules/@types/react/index") still counts as react.
+ */
+export function packageOf(rawSource, filename, cwd) {
+  const spelled = moduleSpelling(rawSource, viaTypeScript(rawSource, filename, cwd));
+  return spelled === null ? null : withoutTypesScope(packageName(spelled));
+}
+
+/** The part after the last node_modules/ of the resolved file, else the bare specifier itself. */
+function moduleSpelling(rawSource, real) {
+  const path = real?.split(sep).join("/");
+  if (path?.includes("/node_modules/")) return path.split("/node_modules/").at(-1) ?? null;
+  const bare = /^[@a-z]/i.test(rawSource) && !rawSource.startsWith("@/");
+  return bare ? rawSource : null;
+}
+
+const packageName = (spelled) => {
+  const [first = "", second = ""] = spelled.split("/");
+  return first.startsWith("@") ? `${first}/${second}` : first;
+};
+
+// DefinitelyTyped names: @types/react is react, @types/supabase__x is @supabase/x.
+const withoutTypesScope = (name) =>
+  name.startsWith("@types/") ? name.slice("@types/".length).replace(/^(.+)__(.+)$/, "@$1/$2") : name;
+
 export function resolveSource(rawSource, filename, cwd) {
   const real = viaTypeScript(rawSource, filename, cwd);
   if (real !== undefined) return repoRelative(real, cwd);

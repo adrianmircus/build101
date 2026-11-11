@@ -4,9 +4,10 @@
 // lib/server/db/index.ts cannot hide db/client.ts either: its own `export * from "./client"` is an
 // import of db/client.ts from a file that is not in lib/server/repos/*.ts.
 import { dirname } from "node:path/posix";
-import { importVisitors, repoPath, resolveSource, within } from "./imports.mjs";
+import { importVisitors, packageOf, repoPath, resolveSource, within } from "./imports.mjs";
 
-const DOMAIN_PACKAGES = /^(?:next|react|react-dom)(?:\/|$)|^@supabase\//;
+// Matched against the package name (packageOf), so "react/jsx-runtime" and "@types/react" both count.
+const DOMAIN_PACKAGES = /^(?:next|react|react-dom)$|^@supabase\//;
 
 const adminOnly = "lib/server/repos/admin/** only goes into lib/server/jobs/** and lib/server/services/admin/**.";
 
@@ -16,8 +17,8 @@ const checks = [
     (within(file, "components") || within(file, "lib/client")) && within(target ?? "", "lib/server")
       ? "This layer cannot import lib/server/**. Call a Server Action or a route instead."
       : undefined,
-  ({ file, target, source }) =>
-    within(file, "lib/domain") && (within(target ?? "", "lib/server") || DOMAIN_PACKAGES.test(source))
+  ({ file, target, pkg }) =>
+    within(file, "lib/domain") && (within(target ?? "", "lib/server") || DOMAIN_PACKAGES.test(pkg ?? ""))
       ? "lib/domain is pure: no Next, React, Supabase or lib/server."
       : undefined,
   ({ file, target }) =>
@@ -45,8 +46,9 @@ export const layers = {
     const file = repoPath(context.filename, context.cwd);
     return importVisitors((node, source) => {
       const target = resolveSource(source, context.filename, context.cwd);
+      const pkg = packageOf(source, context.filename, context.cwd);
       for (const check of checks) {
-        const message = check({ file, target, source });
+        const message = check({ file, target, pkg });
         if (message !== undefined) context.report({ node, messageId: "forbidden", data: { message } });
       }
     }, context);

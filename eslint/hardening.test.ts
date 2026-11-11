@@ -108,6 +108,10 @@ describe("every way TypeScript can name a module", () => {
     ['/// <reference path="../groups/store.ts" />\nexport const y = 1;\n', LEGACY],
     ['/// <reference types="react" />\nexport type View = React.ReactNode;\n', LAYERS],
     ['/// <reference types="next" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference types="@types/react" />\nexport type View = React.ReactNode;\n', LAYERS],
+    ['/// <reference types="@types/react-dom" />\nexport const y = 1;\n', LAYERS],
+    ['export type V = import("../../node_modules/@types/react/index").ReactNode;\n', LAYERS],
+    ['import type { ReactNode } from "react/jsx-runtime";\nexport type V = ReactNode;\n', LAYERS],
   ])("lib/domain/a.ts with %j trips %s", async (code, rule) => {
     expect(await ruleIdsFor(code, "lib/domain/a.ts")).toContain(rule);
   });

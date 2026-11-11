@@ -135,3 +135,24 @@ Veredicto: no listo
 No encontré otros problemas nuevos de alta/media fuera de las revisiones anteriores. Pasaron lint, **445 pruebas** y ambos chequeos de tipos. Árbol limpio.
 
 Veredicto: no listo
+
+## Ronda 12
+
+**R2 sigue abierto.**
+
+- **Media — [layers.mjs:9](/C:/Users/adrim/build101/.claude/worktrees/fase-0/eslint/rules/layers.mjs:9):** desde `lib/domain/probe.ts`, este código pasa ESLint y TypeScript estricto sin diagnósticos:
+
+  ```ts
+  /// <reference types="@types/react" />
+  export type View = React.ReactNode;
+  ```
+
+  También pasa `types="@types/react-dom"`. Son nombres normales de paquetes instalados, plausibles para un implementador honesto. La regla reconoce `react`, pero omite `@types/react`.
+
+- **Baja, no bloqueante:** reproduje el escape ya aceptado mediante `import("../../node_modules/@types/react/index").ReactNode`.
+
+No confirmé otros problemas nuevos de alta/media fuera de las revisiones anteriores.
+
+Pasaron lint, **447 pruebas** y ambos chequeos de tipos. Sin modificaciones; árbol limpio.
+
+Veredicto: no listo
