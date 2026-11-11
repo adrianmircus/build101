@@ -1,7 +1,7 @@
 import "server-only";
 import type { z } from "zod";
 import { fail, type FailureCode, type Result } from "@/lib/errors";
-import { invalidInput, newRequestId, runEntry } from "./run";
+import { invalidInput, newRequestId, parseInput, runEntry } from "./run";
 
 // Route Handlers exist for what Server Actions can't do well: polling (actions run one at a time per
 // client), webhooks, cron and streaming. Same contract as defineAction, answered as JSON.
@@ -34,16 +34,22 @@ async function readRaw(request: Request, from: RouteSpec<z.ZodType>["from"]): Pr
   return request.json().catch(() => undefined);
 }
 
+/** Dynamic segments of the URL, already resolved (/api/jobs/[id] gives { id }). */
+export type RouteParams = Record<string, string | string[] | undefined>;
+export type RouteContext = { params: Promise<RouteParams> };
+export type RouteArgs = { request: Request; params: RouteParams };
+
 export function defineRoute<S extends z.ZodType, T>(
   spec: RouteSpec<S>,
-  handler: (input: z.output<S>, request: Request) => Promise<T>,
-): (request: Request) => Promise<Response> {
-  return async function route(request) {
+  handler: (input: z.output<S>, args: RouteArgs) => Promise<T>,
+): (request: Request, context?: RouteContext) => Promise<Response> {
+  return async function route(request, context) {
     const requestId = newRequestId();
+    const params = (await context?.params) ?? {};
     const raw = await readRaw(request, spec.from);
     if (raw === undefined) return respond(fail("INVALID", "El pedido no es JSON válido.", { requestId }));
-    const parsed = spec.input.safeParse(raw);
+    const parsed = parseInput(spec.input, raw);
     if (!parsed.success) return respond(invalidInput(parsed.error, requestId));
-    return respond(await runEntry(spec.name, requestId, () => handler(parsed.data, request)));
+    return respond(await runEntry(spec.name, requestId, () => handler(parsed.data, { request, params })));
   };
 }

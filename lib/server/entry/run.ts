@@ -3,6 +3,7 @@ import { unstable_rethrow } from "next/navigation";
 import type { z } from "zod";
 import { AppError, MESSAGES, fail, ok, type Failure, type Result } from "@/lib/errors";
 import { describeError, log } from "@/lib/server/log";
+import { spanishIssueMessage } from "./messages";
 
 // The shared core of defineAction and defineRoute: validate, run, and turn every outcome into a Result.
 // Expected errors (AppError) keep their code and message; anything else is a bug, logged with a request id
@@ -10,6 +11,11 @@ import { describeError, log } from "@/lib/server/log";
 
 export function newRequestId(): string {
   return crypto.randomUUID();
+}
+
+/** safeParse with Spanish defaults: messages written in a schema still win over them. */
+export function parseInput<S extends z.ZodType>(schema: S, raw: unknown) {
+  return schema.safeParse(raw, { error: spanishIssueMessage });
 }
 
 export function invalidInput(error: z.ZodError, requestId: string): Failure {
