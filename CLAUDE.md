@@ -56,6 +56,6 @@ Qué cambia al escribir código:
 El plan actual es `docs/ROADMAP.md`. `docs/PLAN.md` y `docs/IDEAS.md` son del hackathon: sirven como historia, no como plan actual.
 
 ## Reglas
-- Antes de pushear: `npx tsc --noEmit && npm run lint && npm test`.
+- Antes de pushear: `npm run check` (tipos con las reglas estrictas del código nuevo, lint, pruebas, build y Playwright).
 - No romper los flujos principales (el profe sube y adapta, aprueba, el estudiante resuelve, el profe corrige) ni la demo guiada. Se puede refactorizar, en pasos chicos y verificados.
 - Ningún secreto en el código: las claves van en variables de entorno.

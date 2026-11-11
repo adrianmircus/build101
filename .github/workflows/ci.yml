@@ -1,10 +1,11 @@
-# Runs on every push and PR. A PR to main can only merge with both jobs green (branch protection).
+# Runs on every PR and on pushes to main (a push to a branch with an open PR would run it twice).
+# A PR to main can only merge with both jobs green (branch protection).
 # Supabase (local database, integration tests and pgTAP) joins in T1.1.
 name: CI
 
 on:
   push:
-    branches: [main, "plataforma/**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
