@@ -2,6 +2,8 @@
 // Kept free of I/O so it can be unit-tested (plan.test.ts) without git or child processes.
 
 const CODE_FILE = /\.(?:ts|tsx|mjs|js)$/;
+// ESLint config and rules: no test imports them, so `vitest related` cannot find eslint/*.test.ts.
+const ESLINT_SETUP = /^(?:eslint\/|eslint\.config\.mjs$)/;
 
 /**
  * @typedef {{ id: string, label: string, command: string, args: string[] }} RunStep
@@ -89,6 +91,9 @@ export function buildPlan(changed) {
         }
       : { id: "tests", label: "Vitest", skipped: "no cambió ningún archivo de código" },
   );
+  if (changed.some((file) => ESLINT_SETUP.test(file))) {
+    steps.push({ id: "eslint-tests", label: "Pruebas de las reglas de ESLint", command: "npx", args: ["vitest", "run", "eslint"] });
+  }
   steps.push(
     touchesDatabase
       ? { id: "database", label: "Pruebas de la base (pgTAP)", command: "supabase", args: ["test", "db"] }

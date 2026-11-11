@@ -9,9 +9,12 @@
   "include": [
     "next-env.d.ts",
     "lib/errors.ts",
+    "lib/errors.test.ts",
     "lib/domain/**/*.ts",
     "lib/server/**/*.ts",
+    "lib/server/**/*.tsx",
     "lib/client/**/*.ts",
+    "lib/client/**/*.tsx",
     "tests/**/*.ts"
   ]
 }

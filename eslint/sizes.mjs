@@ -4,13 +4,22 @@ const blank = { skipBlankLines: true, skipComments: true };
 
 // Components are bigger than plain functions because they carry markup. Only .tsx files can hold
 // them, so .ts files get the plain limit for every function.
-const sizeRules = (componentMax) => ({
+/**
+ * @param {number} componentMax
+ * @param {Record<string, unknown>} [extra]
+ * @returns {import("eslint").Linter.RulesRecord}
+ */
+export const sizeRules = (componentMax, extra = {}) => ({
   "max-lines": ["error", { max: 200, ...blank }],
-  "tiza/function-size": ["error", { max: 40, componentMax }],
+  "tiza/function-size": ["error", { max: 40, componentMax, ...extra }],
   complexity: ["error", 10],
   "max-depth": ["error", 3],
   "max-params": ["error", 3],
 });
+
+// A describe()/it() callback holds a whole suite or case, so the function limit would only push
+// tests into arbitrary splits. Helpers declared next to the tests still count, and so does the
+// file limit: a test file over 200 lines gets split.
 
 export const sizes = [
   {
@@ -24,10 +33,14 @@ export const sizes = [
     rules: sizeRules(150),
   },
   {
-    // A describe() callback holds every case of a suite, so the function limit would only push tests
-    // into arbitrary splits. The file limit still applies: a test file over 200 lines gets split.
-    files: ["**/*.test.{ts,tsx}", "tests/e2e/**/*.spec.ts"],
-    rules: { "tiza/function-size": "off" },
+    files: ["**/*.test.ts", "tests/e2e/**/*.spec.ts"],
+    plugins: { tiza: tizaPlugin },
+    rules: sizeRules(40, { exemptTestCallbacks: true }),
+  },
+  {
+    files: ["**/*.test.tsx"],
+    plugins: { tiza: tizaPlugin },
+    rules: sizeRules(150, { exemptTestCallbacks: true }),
   },
   {
     // Playwright fixtures receive a `use` callback that the React hooks rule mistakes for React.use().
