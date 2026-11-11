@@ -1,5 +1,5 @@
 // Pruebas sin IA de cómo se separan los ejercicios de una versión y de cómo se lee su Markdown con LaTeX.
-// Correr con: npx tsx scripts/adapter/test-ejercicios.ts
+// Correr con: npx tsx scripts/tests/test-ejercicios.ts
 import { splitExercises } from "../../lib/results/exercises";
 import { parseMathMarkdown } from "../../lib/math-markdown";
 

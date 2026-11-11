@@ -3,9 +3,13 @@ import { z } from "zod";
 import { AgentError } from "@/lib/agent/generate";
 import { extractUnits } from "@/lib/agent/syllabus";
 import type { SyllabusUnitsResponse } from "@/lib/contract";
+import { cutShort, deadline } from "@/lib/agent/client";
 
 // Validates SyllabusUnitsRequest (lib/contract.ts).
 const RequestBody = z.object({ fileId: z.string().trim().min(1).max(200) });
+
+// The AI call has 280 s (deadline below); the rest is margin to answer.
+export const maxDuration = 300;
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status });
@@ -16,10 +20,13 @@ export async function POST(request: Request) {
   const parsed = RequestBody.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return error("Falta el PDF del programa.", 400);
 
+  const signal = deadline(request, 280);
   try {
-    const response: SyllabusUnitsResponse = { units: await extractUnits(parsed.data.fileId) };
+    const response: SyllabusUnitsResponse = { units: await extractUnits(parsed.data.fileId, signal) };
     return Response.json(response);
   } catch (e) {
+    const cut = cutShort(e, signal);
+    if (cut) return error(cut.message, cut.status);
     if (e instanceof AgentError) return error(e.message, 502);
     if (e instanceof Anthropic.AuthenticationError) return error("Falta configurar la API key de la IA.", 500);
     if (e instanceof Anthropic.NotFoundError) return error("No encontramos el PDF. Volvé a subirlo.", 502);

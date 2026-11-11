@@ -7,9 +7,14 @@ import type { Version } from "./types";
 export type NumberIssue = { exercise: number; missing: string[]; added: string[]; absent: boolean };
 export type NumberCheck = { applies: false } | { applies: true; checked: number; issues: NumberIssue[] };
 
+// Subscripts and superscripts typed in the original ("H₂O", "m/s²") are the digits the version writes in LaTeX
+// ("\ce{H2O}", "\pu{m/s^2}").
+const SCRIPTS = "₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹";
+const plainDigits = (text: string) => text.replace(/[₀-₉⁰¹²³⁴-⁹]/g, (c) => String(SCRIPTS.indexOf(c) % 10));
+
 // The numbers written in a text, LaTeX included ("\frac{3}{4}" gives 3 and 4, "2,5" and "2.5" are the same).
 function numbersIn(text: string): Set<string> {
-  return new Set((text.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(",", ".")));
+  return new Set((plainDigits(text).match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(",", ".")));
 }
 
 export function checkNumbers(original: string, version: Version): NumberCheck {

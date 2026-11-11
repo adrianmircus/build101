@@ -6,7 +6,19 @@ import type { Support } from "@/lib/supports";
 import { isDemo } from "@/lib/demo/mode";
 import { demoGroup, seed } from "./seed";
 import type { OptionId } from "@/lib/contract";
-import type { Answer, Assessment, Data, ExerciseResult, Grade, Group, GroupAnalysis, Submission, Version } from "./types";
+import { withEvent } from "./history";
+import type {
+  Answer,
+  Assessment,
+  Data,
+  ExerciseResult,
+  Grade,
+  Group,
+  GroupAnalysis,
+  Submission,
+  Version,
+  VersionEvent,
+} from "./types";
 
 const KEY = "build101:data:v2";
 // The demo from the landing keeps its own data: entering it never touches what the teacher created.
@@ -126,12 +138,18 @@ export function removeAssessment(assessmentId: string) {
   save((d) => ({ ...d, assessments: d.assessments.filter((a) => a.id !== assessmentId) }));
 }
 
-export function updateVersion(assessmentId: string, index: number, changes: Partial<Version>) {
+// The event, if any, goes to the version's history in the same save as the change, so they never drift apart.
+export function updateVersion(assessmentId: string, index: number, changes: Partial<Version>, event?: VersionEvent) {
   save((d) => ({
     ...d,
     assessments: d.assessments.map((a) =>
       a.id === assessmentId
-        ? { ...a, versions: a.versions.map((v, i) => (i === index ? { ...v, ...changes } : v)) }
+        ? {
+            ...a,
+            versions: a.versions.map((v, i) =>
+              i === index ? { ...v, ...changes, ...(event ? { history: withEvent(v, event) } : {}) } : v,
+            ),
+          }
         : a,
     ),
   }));

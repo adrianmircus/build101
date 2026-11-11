@@ -20,23 +20,29 @@ Rules:
 - You only move around the platform. If they ask for an answer, a hint or help solving an exercise, "commandId" is null and you say you can only help them move around.
 - "reply": one short sentence in Rioplatense Spanish, addressed to the student ("vos"), at most 15 words. If you picked a command, confirm it ("Abriendo el parcial de funciones."). If not, say what you didn't understand and suggest saying "ayuda".`;
 
-export async function interpretCommand(request: VoiceCommandRequest): Promise<VoiceCommandResponse> {
+export async function interpretCommand(request: VoiceCommandRequest, signal?: AbortSignal): Promise<VoiceCommandResponse> {
   const commands = request.commands.map((c) => `- ${c.id}: ${c.label}`).join("\n");
-  const response = await withFallback(({ client, model, extra }) =>
-    client.beta.messages.parse({
-      model,
-      ...extra,
-      max_tokens: 2000,
-      // Low: the student is waiting to move.
-      output_config: { effort: "low", format: betaZodOutputFormat(Output) },
-      system: SYSTEM,
-      messages: [
+  // No prompt cache: SYSTEM is shorter than the minimum the API caches.
+  const response = await withFallback(
+    ({ client, model, extra, signal }) =>
+      client.beta.messages.parse(
         {
-          role: "user",
-          content: `<commands>\n${commands}\n</commands>\n<heard>\n${request.heard}\n</heard>\n\n¿Qué comando pidió el estudiante?`,
+          model,
+          ...extra,
+          max_tokens: 2000,
+          // Low: the student is waiting to move.
+          output_config: { effort: "low", format: betaZodOutputFormat(Output) },
+          system: SYSTEM,
+          messages: [
+            {
+              role: "user",
+              content: `<commands>\n${commands}\n</commands>\n<heard>\n${request.heard}\n</heard>\n\n¿Qué comando pidió el estudiante?`,
+            },
+          ],
         },
-      ],
-    }),
+        { signal },
+      ),
+    { route: "voice/command", signal },
   );
 
   if (response.stop_reason === "refusal") throw new AgentError("No entendí el comando. Probá de nuevo o decí «ayuda».");

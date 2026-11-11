@@ -1,5 +1,6 @@
 // Turns an exercise written with markdown + LaTeX into plain words to read aloud ("Escuchar"). Without AI: it only
-// knows the common notation of high school math; anything else is read as close to the symbols as possible.
+// knows the common notation of high school math and chemistry (\ce and \pu from mhchem); anything else is read as
+// close to the symbols as possible.
 // Only for the audio: the screen keeps showing the formula drawn by KaTeX.
 
 const COMMANDS: [RegExp, string][] = [
@@ -29,16 +30,81 @@ const LETTERS: Record<string, string> = {
   x: "equis", y: "i griega", z: "zeta",
 };
 
+const spell = (word: string) => [...word].map((c) => LETTERS[c.toLowerCase()] ?? c).join(" ");
+
 // Words already decided go between ⟦ ⟧ so the letter naming leaves them alone ("de" in "f de x" is not "d", "e").
 const keep = (words: string) => `⟦${words}⟧`;
 
 // Names every letter that is a variable, skipping \commands and the words already decided: "xy" is "equis i griega".
 function nameLetters(tex: string): string {
   return tex.replace(/⟦[^⟧]*⟧|\\[a-zA-Z]+|[a-zA-Z]+/g, (token) =>
-    token.startsWith("⟦") || token.startsWith("\\")
-      ? token
-      : ` ${[...token].map((c) => LETTERS[c.toLowerCase()] ?? c).join(" ")} `,
+    token.startsWith("⟦") || token.startsWith("\\") ? token : ` ${spell(token)} `,
   );
+}
+
+// Chemistry (mhchem): \ce{2H2 + O2 -> 2H2O} is "2 hache 2 más o 2, produce, 2 hache 2 o". Element symbols are
+// spelled the way a teacher reads them on the board, and the numbers stay digits, like in the math.
+const ARROWS: Record<string, string> = { "<=>": "en equilibrio con", "<->": "en equilibrio con", "->": "produce", "<-": "se obtiene de" };
+const STATES: Record<string, string> = { "(s)": "sólido", "(l)": "líquido", "(g)": "gaseoso", "(aq)": "acuoso" };
+const CHEM_TOKEN = /<=>|<->|->|<-|\((?:s|l|g|aq)\)|\^\{?[\d+-]*\}?|_\{?\d*\}?|[A-Z][a-z]?|[a-z]+|\d+(?:[.,]\d+)?|\S/g;
+
+// "2-" is "2 menos" and "+" is "más"; anything else (an isotope's mass number) is read as is.
+const charge = (sup: string) => sup.replace(/^(\d*)([+-])$/, (_, n: string, sign: string) => `${n} ${sign === "+" ? "más" : "menos"}`);
+
+function speakChem(body: string): string {
+  const words: string[] = [];
+  for (const { 0: token, index } of body.matchAll(CHEM_TOKEN)) {
+    const next = body[index + token.length] ?? " ";
+    // A sign stuck to the species is its charge (Na+, Cl-), with a pause after so "Na+ + Cl-" isn't "más más".
+    const stuck = index > 0 && /\S/.test(body[index - 1]);
+    if (token in ARROWS) words.push(`, ${ARROWS[token]},`);
+    else if (token in STATES) words.push(STATES[token]);
+    else if (token.startsWith("^")) words.push(`, ${charge(token.replace(/^\^\{?|\}$/g, ""))},`);
+    else if (token.startsWith("_")) words.push(token.replace(/^_\{?|\}$/g, ""));
+    else if (/^[A-Za-z]/.test(token)) words.push(spell(token));
+    else if (/^\d/.test(token)) words.push(decimal(token));
+    // A "-" between two symbols is a bond (CH3-CH3), a pause.
+    else if (token === "-" && stuck && /[A-Za-z0-9]/.test(next)) words.push(",");
+    else if (token === "+" || token === "-") words.push(`${token === "+" ? "más" : "menos"}${stuck ? "," : ""}`);
+    // Parentheses, brackets and the dot of a hydrate (CuSO4*5H2O) are pauses.
+    else words.push(",");
+  }
+  return words.join(" ");
+}
+
+// Units (\pu{9.8 m/s^2}): "9,8 metros por segundo al cuadrado". A unit missing here is spelled letter by letter.
+const UNITS: Record<string, [string, string]> = {
+  m: ["metro", "metros"], cm: ["centímetro", "centímetros"], mm: ["milímetro", "milímetros"], km: ["kilómetro", "kilómetros"],
+  s: ["segundo", "segundos"], min: ["minuto", "minutos"], h: ["hora", "horas"],
+  g: ["gramo", "gramos"], kg: ["kilogramo", "kilogramos"], mg: ["miligramo", "miligramos"],
+  mol: ["mol", "moles"], L: ["litro", "litros"], mL: ["mililitro", "mililitros"], M: ["molar", "molar"],
+  K: ["kelvin", "kelvin"], "°C": ["grado Celsius", "grados Celsius"],
+  N: ["newton", "newtons"], J: ["joule", "joules"], kJ: ["kilojoule", "kilojoules"], W: ["watt", "watts"],
+  Pa: ["pascal", "pascales"], kPa: ["kilopascal", "kilopascales"], atm: ["atmósfera", "atmósferas"],
+  A: ["ampere", "amperes"], V: ["volt", "volts"], Hz: ["hertz", "hertz"],
+};
+const POWERS: Record<string, string> = { "2": "al cuadrado", "3": "al cubo" };
+const negative = (n: string) => n.replace("-", "menos ");
+// "9.8" and "9,8" are "9 coma 8": a bare comma would read as a pause.
+const decimal = (n: string) => n.replace(/[.,]/, " coma ");
+
+function speakUnits(body: string): string {
+  const words: string[] = [];
+  // Plural unless the amount is exactly 1; after "/" the unit is singular: "kilojoules por mol".
+  let singular = /^\s*1\s/.test(body);
+  for (const [token] of body.matchAll(/°C|[A-Za-zµΩ]+|-?\d+(?:[.,]\d+)?(?:e-?\d+)?|\^\{?-?\d+\}?|\//g)) {
+    if (token === "/") {
+      words.push("por");
+      singular = true;
+    } else if (token.startsWith("^")) {
+      const power = token.replace(/^\^\{?|\}$/g, "");
+      words.push(POWERS[power] ?? `a la ${negative(power)}`);
+    } else if (/^-?\d/.test(token)) {
+      const [number, exponent] = token.split("e");
+      words.push(negative(decimal(number)),...(exponent ? [`por 10 a la ${negative(exponent)}`] : []));
+    } else words.push(UNITS[token]?.[singular ? 0 : 1] ?? spell(token));
+  }
+  return words.join(" ");
 }
 
 // Function names: any letter but the usual variables, so x(x + 1) stays a product and f(x), C(x), d(t) are functions.
@@ -46,6 +112,10 @@ const FUNCTION = /(?<![\\a-zA-Z])([a-wA-Z])('*)\(([^()]*)\)/g;
 
 function speakMath(tex: string): string {
   let out = tex
+    // Chemistry and units first, already in words: the "-" in \ce{SO4^2-} is a charge, not a subtraction.
+    .replace(/\\(ce|pu)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g, (_, kind: string, body: string) =>
+      ` ${keep(kind === "ce" ? speakChem(body) : speakUnits(body))} `,
+    )
     .replace(/\\left|\\right/g, "")
     .replace(/\\(?:text|mathrm|operatorname)\{([^{}]*)\}/g, (_, words) => ` ${keep(words)} `)
     .replace(/\\mathbb\{R\}/g, keep(" los reales "))

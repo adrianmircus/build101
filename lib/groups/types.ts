@@ -1,4 +1,5 @@
 import type { AssessmentType, Change, GraphSpec, OptionId, Question } from "@/lib/contract";
+import type { RejectReasonId } from "@/lib/feedback/reasons";
 import type { ProfileId } from "@/lib/profiles";
 import type { Support } from "@/lib/supports";
 
@@ -39,7 +40,20 @@ export type Version = {
   // The teacher edited the text by hand after the questions were generated: they may no longer match it.
   questionsStale?: boolean;
   approved: boolean;
+  // Everything that happened to the version, oldest first. Only appended to, never rewritten: it's the
+  // feedback the learning engine learns from. Optional so older localStorage data keeps working.
+  history?: VersionEvent[];
 };
+
+// No student ids or names: the version already says who it's for.
+export type VersionEvent =
+  // What the AI returned, untouched: the teacher's edits never overwrite it.
+  | { type: "generated"; at: string; content: string; changes: Change[]; questions?: Question[] }
+  // The text the teacher saved by hand. Only when it changed.
+  | { type: "edited"; at: string; content: string }
+  | { type: "approved"; at: string }
+  | { type: "unapproved"; at: string }
+  | { type: "rejected"; at: string; reasons: RejectReasonId[] };
 
 // A student's result on an assessment, on the 1–10 scale (see lib/groups/grades.ts).
 export type Grade = {

@@ -28,22 +28,28 @@ Rules:
 - Write in Rioplatense Spanish, addressed to the student ("vos").
 - "graph": the student can't draw, so when the exercise asks for a graph or for its elements (roots, vertex, intercepts, where it opens), the platform draws one from what they said. Build it ONLY from their words: mark the points they said, and draw a curve only if what they said determines it (they dictated the function, or for a parabola a vertex and a root, or three points). Never use the exercise's function or your own solution to fill in, move or add anything: if what they said is wrong, the graph shows it wrong. If what they said isn't enough for a curve, mark only their points and don't mention what's missing. null when the exercise doesn't ask for a graph or they said nothing to draw. ${GRAPH_FORMAT}`;
 
-export async function transcribeAnswer(request: TranscribeRequest): Promise<TranscribeResponse> {
-  const response = await withFallback(({ client, model, extra }) =>
-    client.beta.messages.parse({
-      model,
-      ...extra,
-      max_tokens: 4000,
-      // Low: it's a transcription and the student is waiting for it.
-      output_config: { effort: "low", format: betaZodOutputFormat(Output) },
-      system: SYSTEM,
-      messages: [
+export async function transcribeAnswer(request: TranscribeRequest, signal?: AbortSignal): Promise<TranscribeResponse> {
+  const response = await withFallback(
+    ({ client, model, extra, signal }) =>
+      client.beta.messages.parse(
         {
-          role: "user",
-          content: `<exercise>\n${request.exercise}\n</exercise>\n<dictation>\n${request.transcript}\n</dictation>\n\nEscribí en notación lo que dictó el estudiante.`,
+          model,
+          ...extra,
+          max_tokens: 4000,
+          // Low: it's a transcription and the student is waiting for it.
+          output_config: { effort: "low", format: betaZodOutputFormat(Output) },
+          // Cached: a student dictates several answers in a row, all with this same prompt.
+          system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+          messages: [
+            {
+              role: "user",
+              content: `<exercise>\n${request.exercise}\n</exercise>\n<dictation>\n${request.transcript}\n</dictation>\n\nEscribí en notación lo que dictó el estudiante.`,
+            },
+          ],
         },
-      ],
-    }),
+        { signal },
+      ),
+    { route: "answers/transcribe", signal },
   );
 
   if (response.stop_reason === "refusal") {

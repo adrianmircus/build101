@@ -60,7 +60,7 @@ function questionsText(questions: Question[]): string {
 // Error with a message that can be shown as-is in the UI.
 export class AgentError extends Error {}
 
-export async function generateVersion(input: GenerationRequest): Promise<GenerationResponse> {
+export async function generateVersion(input: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
   const profiles = sortProfiles(input.profiles);
   const supports = sortSupports(input.supports);
   // "Menos ítems" is decided by the teacher and applied by the code: the model never sees the dropped exercises.
@@ -108,7 +108,10 @@ export async function generateVersion(input: GenerationRequest): Promise<Generat
     model: api.fastModel,
     ...api.extra,
     max_tokens: 16000,
-    system: SYSTEM,
+    // Cached: the same for every request. buildMessage puts a second breakpoint after what all the versions of an
+    // assessment share (syllabus and original), so the versions after the first one read it from the cache.
+    // Not the eye-gaze version: its output schema is part of the prefix and no other version shares it.
+    system: [{ type: "text" as const, text: SYSTEM, ...(gaze ? {} : { cache_control: { type: "ephemeral" as const } }) }],
     // Without the Files API (through OpenRouter) the syllabus PDF can't go; its units still go as text.
     messages: [
       {
@@ -121,14 +124,19 @@ export async function generateVersion(input: GenerationRequest): Promise<Generat
   if (gaze) {
     // Streaming: rewriting a whole assessment as multiple choice can go past what the SDK allows without it.
     const response = await parseOrFail(() =>
-      withFallback((api) =>
-        api.client.beta.messages
-          .stream({
-            ...params(api),
-            max_tokens: 64000,
-            output_config: { effort: "medium", format: betaZodOutputFormat(GazeOutput) },
-          })
-          .finalMessage(),
+      withFallback(
+        (api) =>
+          api.client.beta.messages
+            .stream(
+              {
+                ...params(api),
+                max_tokens: 64000,
+                output_config: { effort: "medium", format: betaZodOutputFormat(GazeOutput) },
+              },
+              { signal: api.signal },
+            )
+            .finalMessage(),
+        { route: "generate", signal },
       ),
     );
     checkStop(response.stop_reason);
@@ -146,11 +154,16 @@ export async function generateVersion(input: GenerationRequest): Promise<Generat
   }
 
   const response = await parseOrFail(() =>
-    withFallback((api) =>
-      api.client.beta.messages.parse({
-        ...params(api),
-        output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
-      }),
+    withFallback(
+      (api) =>
+        api.client.beta.messages.parse(
+          {
+            ...params(api),
+            output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
+          },
+          { signal: api.signal },
+        ),
+      { route: "generate", signal },
     ),
   );
 

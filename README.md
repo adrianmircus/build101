@@ -35,10 +35,70 @@ Si el navegador ya tenía datos guardados, tocá «Restaurar datos de ejemplo» 
 
 - **Next.js 16** (App Router, Cache Components, Turbopack), **React 19**, **TypeScript**, **Tailwind 4**. Esta versión de Next trae cambios: ante la duda, ver `node_modules/next/dist/docs/`.
 - **IA:** API de Claude con `@anthropic-ai/sdk`, modelo `claude-opus-5-5`. Todas las llamadas usan salida estructurada (esquemas zod con `betaZodOutputFormat`) y el respaldo de modelo del lado del servidor (`fallbacks: "default"`).
-- **Fórmulas:** KaTeX (`react-markdown` + `remark-math` + `rehype-katex`), además de `mathjs` para el verificador del adaptador.
+- **Fórmulas:** KaTeX (`react-markdown` + `remark-math` + `rehype-katex`), y `mathjs` para dibujar las gráficas.
 - **Mirada:** MediaPipe Face Landmarker, 100 % en el navegador (el video no sale de la compu).
 - **Voz:** Web Speech API para el dictado y ElevenLabs para leer en voz alta.
 - **Datos:** sin base de datos. Grupos, estudiantes, prácticos, respuestas y notas viven en el `localStorage` del navegador (`lib/groups/store.ts`). Para la demo alcanza; en producción iría a una base.
+
+## Infraestructura
+
+> **Planificada.** Hoy la app corre en Vercel, los datos viven en el `localStorage` del navegador y la IA va directo a la API de Anthropic. Esta es la infraestructura hacia la que vamos: **Vercel** sirve la app y **AWS** pone todo lo demás, en São Paulo (`sa-east-1`), la región más cercana a Uruguay.
+
+```mermaid
+flowchart TB
+  subgraph NAV["Navegador (Uruguay)"]
+    UI["Next.js en el cliente"]
+    LOCAL["MediaPipe (mirada) y Web Speech (dictado)<br/>todo local: el video no sale de la compu"]
+  end
+
+  subgraph VERCEL["Vercel · funciones en gru1 (São Paulo)"]
+    APP["Next.js 16<br/>páginas, /api/*, server actions"]
+    OIDC["Token OIDC de Vercel<br/>uno por entorno"]
+  end
+
+  subgraph AWS["AWS · sa-east-1 (São Paulo)"]
+    IAM["IAM<br/>un rol por entorno, permisos mínimos"]
+    AURORA[("Aurora PostgreSQL Serverless v2<br/>+ RDS Data API")]
+    S3[("S3 cifrado con KMS<br/>PDFs y fotos de prácticos y programas")]
+    DDB[("DynamoDB<br/>límites de intentos y de pedidos a la IA")]
+    BEDROCK["Amazon Bedrock<br/>Claude: IA principal"]
+    SEC["Secrets Manager + KMS"]
+    OBS["CloudWatch · Budgets<br/>CloudTrail · GuardDuty"]
+  end
+
+  subgraph EXT["Servicios externos"]
+    ANTH["API de Anthropic<br/>respaldo de la IA"]
+    ELEVEN["ElevenLabs<br/>voz rioplatense"]
+  end
+
+  UI -->|HTTPS| APP
+  UI -->|"subida directa con URL prefirmada"| S3
+  APP --> OIDC
+  OIDC -->|"AssumeRoleWithWebIdentity"| IAM
+  IAM -.->|"credenciales temporales"| APP
+  APP -->|"SQL por HTTPS (Data API)"| AURORA
+  APP --> S3
+  APP --> DDB
+  APP -->|"prompts sin nombres de estudiantes"| BEDROCK
+  APP -.->|"si Bedrock falla"| ANTH
+  APP -->|"leer en voz alta"| ELEVEN
+  AURORA --- SEC
+```
+
+| Pieza | Dónde | Para qué |
+|---|---|---|
+| App (páginas, rutas `/api/*`, server actions) | Vercel, funciones en `gru1` | Lo de hoy, sin cambios; las funciones corren en São Paulo, al lado de los datos. Se mantienen los previews por PR. |
+| Acceso a AWS | Vercel OIDC → IAM | Sin claves fijas: cada entorno de Vercel canjea su token por credenciales temporales de un rol que solo ve sus recursos. |
+| Base de datos | Aurora PostgreSQL Serverless v2 + Data API | Instituciones, profes, grupos, estudiantes, prácticos, versiones, entregas y notas. La Data API responde por HTTPS firmado con IAM: la base no queda abierta a internet. |
+| Archivos | S3 con KMS | PDFs y fotos que sube el profe y el programa de la materia. Se suben directo desde el navegador con URL prefirmada, sin el tope de 4,5 MB de Vercel. |
+| Límites | DynamoDB on-demand con TTL | Contadores del límite de intentos del login (`lib/auth/rateLimit.ts`) y de pedidos a la IA, compartidos entre todas las funciones. |
+| IA | Amazon Bedrock (Claude) | Proveedor principal. La API de Anthropic queda de respaldo en `withFallback` (`lib/agent/client.ts`). |
+| Secretos | Secrets Manager + KMS | Credenciales de la base y claves de servicios externos. |
+| Observabilidad | CloudWatch, Budgets, CloudTrail, GuardDuty | Logs y alarmas, alertas de gasto, auditoría de accesos y detección de amenazas. |
+| Voz | ElevenLabs | Voz rioplatense para «Escuchar», que no tiene equivalente en AWS. |
+
+- **Cuentas separadas** con AWS Organizations: administración, producción y staging. Los previews de Vercel usan staging y nunca tocan datos de producción.
+- **Datos de menores:** los perfiles son datos de salud. Todo va cifrado en reposo y en tránsito, y a la IA nunca le llegan nombres. Guardar los datos en Brasil es una transferencia internacional según la Ley 18.331, así que requiere revisión legal antes de cargar datos reales.
 
 ## Cómo está organizada
 
@@ -52,13 +112,12 @@ app/
 components/                 UI por área: assessments, groups, solve, student (gaze, voice), syllabus, results, ui
 lib/
   agent/                    Agentes del servidor: prompts, esquemas, cliente de la IA
-  adapter/                  Pipeline del adaptador con verificador matemático
   groups/ syllabus/         Stores en localStorage, armado de versiones, chequeo de números
   solve/ speech/ voice/     Pasos al resolver, dictado, lectura en voz alta, comandos de voz
   contract.ts               Contrato front ↔ agentes (tipos de cada request y response)
   profiles.ts supports.ts   Perfiles y apoyos de razonamiento disminuido, como datos
 data/profiles/              Datos de cada perfil (lo único que el agente puede aplicar)
-scripts/                    Destilado de fuentes de perfiles y tests del adaptador
+scripts/                    Destilado de fuentes de perfiles y tests (scripts/tests/)
 proxy.ts                    Protege las rutas por rol (antes "middleware")
 ```
 
@@ -110,7 +169,6 @@ flowchart LR
 | Transcripción del dictado | `/api/answers/transcribe` | `transcribe.ts` | Pasa lo que dictó el estudiante a notación, **sin corregirlo**, con una lectura para confirmar de oído y las dudas. | low |
 | Analista de resultados | `/api/results/analyze` | `analyze.ts` | Resume las dificultades del grupo a partir de las correcciones. Los estudiantes viajan como E1, E2…, sin nombres ni perfiles. | medium |
 | Comandos de voz | `/api/voice/command` | `voiceCommand.ts` | Si lo que dijo el estudiante no coincide con una frase fija, elige uno de los comandos de la pantalla o ninguno. | low |
-| Adaptador del compañero | `/api/adapt` | `lib/adapter/` | Pipeline con verificador matemático (detalle abajo). | low/medium |
 
 ### Adaptador de versiones (`/api/generate`)
 
@@ -137,22 +195,6 @@ Recibe por versión el original, la combinación de perfiles, los gustos, los ap
 3. **La salida** se valida contra el esquema. Para la mirada se usa streaming (pueden ser respuestas largas) y se controla que cada pregunta tenga exactamente 2 opciones y la respuesta entre ellas.
 4. **El chequeo de números** (`lib/groups/numberCheck.ts`) corre sin IA en la pantalla de aprobación: cada número del ejercicio original tiene que seguir en el mismo ejercicio de la versión. Si algo cambió, el profe tiene que confirmar que lo revisó antes de aprobar.
 
-### Adaptador del compañero (`/api/adapt`, sin pantalla propia)
-
-Pipeline en `lib/adapter/adapt-pipeline.ts` que manda el progreso por streaming (NDJSON):
-1. Extrae los ejercicios del PDF o las fotos y reemplaza cada fórmula por un marcador con sus versiones en mathjs y LaTeX.
-2. Modela cada problema con texto de forma independiente.
-3. Genera en paralelo los formatos lectura fácil, dislexia, lector de pantalla y razonamiento disminuido.
-4. **Verifica cada ejercicio con código:**
-   - no faltan ni sobran números ni marcadores;
-   - las relaciones del enunciado no cambiaron;
-   - en los problemas, compara la ecuación del original con la de la versión.
-
-   Lo que falla se reintenta una vez.
-5. Arma la clave de respuestas sin IA.
-
-Sus reglas están en `lib/adapter/adapt-prompts.ts` y sus tests corren con `npm run test:adapter`. En Mis grupos se reusan sus apoyos de razonamiento disminuido, sus límites de subida y su voz.
-
 ### Datos de los perfiles
 
 El agente adapta usando **solo** lo que dice `data/profiles/<perfil>.md`. Las fuentes (guías, papers) se dejan en `data/profiles/<perfil>/sources/`. `npm run profiles:distill` escribe un borrador `<perfil>.draft.md` con cada adaptación, su fuente, página y cita. El equipo lo revisa y lo aprueba copiándolo al `.md`.
@@ -178,6 +220,6 @@ Hoy hay borradores para TDAH, TEA y dislexia, y los `.md` aprobados todavía son
 |---|---|
 | `npm run dev` | Server de desarrollo |
 | `npm run build` / `npm start` | Build y server de producción |
-| `npm run lint` | ESLint (antes de pushear: `npx tsc --noEmit && npm run lint`) |
-| `npm run test:adapter` | Tests del adaptador: equivalencias, chequeos estáticos, ajustes, accesibilidad y separación de ejercicios |
+| `npm run lint` | ESLint (antes de pushear: `npx tsc --noEmit && npm run lint && npm test`) |
+| `npm test` | Tests sin IA: acceso a las APIs, límite de intentos del login y separación de ejercicios |
 | `npm run profiles:distill -- <perfil>` | Borrador de adaptaciones a partir de las fuentes del perfil |

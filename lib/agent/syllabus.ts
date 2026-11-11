@@ -2,7 +2,7 @@ import "server-only";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { SyllabusUnit } from "@/lib/contract";
-import { FALLBACK, getClient, MODEL } from "./client";
+import { withFallback } from "./client";
 import { AgentError } from "./generate";
 
 const Output = z.object({
@@ -19,23 +19,31 @@ Rules:
 - Don't add topics, examples or explanations that aren't in the document.
 - Write in Spanish, as the document does.`;
 
-export async function extractUnits(fileId: string): Promise<SyllabusUnit[]> {
-  const response = await getClient().beta.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    ...FALLBACK,
-    output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "document", source: { type: "file", file_id: fileId }, title: "Programa oficial" },
-          { type: "text", text: "Armá las unidades de este programa, una por sección." },
-        ],
-      },
-    ],
-  });
+export async function extractUnits(fileId: string, signal?: AbortSignal): Promise<SyllabusUnit[]> {
+  // No backup provider: the PDF lives in Anthropic's Files API, which OpenRouter can't see.
+  const response = await withFallback(
+    ({ client, model, extra, signal }) =>
+      client.beta.messages.parse(
+        {
+          model,
+          max_tokens: 16000,
+          ...extra,
+          output_config: { effort: "medium", format: betaZodOutputFormat(Output) },
+          system: SYSTEM,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "document", source: { type: "file", file_id: fileId }, title: "Programa oficial" },
+                { type: "text", text: "Armá las unidades de este programa, una por sección." },
+              ],
+            },
+          ],
+        },
+        { signal },
+      ),
+    { route: "syllabus/units", signal, fallback: false },
+  );
 
   if (response.stop_reason === "refusal") {
     throw new AgentError("La IA no pudo leer este programa. Probá con otro PDF.");

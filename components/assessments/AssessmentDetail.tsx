@@ -13,6 +13,7 @@ import { DEMO_EXAMPLE } from "@/lib/demo/example";
 import { isDemo } from "@/lib/demo/mode";
 import { generatePending } from "@/lib/groups/generate";
 import { checkNumbers, issueText } from "@/lib/groups/numberCheck";
+import { REJECT_REASONS, type RejectReasonId } from "@/lib/feedback/reasons";
 import { removeAssessment, updateVersion, useData } from "@/lib/groups/store";
 import type { Version } from "@/lib/groups/types";
 import { TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
@@ -42,13 +43,15 @@ export function AssessmentDetail() {
   const [removing, setRemoving] = useState(false);
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState<string | null>(null);
+  // The reasons checked while rejecting the version; null when the panel is closed.
+  const [rejecting, setRejecting] = useState<RejectReasonId[] | null>(null);
   // If the number check flagged something, approving asks the teacher to confirm they reviewed it.
   const [reviewed, setReviewed] = useState(false);
   // Read by screen readers when the review state changes (approve, save, remove the approval).
   const [announcement, setAnnouncement] = useState("");
   // Where focus goes after the next render: the button that had it may no longer exist.
-  const focusTo = useRef<"review-heading" | "draft" | null>(null);
-  const setFocusTo = (id: "review-heading" | "draft") => {
+  const focusTo = useRef<"review-heading" | "draft" | "reject-legend" | "adapted-heading" | null>(null);
+  const setFocusTo = (id: "review-heading" | "draft" | "reject-legend" | "adapted-heading") => {
     focusTo.current = id;
   };
 
@@ -75,6 +78,9 @@ export function AssessmentDetail() {
   const numbers = version.status === "ready" ? checkNumbers(assessment.original, version) : { applies: false as const };
   const flagged = numbers.applies && numbers.issues.length > 0;
   const unsaved = editing && draft !== (version.content ?? "");
+  // The unadapted version without interests is the original as-is: it didn't go through the AI, so there's nothing to regenerate.
+  const original = version.profiles.length === 0 && !version.supports?.length && !version.interests?.length;
+  const now = () => new Date().toISOString();
 
   // Written versions go to PDF; eye gaze and dictation are answered on the platform.
   const written = !usesGaze(version.profiles) && !usesVoice(version.profiles);
@@ -154,6 +160,7 @@ export function AssessmentDetail() {
                       addTransitionType(i > index ? "tab-forward" : "tab-back");
                       setIndex(i);
                       setDraft(null);
+                      setRejecting(null);
                       setReviewed(false);
                       setAnnouncement("");
                     });
@@ -217,7 +224,7 @@ export function AssessmentDetail() {
                 aria-live="polite"
                 className="rounded-2xl border-2 border-indigo-700 bg-white p-4 sm:p-6"
               >
-                <h3 id="adapted-heading" className="mb-3 text-xl font-bold text-indigo-900">
+                <h3 id="adapted-heading" tabIndex={-1} className="mb-3 text-xl font-bold text-indigo-900 outline-offset-4">
                   Versión {label}
                 </h3>
                 {version.status === "ready" && editing ? (
@@ -392,102 +399,184 @@ export function AssessmentDetail() {
                     armaron con el texto anterior y no cambian al guardar. Revisalas después.
                   </p>
                 )}
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  {editing ? (
-                    <>
-                      <button
-                        type="button"
-                        className={primaryButton}
-                        onClick={() => {
-                          // Editing by hand invalidates the approval: the new text has to be approved again.
-                          // The gaze questions are kept, so they are marked as made from the previous text.
-                          const changed = draft !== (version.content ?? "");
-                          updateVersion(assessment.id, index, {
-                            content: draft,
-                            approved: false,
-                            ...(changed && (version.questions?.length ?? 0) > 0 ? { questionsStale: true } : {}),
-                          });
-                          setDraft(null);
-                          setReviewed(false);
-                          setAnnouncement("Guardaste los cambios. La versión vuelve a necesitar tu aprobación.");
-                          setFocusTo("review-heading");
-                        }}
-                      >
-                        Guardar cambios
+                {rejecting === null ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    {editing ? (
+                      <>
+                        <button
+                          type="button"
+                          className={primaryButton}
+                          onClick={() => {
+                            // Editing by hand invalidates the approval: the new text has to be approved again.
+                            // The gaze questions are kept, so they are marked as made from the previous text.
+                            // The history keeps the saved text next to what the AI generated: that difference is feedback.
+                            const changed = draft !== (version.content ?? "");
+                            updateVersion(
+                              assessment.id,
+                              index,
+                              {
+                                content: draft,
+                                approved: false,
+                                ...(changed && (version.questions?.length ?? 0) > 0 ? { questionsStale: true } : {}),
+                              },
+                              changed ? { type: "edited", at: now(), content: draft } : undefined,
+                            );
+                            setDraft(null);
+                            setReviewed(false);
+                            setAnnouncement("Guardaste los cambios. La versión vuelve a necesitar tu aprobación.");
+                            setFocusTo("review-heading");
+                          }}
+                        >
+                          Guardar cambios
+                        </button>
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          onClick={() => {
+                            if (unsaved && !window.confirm("¿Querés descartar los cambios que hiciste?")) return;
+                            setDraft(null);
+                            setFocusTo("review-heading");
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          onClick={() => {
+                            setDraft(version.content ?? "");
+                            setFocusTo("draft");
+                          }}
+                        >
+                          Editar a mano
+                        </button>
+                        {version.approved ? (
+                          <button
+                            type="button"
+                            className={secondaryButton}
+                            onClick={() => {
+                              updateVersion(assessment.id, index, { approved: false }, { type: "unapproved", at: now() });
+                              setAnnouncement(`Quitaste la aprobación de la versión ${label}. Tus estudiantes ya no la ven.`);
+                              setFocusTo("review-heading");
+                            }}
+                          >
+                            Quitar aprobación
+                          </button>
+                        ) : (
+                          <>
+                            {flagged && (
+                              <label className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
+                                <input
+                                  type="checkbox"
+                                  className="size-5 accent-emerald-700"
+                                  checked={reviewed}
+                                  onChange={(e) => setReviewed(e.target.checked)}
+                                />
+                                Revisé las diferencias de números
+                              </label>
+                            )}
+                            <button
+                              type="button"
+                              className={approveButton}
+                              disabled={flagged && !reviewed}
+                              onClick={() => {
+                                updateVersion(assessment.id, index, { approved: true }, { type: "approved", at: now() });
+                                setAnnouncement(`Aprobaste la versión ${label}. Tus estudiantes ya la ven.`);
+                                // The button disappears; focus goes to the heading that now says it's approved.
+                                setFocusTo("review-heading");
+                              }}
+                            >
+                              ✓ Aprobar y publicar
+                            </button>
+                            {!original && (
+                              <button
+                                type="button"
+                                className={secondaryButton}
+                                onClick={() => {
+                                  setRejecting([]);
+                                  setFocusTo("reject-legend");
+                                }}
+                              >
+                                Rechazar
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {version.approved && written && (
+                          <button type="button" className={primaryButton} onClick={exportPdf}>
+                            Exportar a PDF
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  // Rejecting regenerates the version: the AI gets the reasons, and the history keeps what was rejected.
+                  <form
+                    className="mt-4"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (rejecting.length === 0) return;
+                      updateVersion(
+                        assessment.id,
+                        index,
+                        { status: "pending", approved: false },
+                        { type: "rejected", at: now(), reasons: rejecting },
+                      );
+                      void generatePending(assessment.id);
+                      setRejecting(null);
+                      setReviewed(false);
+                      setAnnouncement(`Rechazaste la versión ${label}. La IA está armando una nueva con tus motivos.`);
+                      // The review section goes away while it generates: focus goes to the version, where the progress shows.
+                      setFocusTo("adapted-heading");
+                    }}
+                  >
+                    <fieldset>
+                      <legend id="reject-legend" tabIndex={-1} className="text-xl font-bold outline-offset-4">
+                        ¿Por qué la rechazás?
+                      </legend>
+                      <p className="mt-1 text-lg text-slate-800">
+                        Elegí uno o más motivos. La IA arma una versión nueva teniéndolos en cuenta.
+                      </p>
+                      <div className="mt-3 grid gap-1 sm:grid-cols-2">
+                        {REJECT_REASONS.map((r) => (
+                          <label key={r.id} className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
+                            <input
+                              type="checkbox"
+                              className="size-5 accent-indigo-700"
+                              checked={rejecting.includes(r.id)}
+                              onChange={(e) =>
+                                setRejecting(
+                                  e.target.checked ? [...rejecting, r.id] : rejecting.filter((id) => id !== r.id),
+                                )
+                              }
+                            />
+                            {r.label}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <button type="submit" className={primaryButton} disabled={rejecting.length === 0}>
+                        Rechazar y volver a generar
                       </button>
                       <button
                         type="button"
                         className={secondaryButton}
                         onClick={() => {
-                          if (unsaved && !window.confirm("¿Querés descartar los cambios que hiciste?")) return;
-                          setDraft(null);
+                          setRejecting(null);
                           setFocusTo("review-heading");
                         }}
                       >
                         Cancelar
                       </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className={secondaryButton}
-                        onClick={() => {
-                          setDraft(version.content ?? "");
-                          setFocusTo("draft");
-                        }}
-                      >
-                        Editar a mano
-                      </button>
-                      {version.approved ? (
-                        <button
-                          type="button"
-                          className={secondaryButton}
-                          onClick={() => {
-                            updateVersion(assessment.id, index, { approved: false });
-                            setAnnouncement(`Quitaste la aprobación de la versión ${label}. Tus estudiantes ya no la ven.`);
-                            setFocusTo("review-heading");
-                          }}
-                        >
-                          Quitar aprobación
-                        </button>
-                      ) : (
-                        <>
-                          {flagged && (
-                            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-lg">
-                              <input
-                                type="checkbox"
-                                className="size-5 accent-emerald-700"
-                                checked={reviewed}
-                                onChange={(e) => setReviewed(e.target.checked)}
-                              />
-                              Revisé las diferencias de números
-                            </label>
-                          )}
-                          <button
-                            type="button"
-                            className={approveButton}
-                            disabled={flagged && !reviewed}
-                            onClick={() => {
-                              updateVersion(assessment.id, index, { approved: true });
-                              setAnnouncement(`Aprobaste la versión ${label}. Tus estudiantes ya la ven.`);
-                              // The button disappears; focus goes to the heading that now says it's approved.
-                              setFocusTo("review-heading");
-                            }}
-                          >
-                            ✓ Aprobar y publicar
-                          </button>
-                        </>
-                      )}
-                      {version.approved && written && (
-                        <button type="button" className={primaryButton} onClick={exportPdf}>
-                          Exportar a PDF
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-                {!editing && !version.approved && written && (
+                    </div>
+                  </form>
+                )}
+                {!editing && !version.approved && rejecting === null && written && (
                   <p className="mt-3 text-base text-slate-700">Aprobala para poder exportarla a PDF.</p>
                 )}
               </section>

@@ -14,7 +14,7 @@ import { DEMO_EXAMPLE, DEMO_GROUP_ID } from "@/lib/demo/example";
 import { isDemo } from "@/lib/demo/mode";
 import { createAssessment, useData } from "@/lib/groups/store";
 import { groupByProfiles, topInterests, TYPE_LABEL, versionLabel } from "@/lib/groups/versions";
-import { ACCEPTED, uploadIssue } from "@/lib/adapter/upload";
+import { ACCEPTED, uploadIssue } from "@/lib/upload";
 import { splitExercises } from "@/lib/results/exercises";
 import { supportLabel } from "@/lib/supports";
 import { isSyllabusConfirmed, useSyllabus } from "@/lib/syllabus/store";

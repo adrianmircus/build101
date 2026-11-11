@@ -1,6 +1,7 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { GenerationRequest, SyllabusForAI } from "@/lib/contract";
+import { rejectReasonPrompt } from "@/lib/feedback/reasons";
 import { GRAPH_FORMAT } from "./graph";
 import type { Support } from "@/lib/supports";
 import type { ProfileData } from "./profiles";
@@ -20,6 +21,7 @@ Rules:
 - If we give you the course syllabus, use it as context for scope, level and notation. Don't add content that isn't in the syllabus.
 - Format of "content" (the platform splits it into one screen per exercise and renders the formulas, so follow it exactly):
   - Formulas in LaTeX: $...$ inline, $$...$$ on its own line for a displayed equation. Never write math as plain text like (x+2)/(x-3).
+  - Chemical formulas and equations with mhchem inside $...$: $\\ce{H2O}$, $\\ce{SO4^2-}$, $\\ce{2H2 + O2 -> 2H2O}$, $\\ce{N2 + 3H2 <=> 2NH3}$. A quantity with its unit with $\\pu{...}$: $\\pu{9.8 m/s^2}$, $\\pu{25 °C}$. Never write them as plain text like H2O or 9,8 m/s2.
   - Optionally one title line first: "# Topic".
   - Each exercise starts its own line with its number from the original and a parenthesis: "1) Resolvé en $\\mathbb{R}$:". No bold, heading or "Ejercicio" on the number, and no number at the start of any other line.
   - Sub-items go on their own lines as "a) ...", "b) ...", inside their exercise.
@@ -67,6 +69,14 @@ function syllabusText(syllabus: SyllabusForAI): string {
   return `<syllabus>\nSubject: ${syllabus.subject}\nCourse: ${syllabus.course}\n${units ? `\n${units}\n` : ""}</syllabus>`;
 }
 
+// The teacher rejected the previous version. The reasons come from a closed list (lib/feedback/reasons.ts):
+// they say what to fix, never loosen the rules.
+function retryText(retry: NonNullable<GenerationRequest["retry"]>): string {
+  const reasons = retry.reasons.map((r) => `- ${rejectReasonPrompt(r)}`).join("\n");
+  const previous = retry.previous ? `\n<rejected_version>\n${retry.previous}\n</rejected_version>` : "";
+  return `The teacher rejected a previous version of this adaptation for these reasons:\n${reasons}${previous}\nWrite a new version that fixes that. All the rules still apply: don't change the math or what is assessed, and don't add adaptations that aren't in the profile data.`;
+}
+
 export function buildMessage(
   request: GenerationRequest,
   profiles: ProfileData[],
@@ -82,8 +92,16 @@ export function buildMessage(
     });
   }
 
+  // First what every version of the assessment shares (syllabus and original), cached: the assessment's other versions
+  // are generated right after and read it from the cache. Then what changes per version. The eye-gaze version isn't
+  // cached: its output schema goes in the prefix, so no other version could read it.
+  const kind = request.type === "exam" ? "exam" : "worksheet";
+  const shared: string[] = [];
+  if (request.syllabus) shared.push(syllabusText(request.syllabus));
+  shared.push(`The ${kind} is about "${request.topic}":\n<original>\n${request.original}\n</original>`);
+  blocks.push({ type: "text", text: shared.join("\n\n"), ...(gaze ? {} : { cache_control: { type: "ephemeral" as const } }) });
+
   const parts: string[] = [];
-  if (request.syllabus) parts.push(syllabusText(request.syllabus));
   for (const p of profiles) {
     parts.push(`<profile id="${p.id}" name="${p.fullName}">\n${p.text}\n</profile>`);
   }
@@ -92,7 +110,6 @@ export function buildMessage(
     parts.push(`<interests>\n${interests.map((i) => `- ${i}`).join("\n")}\n</interests>`);
   }
   if (supports.length > 0) parts.push(`<supports>\n${supports.map((s) => `- ${s}`).join("\n")}\n</supports>`);
-  const kind = request.type === "exam" ? "exam" : "worksheet";
   const goals = [
     profiles.length > 0 && `adapt it for a student with: ${profiles.map((p) => p.label).join(" + ")}`,
     interests.length > 0 && "theme its word problems around the students' interests",
@@ -100,8 +117,8 @@ export function buildMessage(
     gaze && "convert it to multiple choice for a student who answers with eye gaze",
     voice && !gaze && "adapt it for a student who answers by dictating",
   ].filter(Boolean);
-  parts.push(`For this ${kind} about "${request.topic}": ${goals.join(", and ")}.`);
-  parts.push(`<original>\n${request.original}\n</original>`);
+  parts.push(`For the ${kind} above: ${goals.join(", and ")}.`);
+  if (request.retry) parts.push(retryText(request.retry));
 
   blocks.push({ type: "text", text: parts.join("\n\n") });
   return blocks;

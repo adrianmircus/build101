@@ -1,15 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { uploadIssue, type AcceptedType } from "@/lib/adapter/upload";
+import { uploadIssue, type AcceptedType } from "@/lib/upload";
 import { readExercisesPdf } from "@/lib/agent/exercises";
 import { AgentError } from "@/lib/agent/generate";
 import type { ReadPdfResponse } from "@/lib/contract";
+import { cutShort, deadline } from "@/lib/agent/client";
+
+// The AI call has 280 s (deadline below); the rest is margin to answer.
+export const maxDuration = 300;
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status });
 }
 
 // The agent reads the teacher's PDF or photos and transcribes the exercises. The files go straight to the AI and
-// aren't stored. Same limits as the adapter (lib/adapter/upload.ts): up to 4 files and 4 MB, under Vercel's cap.
+// aren't stored. Same limits as lib/upload.ts: up to 4 files and 4 MB, under Vercel's cap.
 export async function POST(request: Request) {
   const form = await request.formData().catch(() => null);
   const files = (form?.getAll("file") ?? []).filter((f): f is File => f instanceof File);
@@ -17,6 +21,7 @@ export async function POST(request: Request) {
   const issue = uploadIssue(files);
   if (issue) return error(issue, files.length > 4 ? 400 : 413);
 
+  const signal = deadline(request, 280);
   try {
     const read = await readExercisesPdf(
       await Promise.all(
@@ -25,10 +30,13 @@ export async function POST(request: Request) {
           data: Buffer.from(await f.arrayBuffer()).toString("base64"),
         })),
       ),
+      signal,
     );
     const response: ReadPdfResponse = { name: files.map((f) => f.name).join(", "), ...read };
     return Response.json(response);
   } catch (e) {
+    const cut = cutShort(e, signal);
+    if (cut) return error(cut.message, cut.status);
     if (e instanceof AgentError) return error(e.message, 502);
     if (e instanceof Anthropic.AuthenticationError) return error("Falta configurar la API key de la IA.", 500);
     if (e instanceof Anthropic.RateLimitError) return error("La IA está saturada. Esperá unos segundos y reintentá.", 429);

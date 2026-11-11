@@ -29,8 +29,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Lint
         run: npm run lint
-      - name: Tests del adaptador
-        run: npm run test:adapter
+      - name: Tests
+        run: npm test
       - name: Build
         run: npm run build
         env:

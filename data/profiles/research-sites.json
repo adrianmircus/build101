@@ -1,0 +1,23 @@
+{
+  "estado": "borrador",
+  "nota": "Sitios donde el agente investigador puede buscar y leer (allowed_domains). Borrador para la tarea de la épica C: el equipo la revisa con especialistas y pasa estado a \"aprobada\". Solo dominios, sin https:// ni ruta; máximo 64. Cada dominio incluye sus subdominios.",
+  "sitios": [
+    { "dominio": "udlguidelines.cast.org", "por_que": "Pautas de Diseño Universal para el Aprendizaje (CAST)" },
+    { "dominio": "cast.org", "por_que": "CAST, autores de DUA" },
+    { "dominio": "anep.edu.uy", "por_que": "ANEP: programas y documentos oficiales de Uruguay" },
+    { "dominio": "ceibal.edu.uy", "por_que": "Ceibal: recursos y orientaciones para docentes en Uruguay" },
+    { "dominio": "unesco.org", "por_que": "UNESCO: educación inclusiva" },
+    { "dominio": "unesdoc.unesco.org", "por_que": "Biblioteca digital de la UNESCO" },
+    { "dominio": "dyslexiaida.org", "por_que": "International Dyslexia Association" },
+    { "dominio": "bdadyslexia.org.uk", "por_que": "British Dyslexia Association: guía de estilo para dislexia" },
+    { "dominio": "disfam.org", "por_que": "Asociación Dislexia y Familia (en español)" },
+    { "dominio": "chadd.org", "por_que": "CHADD: asociación sobre TDAH" },
+    { "dominio": "fundacioncadah.org", "por_que": "Fundación CADAH: TDAH en el aula (en español)" },
+    { "dominio": "autism.org.uk", "por_que": "National Autistic Society" },
+    { "dominio": "autismo.org.es", "por_que": "Confederación Autismo España (en español)" },
+    { "dominio": "educationendowmentfoundation.org.uk", "por_que": "EEF: guías basadas en evidencia, incluida la de necesidades educativas especiales" },
+    { "dominio": "ies.ed.gov", "por_que": "What Works Clearinghouse: guías de práctica con evidencia" },
+    { "dominio": "eric.ed.gov", "por_que": "ERIC: base de investigación en educación" },
+    { "dominio": "pmc.ncbi.nlm.nih.gov", "por_que": "PubMed Central: artículos con revisión de pares en acceso abierto" }
+  ]
+}

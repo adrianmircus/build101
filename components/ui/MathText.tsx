@@ -1,6 +1,8 @@
 "use client";
 
 import "katex/dist/katex.min.css";
+// \ce{…} and \pu{…} for chemistry formulas and units (mhchem). There is a single KaTeX (overrides in package.json), so it reaches rehype-katex too.
+import "katex/contrib/mhchem";
 import ReactMarkdown, { type Components, type Options } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
