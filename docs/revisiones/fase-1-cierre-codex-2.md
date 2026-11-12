@@ -22,3 +22,17 @@ El **grafo de locks no incorpora ciclos nuevos**: `set_student_interface` toma e
 No encontré otra alta/media en `dbafd38..HEAD`. Verifiqué PostgreSQL mediante transacciones `READ ONLY`, incluidas las 26 funciones de la migración y casos inválidos de GraphSpec. No repetí la suite informada por el orquestador. Worktree intacto.
 
 Veredicto: fase no lista — bloqueante: F1-4 (media).
+
+## Ronda 3
+
+**F1-4 sigue parcial (media).** `student_pseudonyms` queda corregida y el cambio directo de `auth_user_id` dispara `P0004`, pero quedan huecos:
+
+- **En el fix:** [fix9:31](supabase/migrations/20261113080000_t1_fix9.sql:31) permite `auth_user_id: A → NULL → B`, incluso manteniendo `status = 'active'`. El contrato documenta **conservar el UUID** tras borrar Auth; no existe FK que lo ponga en NULL. Hay que congelarlo una vez establecido y ajustar la prueba que acepta vaciarlo.
+- **Pertenencia:** [generations_guard](supabase/migrations/20261112220000_t1_4d_generations.sql:51) permite cambiar `requested_by` por otro usuario; [invitations_frozen](supabase/migrations/20261113070000_t1_fix8.sql:755) permite cambiar `email`, reatribuyendo el destinatario incluso después de aceptar.
+- **Identidad de operación:** siguen editables `account_provisioning.op_key/op_identity`, `operations.op_key/kind` e `import_runs.op_key`. Permiten reasignar la identidad que sostiene los reintentos; faltan guardas y pruebas `P0004`.
+
+El barrido de las **45 tablas** también encontró identidades técnicas sin congelar: `subjects.id`, `rate_limits.key/window_start` y `student_rpc_windows.id/txid`.
+
+Verificación exclusivamente `READ ONLY`: catálogo, restricciones y evaluación de guardas vigentes sobre variables sintéticas. No ejecuté UPDATE ni repetí pgTAP. Worktree intacto; ninguna alta identificada.
+
+Veredicto: fase no lista
