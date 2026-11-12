@@ -173,3 +173,14 @@ ESLint devuelve **cero mensajes** y el programa estricto completo, **cero diagn�
 No confirmé otros problemas nuevos de alta/media fuera de las revisiones previas. Pasaron lint, **451 pruebas** y ambos chequeos de tipos. Sin modificaciones; árbol limpio.
 
 Veredicto: no listo
+
+## Ronda 14
+
+**R2 del namespace global: resuelto bajo tu criterio.** Los usos normales `React.ReactNode` y `React.JSX.Element` quedan bloqueados.
+
+- **Baja, no bloqueante:** pasan ESLint y TypeScript `ReturnType<(typeof globalThis)["React"]["createElement"]>` y `Reflect.get(globalThis, "React")`. Son accesos deliberados mediante cadenas.
+- **Nueva media — [layers.mjs:21](/C:/Users/adrim/build101/.claude/worktrees/fase-0/eslint/rules/layers.mjs:21):** dominio permite importar `@/lib/client/callAction`. Reproduje en memoria un `lib/domain/save.ts` que importa y llama ese helper: **cero avisos y cero diagnósticos estrictos**. Introduce ejecución de acciones y dependencia transitiva de Next en dominio. Es una ubicación equivocada plausible para un implementador honesto. Falta prohibir dominio → `lib/client`; no figura en las revisiones anteriores.
+
+Pasaron lint, **453 pruebas** y ambos chequeos de tipos. No ejecuté Playwright. Árbol limpio.
+
+Veredicto: no listo

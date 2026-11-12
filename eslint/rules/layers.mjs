@@ -18,8 +18,9 @@ const checks = [
       ? "This layer cannot import lib/server/**. Call a Server Action or a route instead."
       : undefined,
   ({ file, target, pkg }) =>
-    within(file, "lib/domain") && (within(target ?? "", "lib/server") || DOMAIN_PACKAGES.test(pkg ?? ""))
-      ? "lib/domain is pure: no Next, React, Supabase or lib/server."
+    within(file, "lib/domain") &&
+    (within(target ?? "", "lib/server") || within(target ?? "", "lib/client") || DOMAIN_PACKAGES.test(pkg ?? ""))
+      ? "lib/domain is pure: no Next, React, Supabase, lib/server or lib/client."
       : undefined,
   ({ file, target }) =>
     target === "lib/server/db/client" && !(dirname(file) === "lib/server/repos")
