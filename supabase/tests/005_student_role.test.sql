@@ -120,11 +120,15 @@ insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000000511', 'student-a@test.invalid'),
   ('00000000-0000-0000-0000-000000000512', 'student-b@test.invalid');
 insert into app.app_users (id) values ('00000000-0000-0000-0000-000000000511'), ('00000000-0000-0000-0000-000000000512');
-insert into app.students (id, institution_id, display_name, username, user_id, interface) values
-  ('00000000-0000-0000-0000-000000000531', '00000000-0000-0000-0000-0000000005a1', 'Estudiante A', 'est.a',
-   '00000000-0000-0000-0000-000000000511', 'standard'),
-  ('00000000-0000-0000-0000-000000000532', '00000000-0000-0000-0000-0000000005a1', 'Estudiante B', 'est.b',
-   '00000000-0000-0000-0000-000000000512', 'gaze');
+-- Born unlinked, with the provisioning row, and linked afterwards, as create_student and the link RPC do (T1.F14).
+insert into app.students (id, institution_id, display_name, username, interface) values
+  ('00000000-0000-0000-0000-000000000531', '00000000-0000-0000-0000-0000000005a1', 'Estudiante A', 'est.a', 'standard'),
+  ('00000000-0000-0000-0000-000000000532', '00000000-0000-0000-0000-0000000005a1', 'Estudiante B', 'est.b', 'gaze');
+insert into app.account_provisioning (institution_id, student_id, op_key) values
+  ('00000000-0000-0000-0000-0000000005a1', '00000000-0000-0000-0000-000000000531', gen_random_uuid()),
+  ('00000000-0000-0000-0000-0000000005a1', '00000000-0000-0000-0000-000000000532', gen_random_uuid());
+update app.students set user_id = ('00000000-0000-0000-0000-00000000051' || right(id::text, 1))::uuid
+ where id in ('00000000-0000-0000-0000-000000000531', '00000000-0000-0000-0000-000000000532');
 insert into app.assessments (id, institution_id, group_id, subject_id, kind) values
   ('00000000-0000-0000-0000-000000000541', '00000000-0000-0000-0000-0000000005a1', '00000000-0000-0000-0000-000000000521', 'math', 'worksheet');
 insert into app.versions (id, institution_id, assessment_id, position) values

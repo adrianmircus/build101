@@ -358,8 +358,12 @@ select throws_ok(format('update app.groups set op_key = null, op_identity = null
 do $$ begin
   perform pg_temp.as_user('owner', format($q$ select api.add_group_staff(%L, %L, 'co_teacher') $q$, pg_temp.id('g'), pg_temp.id('co')));
 end $$;
-insert into app.students (id, institution_id, display_name, username, user_id)
-  values (gen_random_uuid(), pg_temp.id('instA'), 'Estudiante', 'est.a.t1', pg_temp.id('stud'));
+-- Born unlinked, with the provisioning row, and linked afterwards, as create_student and the link RPC do (T1.F14).
+insert into app.students (id, institution_id, display_name, username)
+  values (gen_random_uuid(), pg_temp.id('instA'), 'Estudiante', 'est.a.t1');
+insert into app.account_provisioning (institution_id, student_id, op_key)
+  select s.institution_id, s.id, gen_random_uuid() from app.students s where s.username = 'est.a.t1' and s.institution_id = pg_temp.id('instA');
+update app.students set user_id = pg_temp.id('stud') where username = 'est.a.t1' and institution_id = pg_temp.id('instA');
 insert into app.enrollments (institution_id, group_id, student_id)
   select pg_temp.id('instA'), pg_temp.id('g'), s.id from app.students s where s.username = 'est.a.t1' and s.institution_id = pg_temp.id('instA');
 

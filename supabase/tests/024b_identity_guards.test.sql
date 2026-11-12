@@ -3,7 +3,7 @@
 -- authenticated it would fail earlier with 42501 and pass even without the guard) and has to fail with P0004.
 -- Placeholder data only. The whole file is rolled back.
 begin;
-select plan(78);
+select plan(80);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -194,6 +194,13 @@ select is(pg_temp.st(format('insert into app.account_provisioning (institution_i
   'account_provisioning: an empty row is not recreated for a linked student');
 select is(pg_temp.st(format('insert into app.account_provisioning (institution_id, student_id, op_key, auth_user_id) select institution_id, id, gen_random_uuid(), user_id from app.students where id = %s', pg_temp.i('s2'))), 'ok',
   'control: recreated with the account the student has, it is accepted');
+
+-- 3f. A student is born unlinked (T1.F14, round 7): inserted with an account it would skip the link that records the
+-- memory (then delete Auth A, add an empty provisioning row, link to B).
+select is(pg_temp.st(format('insert into app.students (institution_id, display_name, username, user_id) values (%s, ''Estudiante 4'', ''est.4'', %s)', pg_temp.i('i_n'), pg_temp.i('b2'))), 'P0004',
+  'students: a student is not inserted already linked to an account');
+select is(pg_temp.st(format('insert into app.students (institution_id, display_name, username) values (%s, ''Estudiante 4'', ''est.4'')', pg_temp.i('i_n'))), 'ok',
+  'control: inserted unlinked, it is accepted (the link comes afterwards, through the RPC)');
 
 -- ---------------------------------------------------------------------------------------------
 -- 4b. operations.op_key and kind, import_runs.op_key
