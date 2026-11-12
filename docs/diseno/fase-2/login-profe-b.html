@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingresar · Tiza.ai · Login del profe, opción B</title>
+<style>
+/* Base compartida de las maquetas de la fase 2: la misma identidad que la app (Lexend, pizarrón indigo-950,
+   papel blanco y un solo acento ámbar). Sin bordes de contenedor, sin divisores y con pocos tonos. */
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("lexend-latin.woff2") format("woff2"); }
+:root {
+  --board: #1e1b4b;      /* indigo-950: el pizarrón */
+  --on-board: #e0e7ff;   /* indigo-100: texto secundario sobre el pizarrón (12:1) */
+  --ink: #0f172a;        /* slate-900 */
+  --muted: #475569;      /* slate-600: 7.6:1 sobre blanco */
+  --bg: #f8fafc;         /* slate-50 */
+  --paper: #ffffff;
+  --soft: #f1f5f9;       /* slate-100 */
+  --field: #64748b;      /* slate-500: borde de campo, 4.8:1 sobre blanco */
+  --primary: #4338ca;    /* indigo-700 */
+  --primary-hover: #3730a3;
+  --link: #3730a3;       /* indigo-800 */
+  --accent: #fcd34d;     /* amber-300, solo sobre el pizarrón */
+  --accent-ink: #b45309; /* amber-700, sobre papel */
+  --error: #991b1b;      /* red-800 */
+  --error-soft: #fef2f2; /* red-50 */
+  --radius: 14px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 18px; -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: "Lexend", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; line-height: 1.5; color: var(--ink); background: var(--bg); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; font-weight: 700; }
+p { margin: 0; text-wrap: pretty; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+img, svg { display: block; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--board); outline-offset: 3px; }
+.on-board :focus-visible { outline-color: var(--accent); }
+.pw-real { white-space: nowrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 1rem; top: -100px; z-index: 50; background: var(--paper); color: var(--ink); padding: .75rem 1rem; border-radius: 10px; font-weight: 600; }
+.skip:focus { top: 1rem; }
+
+.logo { display: inline-flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.35rem; color: var(--ink); text-decoration: none; }
+.logo .mark { width: 1.6em; height: 1.6em; flex: none; }
+.logo .ai { color: var(--accent-ink); }
+.logo-dark { color: #fff; }
+.logo-dark .ai { color: var(--accent); }
+a.logo-link { display: inline-flex; min-height: 44px; align-items: center; border-radius: 8px; text-decoration: none; }
+
+.icon { width: 1.35em; height: 1.35em; flex: none; }
+
+/* Campos: el borde es del control, no un contenedor (WCAG 1.4.11 pide 3:1 para identificarlo). */
+.field { display: grid; gap: .45rem; }
+.field + .field { margin-top: 1.4rem; }
+.label { font-weight: 600; font-size: 1rem; }
+.label-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .25rem 1rem; }
+.hint { color: var(--muted); font-size: .9rem; }
+.input { width: 100%; min-height: 54px; padding: .7rem 1rem; font: inherit; font-size: 1.05rem; color: var(--ink); background: var(--paper); border: 2px solid var(--field); border-radius: 12px; }
+.input:focus { border-color: var(--primary); }
+.input[aria-invalid="true"] { border-color: var(--error); }
+.input[readonly] { background: var(--soft); border-color: transparent; }
+.with-toggle { position: relative; }
+.with-toggle .input { padding-right: 6.5rem; }
+.toggle { position: absolute; right: 6px; top: 50%; translate: 0 -50%; min-height: 44px; min-width: 44px; padding: 0 .9rem; font: inherit; font-size: .95rem; font-weight: 600; color: var(--link); background: transparent; border: 0; border-radius: 9px; cursor: pointer; }
+.toggle:hover { background: var(--soft); }
+.field-error { display: flex; gap: .45rem; align-items: flex-start; color: var(--error); font-weight: 600; font-size: .95rem; }
+.field-error .icon { width: 1.2em; height: 1.2em; margin-top: .1em; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .55rem; min-height: 54px; padding: .75rem 1.4rem; font: inherit; font-size: 1.05rem; font-weight: 600; border: 0; border-radius: 12px; cursor: pointer; text-decoration: none; transition: background-color .15s; }
+.btn:active { translate: 0 1px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-quiet { background: var(--soft); color: var(--ink); }
+.btn-quiet:hover { background: #e2e8f0; }
+.btn-on-board { background: var(--accent); color: var(--board); }
+.btn-block { width: 100%; }
+.link { display: inline-flex; align-items: center; gap: .35rem; min-height: 44px; color: var(--link); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; border-radius: 6px; }
+.link:hover { color: var(--board); }
+.inline-link { color: var(--link); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.on-board .link, .on-board .inline-link { color: #fff; }
+
+/* Mensajes: siempre ícono + texto, nunca solo color. */
+.msg { display: flex; gap: .75rem; align-items: flex-start; padding: 1rem 1.1rem; border-radius: 12px; font-size: 1rem; }
+.msg .icon { margin-top: .1em; }
+.msg-error { background: var(--error-soft); color: var(--error); }
+.msg-error strong, .msg-error a { color: var(--error); }
+.msg-neutral { background: var(--soft); color: var(--ink); }
+.msg-ok { background: var(--soft); color: var(--ink); }
+.msg-ok .icon { color: #047857; }
+.msg:focus { outline: none; }
+.msg:focus-visible { outline: 3px solid var(--board); outline-offset: 3px; }
+
+/* Barra de la maqueta (no es parte del diseño). Desaparece con ?captura. */
+.mock { position: fixed; z-index: 90; left: 50%; bottom: 12px; translate: -50% 0; display: flex; flex-wrap: wrap; gap: .25rem .4rem; align-items: center; justify-content: center; width: max-content; max-width: calc(100% - 24px); padding: .35rem .5rem .35rem .9rem; background: #0f172a; color: #cbd5e1; border-radius: 12px; font-size: .78rem; box-shadow: 0 8px 24px rgb(15 23 42 / .25); }
+.mock a { color: #fff; padding: .35rem .55rem; border-radius: 8px; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+.mock a[aria-current="true"] { background: #334155; }
+.mock :focus-visible { outline-color: var(--accent); }
+.captura .mock { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+@media print { .mock, .skip { display: none !important; } }
+
+/* Encabezado del área del profe (tarjetas y panel de la institución). Sin línea abajo: el papel blanco
+   contra el fondo gris alcanza para separarlo. */
+.app-top { background: var(--paper); }
+.app-top-in { max-width: 72rem; margin: 0 auto; padding: .7rem 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1.5rem; }
+.app-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .4rem; }
+.app-nav a { display: inline-flex; min-height: 44px; align-items: center; padding: 0 .8rem; border-radius: 10px; font-weight: 600; color: var(--link); text-decoration: none; white-space: nowrap; }
+.app-nav a:hover { background: var(--soft); text-decoration: underline; text-underline-offset: 4px; }
+.app-nav a[aria-current="page"] { background: var(--soft); color: var(--board); text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 8px; }
+.app-user { display: inline-flex; align-items: center; gap: .2rem; margin-left: .6rem; color: var(--muted); white-space: nowrap; }
+.app-main { max-width: 72rem; margin: 0 auto; padding: 2.25rem 1.5rem 7rem; }
+.back-link { margin-bottom: .5rem; }
+.page-title { font-size: 2.2rem; }
+.page-lead { margin-top: .6rem; color: var(--muted); font-size: 1.05rem; max-width: 44rem; }
+@media (max-width: 600px) { .app-top-in { padding: .6rem 1rem; } .app-main { padding: 1.5rem 1rem 7rem; } .page-title { font-size: 1.7rem; } .app-user { margin-left: 0; } }
+@media print { .app-top { display: none; } }
+
+/* Opción B: mitad pizarrón, mitad hoja. El formulario vive en papel, alineado a la izquierda; los errores
+   se resumen arriba con enlaces a cada campo y se repiten al lado del campo (patrón de formulario largo). */
+body { background: var(--paper); }
+.split { min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
+.board { background: var(--board); color: #fff; padding: 2.5rem 3rem; display: flex; flex-direction: column; justify-content: space-between; gap: 2rem; }
+.board h2 { font-size: 2.3rem; max-width: 14ch; line-height: 1.15; }
+.board h2 span { color: var(--accent); }
+.board p { color: var(--on-board); max-width: 34ch; }
+.paper { padding: 2.5rem 3rem 6rem; display: flex; flex-direction: column; }
+.topline { display: flex; justify-content: flex-end; }
+.form-wrap { width: 100%; max-width: 26rem; margin: auto 0; padding-top: 2rem; }
+.form-wrap h1 { font-size: 2.1rem; }
+.lead { margin: .55rem 0 2rem; color: var(--muted); font-size: 1.05rem; }
+.summary { margin-bottom: 1.75rem; }
+.summary ul { margin-top: .35rem; }
+.summary li a { display: inline-flex; min-height: 32px; align-items: center; }
+.submit { margin-top: 2rem; }
+.below { margin-top: 1.25rem; display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; }
+.big .icon { width: 3rem; height: 3rem; color: var(--primary); margin-bottom: 1.1rem; }
+.field .link { min-height: 44px; font-size: .95rem; }
+@media (max-width: 860px) {
+  .split { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .board { padding: 1rem 1.25rem; flex-direction: row; align-items: center; }
+  .board .pitch { display: none; }
+  .paper { padding: 1.5rem 1.25rem 6rem; }
+  .topline { justify-content: flex-start; order: 2; margin-top: 2rem; }
+  .form-wrap { margin: 0; padding-top: .5rem; }
+  .form-wrap h1 { font-size: 1.7rem; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#contenido">Saltar al contenido</a>
+<div class="split">
+  <header class="board on-board">
+    <a class="logo-link" href="#"><span class="logo logo-dark"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1e1b4b"/><g stroke="#f8fafc" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M27 13V40Q27 49 36 49H38"/><path d="M17 25H39"/></g><circle cx="48" cy="48" r="5" fill="#fcd34d"/></svg><span>Tiza<span class="ai">.ai</span></span></span><span class="sr-only">, ir al inicio</span></a>
+    <div class="pitch">
+      <h2>Un práctico, <span>una versión</span> para cada estudiante.</h2>
+    </div>
+    <p class="pitch">A la IA nunca le llegan los nombres de tus estudiantes. Vos aprobás todo lo que reciben.</p>
+  </header>
+
+  <main id="contenido" class="paper">
+    <p class="topline"><a class="link" href="login-estudiante-a.html">Soy estudiante</a></p>
+    <div class="form-wrap">
+
+      <!-- Ingresar -->
+      <section data-state="ingresar" aria-labelledby="ing-t">
+        <h1 id="ing-t">Ingresá</h1>
+        <p class="lead">Con tu correo de profe.</p>
+        <form data-go="faltan" novalidate>
+          <div class="field">
+            <label class="label" for="ing-email">Correo</label>
+            <input class="input" id="ing-email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+          </div>
+          <div class="field">
+            <div class="label-row">
+              <label class="label" for="ing-pass">Contraseña</label>
+              <a class="link" href="#olvide">¿La olvidaste?</a>
+            </div>
+            <div class="with-toggle">
+              <input class="input" id="ing-pass" type="password" autocomplete="current-password" required>
+              <button class="toggle" type="button" data-toggle aria-controls="ing-pass">Mostrar</button>
+            </div>
+          </div>
+          <button class="btn btn-primary submit" type="submit">Ingresar</button>
+        </form>
+      </section>
+
+      <!-- Faltan datos: resumen arriba (recibe el foco) y error al lado de cada campo -->
+      <section data-state="faltan" aria-labelledby="fal-t">
+        <h1 id="fal-t">Ingresá</h1>
+        <p class="lead">Con tu correo de profe.</p>
+        <div class="msg msg-error summary" role="alert" tabindex="-1" data-focus aria-labelledby="fal-s">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>
+          <div>
+            <p id="fal-s"><strong>Falta completar dos cosas</strong></p>
+            <ul>
+              <li><a href="#fal-email">Escribí tu correo</a></li>
+              <li><a href="#fal-pass">Escribí tu contraseña</a></li>
+            </ul>
+          </div>
+        </div>
+        <form data-go="error" novalidate>
+          <div class="field">
+            <label class="label" for="fal-email">Correo</label>
+            <p id="fal-email-e" class="field-error"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>Escribí tu correo, por ejemplo nombre@colegio.edu.uy.</p>
+            <input class="input" id="fal-email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" aria-invalid="true" aria-describedby="fal-email-e" required>
+          </div>
+          <div class="field">
+            <div class="label-row">
+              <label class="label" for="fal-pass">Contraseña</label>
+              <a class="link" href="#olvide">¿La olvidaste?</a>
+            </div>
+            <p id="fal-pass-e" class="field-error"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>Escribí tu contraseña.</p>
+            <div class="with-toggle">
+              <input class="input" id="fal-pass" type="password" autocomplete="current-password" aria-invalid="true" aria-describedby="fal-pass-e" required>
+              <button class="toggle" type="button" data-toggle aria-controls="fal-pass">Mostrar</button>
+            </div>
+          </div>
+          <button class="btn btn-primary submit" type="submit">Ingresar</button>
+        </form>
+      </section>
+
+      <!-- Credenciales que no coinciden -->
+      <section data-state="error" aria-labelledby="err-t">
+        <h1 id="err-t">Ingresá</h1>
+        <p class="lead">Con tu correo de profe.</p>
+        <div class="msg msg-error summary" role="alert" tabindex="-1" data-focus>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>
+          <p><strong>El correo o la contraseña no coinciden.</strong> Revisalos, o <a class="inline-link" href="#olvide">creá una contraseña nueva</a>.</p>
+        </div>
+        <form data-go="bloqueado" novalidate>
+          <div class="field">
+            <label class="label" for="err-email">Correo</label>
+            <input class="input" id="err-email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" value="ana.perez@sanjose.edu.uy" required>
+          </div>
+          <div class="field">
+            <div class="label-row">
+              <label class="label" for="err-pass">Contraseña</label>
+              <a class="link" href="#olvide">¿La olvidaste?</a>
+            </div>
+            <div class="with-toggle">
+              <input class="input" id="err-pass" type="password" autocomplete="current-password" required>
+              <button class="toggle" type="button" data-toggle aria-controls="err-pass">Mostrar</button>
+            </div>
+          </div>
+          <button class="btn btn-primary submit" type="submit">Ingresar</button>
+        </form>
+      </section>
+
+      <!-- Demasiados intentos -->
+      <section data-state="bloqueado" aria-labelledby="blo-t">
+        <h1 id="blo-t">Esperá unos minutos</h1>
+        <div class="msg msg-neutral summary" role="alert" tabindex="-1" data-focus style="margin-top:1.5rem">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></svg>
+          <p>Probaste varias veces con esta cuenta. Para cuidarla, vas a poder volver a intentar a las <strong>10:42</strong>. Si no te acordás de la contraseña, podés crear una nueva ahora.</p>
+        </div>
+        <a class="btn btn-primary" href="#olvide">Crear una contraseña nueva</a>
+      </section>
+
+      <!-- Olvidé mi contraseña -->
+      <section data-state="olvide" aria-labelledby="olv-t">
+        <h1 id="olv-t" tabindex="-1" data-focus>Contraseña nueva</h1>
+        <p class="lead">Escribí tu correo y te mandamos un enlace para elegir otra. El enlace dura una hora.</p>
+        <form data-go="enviado" novalidate>
+          <div class="field">
+            <label class="label" for="olv-email">Correo</label>
+            <input class="input" id="olv-email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" value="ana.perez@sanjose.edu.uy" required>
+          </div>
+          <button class="btn btn-primary submit" type="submit">Mandarme el enlace</button>
+        </form>
+        <p class="below"><a class="link" href="#ingresar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Volver a ingresar</a></p>
+      </section>
+
+      <!-- Enviado -->
+      <section data-state="enviado" aria-labelledby="env-t">
+        <div role="status">
+          <span class="big"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg></span>
+          <h1 id="env-t" tabindex="-1" data-focus>Revisá tu correo</h1>
+          <p class="lead">Si <strong>ana.perez@sanjose.edu.uy</strong> tiene cuenta, te llega un enlace en unos minutos. Puede caer en el correo no deseado.</p>
+        </div>
+        <p class="below"><a class="link" href="#ingresar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Volver a ingresar</a><a class="link" href="#olvide">Mandarlo de nuevo</a></p>
+      </section>
+
+      <!-- Contraseña nueva, desde el correo -->
+      <section data-state="nueva" aria-labelledby="nue-t">
+        <h1 id="nue-t">Elegí tu contraseña</h1>
+        <p class="lead">Para <strong>ana.perez@sanjose.edu.uy</strong>. Después entrás directo.</p>
+        <form data-go="ingresar" novalidate>
+          <input type="email" autocomplete="username" value="ana.perez@sanjose.edu.uy" hidden>
+          <div class="field">
+            <label class="label" for="nue-pass">Contraseña nueva</label>
+            <p id="nue-hint" class="hint">Al menos 10 caracteres. Una frase corta que te acuerdes sirve.</p>
+            <div class="with-toggle">
+              <input class="input" id="nue-pass" type="password" autocomplete="new-password" aria-describedby="nue-hint" required>
+              <button class="toggle" type="button" data-toggle aria-controls="nue-pass">Mostrar</button>
+            </div>
+          </div>
+          <button class="btn btn-primary submit" type="submit">Guardar y entrar</button>
+        </form>
+      </section>
+
+      <!-- Enlace vencido -->
+      <section data-state="vencido" aria-labelledby="ven-t">
+        <h1 id="ven-t">Este enlace venció</h1>
+        <p class="lead">Dura una hora y sirve una sola vez. Pedí otro y usalo apenas te llegue.</p>
+        <a class="btn btn-primary" href="#olvide">Pedir un enlace nuevo</a>
+        <p class="below"><a class="link" href="#ingresar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Volver a ingresar</a></p>
+      </section>
+    </div>
+  </main>
+</div>
+
+<nav class="mock" aria-label="Estados de esta maqueta">
+  <span>Opción B</span>
+  <a href="#ingresar">Ingresar</a><a href="#faltan">Faltan datos</a><a href="#error">Error</a><a href="#bloqueado">Muchos intentos</a><a href="#olvide">Olvidé</a><a href="#enviado">Enviado</a><a href="#nueva">Contraseña nueva</a><a href="#vencido">Enlace vencido</a>
+</nav>
+<script>// Maqueta: cada estado es un bloque [data-state]; el hash elige cuál se ve. ?captura esconde la barra de estados.
+(function () {
+  var root = document.documentElement;
+  if (new URLSearchParams(location.search).has("captura")) root.classList.add("captura");
+  var states = Array.prototype.slice.call(document.querySelectorAll("[data-state]"));
+  function show() {
+    var id = location.hash.slice(1);
+    var match = states.filter(function (s) { return s.dataset.state === id; })[0];
+    if (!match && id && document.getElementById(id)) return; // enlace a un campo dentro del estado actual
+    var current = match || states[0];
+    states.forEach(function (s) { s.hidden = s !== current; });
+    root.dataset.state = current.dataset.state;
+    document.querySelectorAll(".mock a").forEach(function (a) {
+      a.setAttribute("aria-current", a.getAttribute("href") === "#" + current.dataset.state ? "true" : "false");
+    });
+    var focus = current.querySelector("[data-focus]");
+    if (focus && location.hash && !root.classList.contains("captura")) focus.focus();
+  }
+  if (states.length) { addEventListener("hashchange", show); show(); }
+  // Mostrar u ocultar la contraseña: el botón cambia de texto y el campo de tipo.
+  document.querySelectorAll("[data-toggle]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var input = document.getElementById(b.getAttribute("aria-controls"));
+      var visible = input.type === "password";
+      input.type = visible ? "text" : "password";
+      b.textContent = visible ? "Ocultar" : "Mostrar";
+    });
+  });
+  // Enviar un formulario de la maqueta lleva al estado que dice data-go.
+  document.querySelectorAll("form[data-go]").forEach(function (f) {
+    f.addEventListener("submit", function (e) { e.preventDefault(); location.hash = f.dataset.go; });
+  });
+})();
+</script>
+</body>
+</html>

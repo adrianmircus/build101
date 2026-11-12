@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarjetas de acceso · 4.º B · Tiza.ai · Opción C</title>
+<style>
+/* Base compartida de las maquetas de la fase 2: la misma identidad que la app (Lexend, pizarrón indigo-950,
+   papel blanco y un solo acento ámbar). Sin bordes de contenedor, sin divisores y con pocos tonos. */
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("lexend-latin.woff2") format("woff2"); }
+:root {
+  --board: #1e1b4b;      /* indigo-950: el pizarrón */
+  --on-board: #e0e7ff;   /* indigo-100: texto secundario sobre el pizarrón (12:1) */
+  --ink: #0f172a;        /* slate-900 */
+  --muted: #475569;      /* slate-600: 7.6:1 sobre blanco */
+  --bg: #f8fafc;         /* slate-50 */
+  --paper: #ffffff;
+  --soft: #f1f5f9;       /* slate-100 */
+  --field: #64748b;      /* slate-500: borde de campo, 4.8:1 sobre blanco */
+  --primary: #4338ca;    /* indigo-700 */
+  --primary-hover: #3730a3;
+  --link: #3730a3;       /* indigo-800 */
+  --accent: #fcd34d;     /* amber-300, solo sobre el pizarrón */
+  --accent-ink: #b45309; /* amber-700, sobre papel */
+  --error: #991b1b;      /* red-800 */
+  --error-soft: #fef2f2; /* red-50 */
+  --radius: 14px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 18px; -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: "Lexend", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; line-height: 1.5; color: var(--ink); background: var(--bg); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; font-weight: 700; }
+p { margin: 0; text-wrap: pretty; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+img, svg { display: block; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--board); outline-offset: 3px; }
+.on-board :focus-visible { outline-color: var(--accent); }
+.pw-real { white-space: nowrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 1rem; top: -100px; z-index: 50; background: var(--paper); color: var(--ink); padding: .75rem 1rem; border-radius: 10px; font-weight: 600; }
+.skip:focus { top: 1rem; }
+
+.logo { display: inline-flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.35rem; color: var(--ink); text-decoration: none; }
+.logo .mark { width: 1.6em; height: 1.6em; flex: none; }
+.logo .ai { color: var(--accent-ink); }
+.logo-dark { color: #fff; }
+.logo-dark .ai { color: var(--accent); }
+a.logo-link { display: inline-flex; min-height: 44px; align-items: center; border-radius: 8px; text-decoration: none; }
+
+.icon { width: 1.35em; height: 1.35em; flex: none; }
+
+/* Campos: el borde es del control, no un contenedor (WCAG 1.4.11 pide 3:1 para identificarlo). */
+.field { display: grid; gap: .45rem; }
+.field + .field { margin-top: 1.4rem; }
+.label { font-weight: 600; font-size: 1rem; }
+.label-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .25rem 1rem; }
+.hint { color: var(--muted); font-size: .9rem; }
+.input { width: 100%; min-height: 54px; padding: .7rem 1rem; font: inherit; font-size: 1.05rem; color: var(--ink); background: var(--paper); border: 2px solid var(--field); border-radius: 12px; }
+.input:focus { border-color: var(--primary); }
+.input[aria-invalid="true"] { border-color: var(--error); }
+.input[readonly] { background: var(--soft); border-color: transparent; }
+.with-toggle { position: relative; }
+.with-toggle .input { padding-right: 6.5rem; }
+.toggle { position: absolute; right: 6px; top: 50%; translate: 0 -50%; min-height: 44px; min-width: 44px; padding: 0 .9rem; font: inherit; font-size: .95rem; font-weight: 600; color: var(--link); background: transparent; border: 0; border-radius: 9px; cursor: pointer; }
+.toggle:hover { background: var(--soft); }
+.field-error { display: flex; gap: .45rem; align-items: flex-start; color: var(--error); font-weight: 600; font-size: .95rem; }
+.field-error .icon { width: 1.2em; height: 1.2em; margin-top: .1em; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .55rem; min-height: 54px; padding: .75rem 1.4rem; font: inherit; font-size: 1.05rem; font-weight: 600; border: 0; border-radius: 12px; cursor: pointer; text-decoration: none; transition: background-color .15s; }
+.btn:active { translate: 0 1px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-quiet { background: var(--soft); color: var(--ink); }
+.btn-quiet:hover { background: #e2e8f0; }
+.btn-on-board { background: var(--accent); color: var(--board); }
+.btn-block { width: 100%; }
+.link { display: inline-flex; align-items: center; gap: .35rem; min-height: 44px; color: var(--link); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; border-radius: 6px; }
+.link:hover { color: var(--board); }
+.inline-link { color: var(--link); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.on-board .link, .on-board .inline-link { color: #fff; }
+
+/* Mensajes: siempre ícono + texto, nunca solo color. */
+.msg { display: flex; gap: .75rem; align-items: flex-start; padding: 1rem 1.1rem; border-radius: 12px; font-size: 1rem; }
+.msg .icon { margin-top: .1em; }
+.msg-error { background: var(--error-soft); color: var(--error); }
+.msg-error strong, .msg-error a { color: var(--error); }
+.msg-neutral { background: var(--soft); color: var(--ink); }
+.msg-ok { background: var(--soft); color: var(--ink); }
+.msg-ok .icon { color: #047857; }
+.msg:focus { outline: none; }
+.msg:focus-visible { outline: 3px solid var(--board); outline-offset: 3px; }
+
+/* Barra de la maqueta (no es parte del diseño). Desaparece con ?captura. */
+.mock { position: fixed; z-index: 90; left: 50%; bottom: 12px; translate: -50% 0; display: flex; flex-wrap: wrap; gap: .25rem .4rem; align-items: center; justify-content: center; width: max-content; max-width: calc(100% - 24px); padding: .35rem .5rem .35rem .9rem; background: #0f172a; color: #cbd5e1; border-radius: 12px; font-size: .78rem; box-shadow: 0 8px 24px rgb(15 23 42 / .25); }
+.mock a { color: #fff; padding: .35rem .55rem; border-radius: 8px; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+.mock a[aria-current="true"] { background: #334155; }
+.mock :focus-visible { outline-color: var(--accent); }
+.captura .mock { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+@media print { .mock, .skip { display: none !important; } }
+
+/* Encabezado del área del profe (tarjetas y panel de la institución). Sin línea abajo: el papel blanco
+   contra el fondo gris alcanza para separarlo. */
+.app-top { background: var(--paper); }
+.app-top-in { max-width: 72rem; margin: 0 auto; padding: .7rem 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1.5rem; }
+.app-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .4rem; }
+.app-nav a { display: inline-flex; min-height: 44px; align-items: center; padding: 0 .8rem; border-radius: 10px; font-weight: 600; color: var(--link); text-decoration: none; white-space: nowrap; }
+.app-nav a:hover { background: var(--soft); text-decoration: underline; text-underline-offset: 4px; }
+.app-nav a[aria-current="page"] { background: var(--soft); color: var(--board); text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 8px; }
+.app-user { display: inline-flex; align-items: center; gap: .2rem; margin-left: .6rem; color: var(--muted); white-space: nowrap; }
+.app-main { max-width: 72rem; margin: 0 auto; padding: 2.25rem 1.5rem 7rem; }
+.back-link { margin-bottom: .5rem; }
+.page-title { font-size: 2.2rem; }
+.page-lead { margin-top: .6rem; color: var(--muted); font-size: 1.05rem; max-width: 44rem; }
+@media (max-width: 600px) { .app-top-in { padding: .6rem 1rem; } .app-main { padding: 1.5rem 1rem 7rem; } .page-title { font-size: 1.7rem; } .app-user { margin-left: 0; } }
+@media print { .app-top { display: none; } }
+
+/* Opción C: etiqueta para pegar en el cuaderno, 21 por hoja A4 (70 × 42 mm, el formato de las hojas de
+   etiquetas comunes; también sale en papel y se recorta). No se pierde porque vive en el cuaderno.
+   La pantalla parte de la lista del grupo: se imprime todo el grupo o una sola etiqueta, sin pasos extra. */
+.bulk { margin-top: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; }
+.bulk .hint { flex-basis: 100%; }
+.roster { margin-top: 2.25rem; display: grid; gap: .5rem; max-width: 52rem; }
+.roster h2 { font-size: 1.2rem; margin-bottom: .5rem; }
+.person { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .25rem 1rem; padding: .7rem .8rem .7rem 1.15rem; background: var(--paper); border-radius: 14px; }
+.person b { font-size: 1.05rem; }
+.person span { color: var(--muted); font-size: .9rem; }
+.person .btn { min-height: 46px; padding: .5rem 1rem; font-size: .95rem; grid-row: span 2; grid-column: 2; grid-row-start: 1; }
+.confirm { margin-top: 1.75rem; max-width: 40rem; padding: 1.6rem; background: var(--paper); border-radius: 18px; box-shadow: 0 1px 2px rgb(15 23 42 / .06), 0 12px 32px -16px rgb(15 23 42 / .2); }
+.confirm h2 { font-size: 1.4rem; }
+.confirm p { margin-top: .7rem; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin-top: 1.4rem; }
+
+.cards-area { margin-top: 2.25rem; }
+.cards-area h2 { font-size: 1.2rem; margin-bottom: 1rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr)); gap: .9rem; }
+.card { display: grid; grid-template-columns: auto 1fr; gap: .9rem; align-items: center; padding: .9rem 1rem; background: var(--paper); border-radius: 14px; box-shadow: 0 1px 2px rgb(15 23 42 / .06), 0 10px 24px -14px rgb(15 23 42 / .2); }
+.c-qr .qr { width: 84px; height: 84px; }
+.c-name { font-weight: 700; font-size: .98rem; line-height: 1.2; margin-bottom: .3rem; }
+.c-data { margin: 0; display: grid; gap: .15rem; }
+.c-data dd { white-space: nowrap; line-height: 1.15; }
+.c-data dt { color: var(--muted); font-size: .72rem; }
+.c-data dd { margin: 0; font-weight: 600; font-size: .92rem; letter-spacing: .03em; }
+.pw-mask { letter-spacing: .1em; }
+.pw-real { display: none; }
+html[data-state="una"] .card:not(:first-child) { display: none; }
+html[data-state="confirmar"] .cards-area { display: none; }
+@media (max-width: 600px) { .person { grid-template-columns: 1fr; } .person .btn { grid-column: 1; grid-row: auto; justify-self: start; margin-top: .4rem; } }
+
+@media print {
+  @page { size: A4; margin: 15mm 0 0 0; }
+  html { font-size: 9pt; }
+  body { background: #fff; }
+  .app-main > :not(.cards-area) { display: none !important; }
+  .app-main { padding: 0; max-width: none; }
+  .cards-area { display: block !important; margin: 0; }
+  .cards-area h2 { display: none; }
+  .pw-real { display: inline !important; } .pw-mask, .pw-sr { display: none !important; }
+  .cards { grid-template-columns: repeat(3, 70mm); grid-auto-rows: 42.3mm; gap: 0; }
+  .card { box-shadow: none; border-radius: 0; padding: 3mm 3.5mm; gap: 3mm; break-inside: avoid; }
+  .c-qr .qr { width: 21mm; height: 21mm; }
+  .c-data { gap: .6mm; } .c-data dt { line-height: 1.1; }
+  .c-name { font-size: 9.5pt; margin-bottom: 1mm; }
+  .c-data dt { font-size: 7pt; }
+  .c-data dd { font-size: 9.5pt; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#contenido">Saltar al contenido</a>
+<header class="app-top"><div class="app-top-in"><a class="logo-link" href="#"><span class="logo logo-light"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1e1b4b"/><g stroke="#f8fafc" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M27 13V40Q27 49 36 49H38"/><path d="M17 25H39"/></g><circle cx="48" cy="48" r="5" fill="#fcd34d"/></svg><span>Tiza<span class="ai">.ai</span></span></span><span class="sr-only">, ir a mis grupos</span></a><nav class="app-nav" aria-label="Principal"><a href="#" aria-current="page">Mis grupos</a><a href="#">Mi materia</a><a href="#">Institución</a><span class="app-user">Ana Pérez <a href="#">Salir</a></span></nav></div></header>
+<main id="contenido" class="app-main">
+  <p class="back-link"><a class="link" href="#"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>4.º B</a></p>
+  <h1 class="page-title">Etiquetas de acceso</h1>
+  <p class="page-lead">Una etiqueta por estudiante para pegar en el cuaderno, con el QR y sus datos. Todas iguales.</p>
+
+  <!-- Lista del grupo -->
+  <section data-state="lista" aria-label="Lista del grupo">
+    <div class="bulk">
+      <a class="btn btn-primary" href="#confirmar"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>Etiquetas para todo el grupo</a>
+      <p class="hint">Entran 21 por hoja A4. Sirven las hojas de etiquetas de 70 × 42 mm o papel común para recortar.</p>
+    </div>
+    <div class="roster">
+      <h2>Una sola, si alguien perdió la suya</h2>
+      <div class="person"><b>Lucía Fernández</b><span>luciaf · última etiqueta el 3 de noviembre</span><a class="btn btn-quiet" href="#confirmar-una">Etiqueta nueva<span class="sr-only"> para Lucía Fernández</span></a></div>
+      <div class="person"><b>Mateo Silva</b><span>mateos · última etiqueta el 3 de noviembre</span><a class="btn btn-quiet" href="#confirmar-una">Etiqueta nueva<span class="sr-only"> para Mateo Silva</span></a></div>
+      <div class="person"><b>Valentina Rodríguez</b><span>valentinar · todavía no entró</span><a class="btn btn-quiet" href="#confirmar-una">Etiqueta nueva<span class="sr-only"> para Valentina Rodríguez</span></a></div>
+      <div class="person"><b>Joaquín Martínez</b><span>joaquinm · última etiqueta el 3 de noviembre</span><a class="btn btn-quiet" href="#confirmar-una">Etiqueta nueva<span class="sr-only"> para Joaquín Martínez</span></a></div>
+      <div class="person"><b>Sofía González</b><span>sofiag · última etiqueta el 3 de noviembre</span><a class="btn btn-quiet" href="#confirmar-una">Etiqueta nueva<span class="sr-only"> para Sofía González</span></a></div>
+    </div>
+  </section>
+
+  <!-- Confirmar todo el grupo -->
+  <section data-state="confirmar" aria-labelledby="cf-t">
+    <div class="confirm">
+      <h2 id="cf-t" tabindex="-1" data-focus>¿Etiquetas nuevas para los 10?</h2>
+      <p>Cada uno recibe una contraseña nueva y la anterior deja de andar. Las contraseñas se ven solo en el papel: no las guardamos.</p>
+      <div class="row"><button class="btn btn-primary" type="button" onclick="window.print()">Sí, crear e imprimir</button><a class="link" href="#lista">Cancelar</a></div>
+    </div>
+  </section>
+
+  <!-- Confirmar una sola -->
+  <section data-state="confirmar-una" aria-labelledby="cu-t">
+    <div class="confirm">
+      <h2 id="cu-t" tabindex="-1" data-focus>¿Etiqueta nueva para Lucía Fernández?</h2>
+      <p>Lucía va a entrar con una contraseña nueva. La de su etiqueta anterior deja de andar.</p>
+      <div class="row"><a class="btn btn-primary" href="#una">Sí, crear la etiqueta</a><a class="link" href="#lista">Cancelar</a></div>
+    </div>
+  </section>
+
+  <!-- Una sola, lista para imprimir -->
+  <section data-state="una" aria-label="Etiqueta lista">
+    <div class="msg msg-ok" role="status" style="margin-top:1.5rem;max-width:44rem">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="m8 12.5 2.7 2.7L16 9.8"/></svg>
+      <p><strong>Lista la etiqueta de Lucía.</strong> Imprimila ahora: la contraseña no se vuelve a mostrar.</p>
+    </div>
+    <div class="row"><button class="btn btn-primary" type="button" onclick="window.print()"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>Imprimir la etiqueta</button><a class="link" href="#lista">Volver a la lista</a></div>
+  </section>
+
+  <div class="cards-area">
+    <h2>Así se ven</h2>
+    <div class="cards">
+<article class="card" aria-label="Etiqueta de Lucía Fernández"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m1 0h4m1 0h3m1 0h1m1 0h1m2 0h7M0 1.5h1m5 0h1m1 0h4m1 0h1m2 0h1m1 0h1m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m2 0h3m4 0h4m2 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h2m1 0h2m3 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m2 0h1m4 0h1m1 0h2m1 0h2m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m6 0h1m1 0h3m1 0h1m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m1 0h2m3 0h4M0 8.5h1m1 0h2m1 0h3m1 0h2m2 0h1m1 0h1m1 0h1m1 0h2m1 0h1m2 0h1m1 0h2M1 9.5h2m1 0h2m2 0h1m1 0h2m1 0h3m1 0h8m3 0h1M1 10.5h1m3 0h2m1 0h3m2 0h1m2 0h1m5 0h2m2 0h2M1 11.5h2m2 0h1m2 0h1m2 0h1m4 0h1m3 0h4m4 0h1M6 12.5h1m2 0h4m1 0h2m1 0h3m3 0h1m1 0h2M0 13.5h3m1 0h2m3 0h1m1 0h1m2 0h1m1 0h2m1 0h4m3 0h3M0 14.5h1m2 0h6m1 0h1m2 0h1m1 0h2m2 0h1m3 0h1m2 0h3M2 15.5h4m1 0h1m3 0h1m2 0h1m1 0h2m3 0h4m2 0h1M1 16.5h3m1 0h3m2 0h2m2 0h5m2 0h1m1 0h3m1 0h1M4 17.5h2m1 0h1m1 0h1m1 0h2m1 0h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h3M0 18.5h1m1 0h1m2 0h2m4 0h1m1 0h4m1 0h1m2 0h1m1 0h1m2 0h1M3 19.5h2m3 0h1m1 0h1m2 0h2m5 0h2m1 0h1m2 0h1M1 20.5h1m3 0h5m3 0h2m1 0h1m2 0h8M8 21.5h3m4 0h2m2 0h2m3 0h5M0 22.5h7m1 0h1m2 0h2m1 0h2m1 0h1m1 0h2m1 0h1m1 0h2m1 0h1M0 23.5h1m5 0h1m1 0h1m1 0h1m2 0h3m4 0h1m3 0h2m1 0h2M0 24.5h1m1 0h3m1 0h1m2 0h1m1 0h2m3 0h1m1 0h1m1 0h5m1 0h1M0 25.5h1m1 0h3m1 0h1m1 0h2m2 0h1m6 0h2m3 0h2m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h3m3 0h1m2 0h3m3 0h1m2 0h1m1 0h1M0 27.5h1m5 0h1m4 0h1m1 0h1m1 0h1m1 0h2m1 0h1m1 0h4m1 0h1M0 28.5h7m1 0h2m2 0h1m1 0h1m2 0h4m1 0h1m2 0h1m1 0h1"/></svg>
+</div><div class="c-body"><p class="c-name">Lucía Fernández</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>luciaf</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">nube-tigre-47</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Mateo Silva"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m1 0h1m1 0h1m2 0h3m1 0h1m1 0h1m2 0h7M0 1.5h1m5 0h1m1 0h3m2 0h1m2 0h1m1 0h1m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m3 0h1m1 0h1m3 0h4m2 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h5m1 0h2m1 0h2m3 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m2 0h3m2 0h1m1 0h1m2 0h2m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m3 0h1m1 0h2m1 0h2m2 0h1m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h2m1 0h2m2 0h3M0 8.5h1m1 0h2m1 0h3m1 0h1m1 0h3m1 0h1m3 0h2m1 0h1m2 0h1m1 0h2M1 9.5h2m2 0h1m1 0h2m2 0h5m1 0h1m1 0h6m3 0h1M3 10.5h1m2 0h1m2 0h1m1 0h1m1 0h1m2 0h1m5 0h2m2 0h2M0 11.5h2m1 0h3m3 0h2m1 0h1m3 0h2m2 0h4m4 0h1M1 12.5h1m1 0h1m2 0h2m1 0h1m1 0h2m1 0h2m1 0h3m3 0h1m1 0h2M0 13.5h2m1 0h1m1 0h1m2 0h1m1 0h2m2 0h1m1 0h2m1 0h4m3 0h3M4 14.5h3m2 0h1m2 0h2m1 0h5m3 0h1m2 0h3M7 15.5h2m2 0h2m1 0h1m1 0h1m1 0h1m2 0h4m2 0h1M2 16.5h1m2 0h2m2 0h1m1 0h1m2 0h4m3 0h1m1 0h3m1 0h1M2 17.5h1m1 0h2m1 0h1m2 0h3m1 0h1m1 0h2m2 0h1m2 0h1m1 0h3M0 18.5h1m1 0h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h4m4 0h1m1 0h1m2 0h1M3 19.5h3m1 0h2m1 0h2m1 0h2m5 0h2m1 0h1m2 0h1M1 20.5h7m1 0h2m1 0h3m1 0h1m1 0h9M8 21.5h1m3 0h1m2 0h2m2 0h2m3 0h5M0 22.5h7m1 0h1m3 0h1m1 0h2m1 0h1m1 0h2m1 0h1m1 0h2m1 0h1M0 23.5h1m5 0h1m1 0h1m1 0h6m4 0h1m3 0h2m1 0h2M0 24.5h1m1 0h3m1 0h1m2 0h3m4 0h1m1 0h1m1 0h5m1 0h1M0 25.5h1m1 0h3m1 0h1m1 0h2m2 0h1m6 0h2m3 0h2m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h2m3 0h1m3 0h3m3 0h1m2 0h1m1 0h1M0 27.5h1m5 0h1m2 0h2m1 0h1m2 0h1m1 0h2m1 0h1m1 0h4m1 0h1M0 28.5h7m1 0h1m2 0h1m5 0h4m1 0h1m2 0h1m1 0h1"/></svg>
+</div><div class="c-body"><p class="c-name">Mateo Silva</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>mateos</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">rio-gato-25</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Valentina Rodríguez"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m2 0h5m2 0h2m1 0h2m1 0h7M0 1.5h1m5 0h1m1 0h3m3 0h3m1 0h2m2 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m2 0h1m1 0h1m1 0h2m1 0h2m2 0h1m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m2 0h3m1 0h3m3 0h1m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h1m2 0h4m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m2 0h1m2 0h2m4 0h2m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M11 7.5h4m1 0h5M0 8.5h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h2m1 0h2m2 0h1m5 0h1m2 0h1M2 9.5h1m2 0h1m2 0h1m1 0h1m1 0h1m1 0h2m4 0h3m2 0h1m2 0h1M0 10.5h2m1 0h1m1 0h5m2 0h2m3 0h1m6 0h1m1 0h3M4 11.5h1m2 0h3m1 0h1m3 0h1m1 0h1m2 0h1m6 0h1M1 12.5h2m1 0h1m1 0h1m2 0h1m6 0h8m1 0h1m1 0h2M0 13.5h4m1 0h1m1 0h2m4 0h1m1 0h3m4 0h1m2 0h1m2 0h1M1 14.5h1m1 0h2m1 0h2m1 0h3m2 0h3m3 0h1m2 0h3m1 0h2M0 15.5h5m3 0h1m2 0h4m1 0h1m2 0h1m1 0h2m2 0h1m1 0h1M0 16.5h2m2 0h4m2 0h1m1 0h1m1 0h2m1 0h2m2 0h2m2 0h1m1 0h2M1 17.5h5m3 0h1m2 0h1m1 0h2m4 0h3m2 0h2m1 0h1M0 18.5h1m2 0h2m1 0h4m1 0h1m1 0h1m6 0h1m1 0h2m3 0h2M1 19.5h2m1 0h1m2 0h3m5 0h1m3 0h1m3 0h1m1 0h1m1 0h1M0 20.5h1m3 0h1m1 0h2m2 0h3m3 0h3m1 0h5M8 21.5h1m4 0h1m1 0h4m1 0h1m3 0h1m1 0h3M0 22.5h7m3 0h3m1 0h3m1 0h3m1 0h1m1 0h2m1 0h2M0 23.5h1m5 0h1m5 0h3m1 0h2m2 0h1m3 0h2M0 24.5h1m1 0h3m1 0h1m1 0h2m4 0h2m2 0h1m1 0h5m2 0h2M0 25.5h1m1 0h3m1 0h1m7 0h2m5 0h1m2 0h1m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h1m5 0h1m2 0h1m2 0h1m2 0h3m2 0h1M0 27.5h1m5 0h1m2 0h2m4 0h1m3 0h2m1 0h1m4 0h1M0 28.5h7m1 0h1m1 0h2m2 0h1m1 0h1m2 0h2m2 0h3m1 0h2"/></svg>
+</div><div class="c-body"><p class="c-name">Valentina Rodríguez</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>valentinar</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">sol-pera-83</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Joaquín Martínez"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m4 0h1m1 0h1m2 0h2m1 0h2m1 0h7M0 1.5h1m5 0h1m1 0h1m1 0h3m1 0h3m1 0h2m2 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m2 0h2m2 0h2m1 0h2m2 0h1m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m2 0h1m1 0h5m3 0h1m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h1m3 0h1m1 0h1m3 0h3m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m2 0h3m1 0h1m3 0h1m1 0h1m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M11 7.5h4m1 0h2m1 0h2M0 8.5h1m1 0h1m1 0h1m1 0h1m2 0h4m1 0h2m1 0h2m5 0h1m2 0h1M0 9.5h2m6 0h1m1 0h1m3 0h2m1 0h2m1 0h3m2 0h1m2 0h1M0 10.5h3m1 0h4m2 0h1m1 0h2m10 0h1m1 0h3M2 11.5h1m6 0h2m1 0h1m2 0h1m1 0h1m2 0h1m6 0h1M1 12.5h1m3 0h2m1 0h1m1 0h3m3 0h8m1 0h1m1 0h2M2 13.5h4m1 0h1m2 0h4m1 0h3m4 0h1m2 0h1m2 0h1M0 14.5h2m3 0h3m3 0h2m1 0h5m1 0h1m2 0h3m1 0h2M0 15.5h2m1 0h2m7 0h3m1 0h1m2 0h1m1 0h2m2 0h1m1 0h1M2 16.5h2m2 0h1m7 0h2m2 0h1m2 0h2m2 0h1m1 0h2M1 17.5h1m1 0h3m5 0h2m1 0h2m2 0h1m1 0h3m2 0h2m1 0h1M0 18.5h1m2 0h4m1 0h1m1 0h4m4 0h1m1 0h1m1 0h2m3 0h2M1 19.5h1m1 0h3m5 0h1m3 0h1m1 0h3m3 0h1m1 0h1m1 0h1M0 20.5h1m1 0h1m1 0h1m1 0h1m1 0h5m3 0h2m2 0h5M8 21.5h1m1 0h1m1 0h2m1 0h3m2 0h1m3 0h1m1 0h3M0 22.5h7m3 0h3m1 0h3m1 0h3m1 0h1m1 0h2m1 0h2M0 23.5h1m5 0h1m3 0h1m2 0h2m1 0h2m2 0h1m3 0h2M0 24.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m1 0h2m2 0h1m1 0h5m2 0h2M0 25.5h1m1 0h3m1 0h1m7 0h2m5 0h1m2 0h1m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h1m2 0h1m1 0h1m3 0h1m2 0h1m2 0h3m2 0h1M0 27.5h1m5 0h1m3 0h1m2 0h3m3 0h2m1 0h1m4 0h1M0 28.5h7m1 0h1m1 0h1m1 0h1m3 0h1m2 0h2m2 0h3m1 0h2"/></svg>
+</div><div class="c-body"><p class="c-name">Joaquín Martínez</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>joaquinm</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">faro-oso-36</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Sofía González"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m1 0h1m4 0h3m1 0h1m1 0h1m2 0h7M0 1.5h1m5 0h1m1 0h1m1 0h1m1 0h2m2 0h1m1 0h1m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m4 0h1m4 0h4m2 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m1 0h2m1 0h2m3 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m2 0h1m4 0h1m1 0h2m1 0h2m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m2 0h1m1 0h3m1 0h3m1 0h1m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h5m2 0h3M0 8.5h1m1 0h2m1 0h3m4 0h2m1 0h1m3 0h2m1 0h1m2 0h1m1 0h2M0 9.5h1m2 0h1m1 0h1m4 0h1m1 0h4m1 0h1m1 0h6m3 0h1M0 10.5h3m1 0h1m1 0h2m1 0h1m1 0h3m2 0h1m1 0h1m3 0h2m2 0h2M4 11.5h1m2 0h6m3 0h3m1 0h4m4 0h1M1 12.5h2m2 0h3m2 0h1m3 0h2m2 0h2m3 0h1m1 0h2M0 13.5h6m1 0h2m1 0h1m3 0h1m1 0h2m1 0h4m3 0h3M1 14.5h1m2 0h1m1 0h1m4 0h1m1 0h1m1 0h2m1 0h2m3 0h1m2 0h3M0 15.5h1m2 0h3m2 0h1m1 0h1m3 0h1m1 0h1m4 0h4m2 0h1M0 16.5h2m4 0h6m2 0h3m4 0h1m1 0h3m1 0h1M1 17.5h1m2 0h1m5 0h1m3 0h1m1 0h3m1 0h1m2 0h1m1 0h3M0 18.5h1m2 0h2m1 0h2m5 0h5m3 0h1m1 0h1m2 0h1M2 19.5h1m2 0h1m1 0h4m2 0h2m2 0h1m2 0h2m1 0h1m2 0h1M1 20.5h1m2 0h1m1 0h1m6 0h2m1 0h1m2 0h8M8 21.5h1m2 0h1m3 0h2m2 0h2m3 0h5M0 22.5h7m1 0h4m2 0h2m1 0h1m1 0h2m1 0h1m1 0h2m1 0h1M0 23.5h1m5 0h1m1 0h1m4 0h3m4 0h1m3 0h2m1 0h2M0 24.5h1m1 0h3m1 0h1m3 0h3m3 0h1m1 0h1m1 0h5m1 0h1M0 25.5h1m1 0h3m1 0h1m1 0h2m1 0h3m5 0h2m3 0h2m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h2m2 0h3m2 0h3m3 0h1m2 0h1m1 0h1M0 27.5h1m5 0h1m4 0h3m1 0h1m1 0h2m1 0h1m1 0h4m1 0h1M0 28.5h7m1 0h1m1 0h3m1 0h1m2 0h4m1 0h1m2 0h1m1 0h1"/></svg>
+</div><div class="c-body"><p class="c-name">Sofía González</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>sofiag</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">mar-pato-52</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Benjamín Pereira"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m1 0h5m2 0h2m3 0h1m1 0h7M0 1.5h1m5 0h1m2 0h1m1 0h1m1 0h2m1 0h3m3 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h1m5 0h3m2 0h2m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m2 0h1m1 0h1m2 0h1m2 0h1m4 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m3 0h1m1 0h4m1 0h1m2 0h1m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h1m1 0h1m4 0h1m1 0h1m4 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M11 7.5h1m2 0h3m3 0h1M0 8.5h1m1 0h1m3 0h2m1 0h3m1 0h2m2 0h3m3 0h1m2 0h1m1 0h1M0 9.5h1m1 0h3m3 0h2m3 0h2m3 0h3m1 0h2m3 0h2M1 10.5h3m1 0h2m1 0h1m1 0h1m1 0h1m2 0h1m2 0h2m1 0h1m1 0h4m1 0h1M0 11.5h3m5 0h6m3 0h1m1 0h3m1 0h1m1 0h1M1 12.5h1m1 0h2m1 0h1m2 0h2m2 0h1m1 0h4m1 0h1m1 0h1m5 0h1M2 13.5h4m2 0h1m3 0h1m3 0h1m2 0h1m1 0h3m3 0h2M4 14.5h1m1 0h1m1 0h3m1 0h3m1 0h1m2 0h3m2 0h1m3 0h1M0 15.5h2m3 0h1m2 0h3m1 0h1m1 0h3m5 0h2M3 16.5h1m1 0h3m1 0h6m2 0h3m2 0h2m4 0h1M2 17.5h1m4 0h3m3 0h2m2 0h1m1 0h2m1 0h2m2 0h3M0 18.5h2m1 0h2m1 0h2m4 0h1m2 0h1m2 0h5m2 0h1m2 0h1M2 19.5h1m1 0h2m2 0h1m3 0h2m7 0h1M0 20.5h4m2 0h2m1 0h2m1 0h2m1 0h11m1 0h1M8 21.5h1m1 0h2m4 0h1m2 0h2m3 0h3m1 0h1M0 22.5h7m1 0h7m1 0h3m1 0h1m1 0h1m1 0h1m3 0h1M0 23.5h1m5 0h1m2 0h4m1 0h3m2 0h2m3 0h1m2 0h1M0 24.5h1m1 0h3m1 0h1m2 0h1m3 0h2m2 0h9m2 0h1M0 25.5h1m1 0h3m1 0h1m2 0h1m1 0h1m2 0h1m2 0h1m1 0h1m3 0h5M0 26.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m1 0h2m3 0h3m2 0h1m2 0h2M0 27.5h1m5 0h1m2 0h2m6 0h1m2 0h4m1 0h1M0 28.5h7m1 0h1m5 0h4m2 0h2m2 0h1m3 0h1"/></svg>
+</div><div class="c-body"><p class="c-name">Benjamín Pereira</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>benjaminp</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">pan-tren-49</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Martina Acosta"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m1 0h1m2 0h5m1 0h1m1 0h1m2 0h7M0 1.5h1m5 0h1m1 0h1m3 0h2m2 0h1m1 0h1m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m2 0h1m6 0h4m2 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h1m3 0h1m1 0h2m2 0h1m3 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m2 0h4m1 0h1m1 0h1m1 0h3m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m3 0h4m1 0h3m1 0h1m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m6 0h3M0 8.5h1m1 0h2m1 0h3m2 0h1m1 0h2m1 0h1m1 0h1m1 0h2m1 0h1m2 0h1m1 0h2M0 9.5h1m8 0h7m2 0h7m3 0h1M0 10.5h2m2 0h1m1 0h1m2 0h1m3 0h1m2 0h3m3 0h2m2 0h2M1 11.5h1m2 0h2m1 0h1m1 0h4m3 0h1m1 0h1m1 0h4m4 0h1M0 12.5h1m5 0h2m1 0h1m1 0h1m2 0h2m1 0h1m1 0h1m3 0h1m1 0h2M0 13.5h2m6 0h1m2 0h1m2 0h1m1 0h2m1 0h4m3 0h3M2 14.5h1m3 0h2m1 0h1m1 0h3m1 0h2m2 0h1m3 0h1m2 0h3M1 15.5h1m1 0h1m5 0h1m4 0h1m1 0h2m3 0h4m2 0h1M1 16.5h1m2 0h1m1 0h1m1 0h3m3 0h3m4 0h1m1 0h3m1 0h1M1 17.5h1m1 0h3m1 0h1m1 0h3m2 0h1m1 0h2m2 0h1m2 0h1m1 0h3M0 18.5h1m1 0h5m1 0h2m3 0h4m4 0h1m1 0h1m2 0h1M2 19.5h1m1 0h2m1 0h3m1 0h4m2 0h2m1 0h2m1 0h1m2 0h1M1 20.5h2m2 0h2m3 0h1m1 0h3m1 0h11M8 21.5h3m1 0h1m2 0h2m2 0h2m3 0h5M0 22.5h7m1 0h2m1 0h2m1 0h2m1 0h1m1 0h2m1 0h1m1 0h2m1 0h1M0 23.5h1m5 0h1m1 0h4m1 0h3m4 0h1m3 0h2m1 0h2M0 24.5h1m1 0h3m1 0h1m3 0h2m4 0h1m1 0h1m1 0h5m1 0h1M0 25.5h1m1 0h3m1 0h1m1 0h2m2 0h2m5 0h2m3 0h2m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h2m3 0h3m3 0h1m2 0h1m1 0h1M0 27.5h1m5 0h1m2 0h2m1 0h1m2 0h1m1 0h2m1 0h1m1 0h4m1 0h1M0 28.5h7m1 0h1m1 0h1m2 0h1m3 0h4m1 0h1m2 0h1m1 0h1"/></svg>
+</div><div class="c-body"><p class="c-name">Martina Acosta</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>martinaa</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">nido-coco-74</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Thiago Castro"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m1 0h1m1 0h3m2 0h2m3 0h1m1 0h7M0 1.5h1m5 0h1m4 0h1m1 0h2m1 0h3m3 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h3m3 0h3m2 0h2m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m3 0h2m2 0h1m2 0h1m4 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m2 0h2m1 0h4m1 0h2m1 0h1m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h1m2 0h1m3 0h1m2 0h1m3 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M9 7.5h2m1 0h1m1 0h3m1 0h1m1 0h1M0 8.5h1m1 0h1m3 0h2m2 0h1m1 0h3m3 0h2m3 0h1m2 0h1m1 0h1M3 9.5h3m1 0h2m4 0h2m2 0h1m1 0h2m1 0h2m3 0h2M1 10.5h1m1 0h2m1 0h2m2 0h1m1 0h1m2 0h1m3 0h1m1 0h1m1 0h4m1 0h1M1 11.5h1m2 0h2m1 0h1m1 0h2m1 0h2m3 0h1m1 0h3m1 0h1m1 0h1M2 12.5h1m2 0h2m2 0h1m1 0h1m1 0h1m1 0h2m3 0h1m1 0h1m5 0h1M0 13.5h1m1 0h2m4 0h1m1 0h2m4 0h1m2 0h1m1 0h3m3 0h2M0 14.5h3m1 0h1m1 0h1m1 0h4m1 0h2m1 0h1m1 0h4m2 0h1m3 0h1M0 15.5h1m1 0h1m2 0h1m1 0h1m1 0h1m1 0h2m1 0h3m1 0h1m3 0h2M4 16.5h1m1 0h3m1 0h1m2 0h2m2 0h1m1 0h1m2 0h2m4 0h1M2 17.5h4m3 0h1m1 0h1m1 0h2m3 0h3m1 0h2m2 0h3M0 18.5h3m1 0h1m1 0h1m1 0h1m3 0h1m2 0h1m1 0h1m1 0h4m2 0h1m2 0h1M2 19.5h1m4 0h2m1 0h1m2 0h1m3 0h2m2 0h1M0 20.5h5m1 0h1m1 0h1m1 0h4m1 0h11m1 0h1M8 21.5h1m2 0h1m4 0h1m1 0h3m3 0h3m1 0h1M0 22.5h7m1 0h1m2 0h4m1 0h3m1 0h1m1 0h1m1 0h1m3 0h1M0 23.5h1m5 0h1m4 0h2m1 0h3m2 0h2m3 0h1m2 0h1M0 24.5h1m1 0h3m1 0h1m2 0h1m1 0h4m2 0h9m2 0h1M0 25.5h1m1 0h3m1 0h1m3 0h5m2 0h1m1 0h1m3 0h5M0 26.5h1m1 0h3m1 0h1m1 0h1m2 0h3m1 0h1m3 0h3m2 0h1m2 0h2M0 27.5h1m5 0h1m4 0h1m5 0h1m2 0h4m1 0h1M0 28.5h7m1 0h1m1 0h1m1 0h1m1 0h4m2 0h2m2 0h1m3 0h1"/></svg>
+</div><div class="c-body"><p class="c-name">Thiago Castro</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>thiagoc</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">vaca-ruta-28</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Emilia Suárez"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m2 0h1m2 0h2m2 0h2m1 0h2m1 0h7M0 1.5h1m5 0h1m1 0h1m1 0h3m1 0h3m1 0h2m2 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m3 0h2m1 0h2m1 0h2m2 0h1m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m2 0h2m1 0h4m3 0h1m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h1m2 0h1m2 0h1m2 0h4m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m2 0h1m1 0h3m3 0h1m1 0h1m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M9 7.5h6m1 0h5M0 8.5h1m1 0h1m1 0h1m1 0h1m2 0h2m3 0h2m2 0h1m5 0h1m2 0h1M0 9.5h1m1 0h4m3 0h1m1 0h1m2 0h2m4 0h3m2 0h1m2 0h1M1 10.5h2m2 0h4m3 0h2m3 0h1m6 0h1m1 0h3M1 11.5h4m10 0h1m1 0h2m1 0h1m6 0h1M0 12.5h5m1 0h2m2 0h3m3 0h1m2 0h5m1 0h1m1 0h2M2 13.5h1m1 0h1m3 0h4m1 0h1m1 0h3m4 0h1m2 0h1m2 0h1M0 14.5h2m3 0h2m4 0h2m1 0h4m2 0h1m2 0h3m1 0h2M1 15.5h1m2 0h2m1 0h2m2 0h4m1 0h1m2 0h1m1 0h2m2 0h1m1 0h1M3 16.5h1m1 0h7m2 0h2m2 0h1m2 0h2m2 0h1m1 0h2M2 17.5h1m1 0h1m3 0h1m1 0h1m3 0h2m1 0h1m2 0h3m2 0h2m1 0h1M0 18.5h1m1 0h2m1 0h9m6 0h1m1 0h2m3 0h2M1 19.5h1m5 0h2m1 0h1m1 0h1m2 0h1m1 0h3m3 0h1m1 0h1m1 0h1M0 20.5h1m3 0h1m1 0h2m1 0h1m2 0h1m3 0h3m1 0h5M8 21.5h4m1 0h1m1 0h4m1 0h1m3 0h1m1 0h3M0 22.5h7m4 0h1m2 0h3m1 0h3m1 0h1m1 0h2m1 0h2M0 23.5h1m5 0h1m2 0h1m1 0h1m1 0h2m1 0h2m2 0h1m3 0h2M0 24.5h1m1 0h3m1 0h1m1 0h4m2 0h2m2 0h1m1 0h5m2 0h2M0 25.5h1m1 0h3m1 0h1m2 0h1m1 0h1m2 0h2m5 0h1m2 0h1m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h1m1 0h2m1 0h1m3 0h1m2 0h1m2 0h3m2 0h1M0 27.5h1m5 0h1m4 0h3m1 0h1m3 0h2m1 0h1m4 0h1M0 28.5h7m1 0h1m3 0h3m1 0h1m2 0h2m2 0h3m1 0h2"/></svg>
+</div><div class="c-body"><p class="c-name">Emilia Suárez</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>emilias</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">rama-uva-63</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+<article class="card" aria-label="Etiqueta de Bruno Díaz"><div class="c-qr"><svg class="qr" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h29v29H0z"/><path stroke="#0f172a" d="M0 0.5h7m1 0h1m2 0h1m1 0h3m1 0h1m1 0h1m2 0h7M0 1.5h1m5 0h1m1 0h1m4 0h1m2 0h1m1 0h1m1 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m2 0h1m1 0h2m3 0h4m2 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h5m1 0h2m1 0h2m3 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m3 0h3m1 0h1m1 0h1m2 0h2m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m2 0h2m2 0h1m1 0h2m1 0h2m2 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h3m4 0h3M0 8.5h1m1 0h2m1 0h3m4 0h2m1 0h1m1 0h1m1 0h2m1 0h1m2 0h1m1 0h2M1 9.5h2m1 0h1m4 0h3m1 0h3m1 0h8m3 0h1M2 10.5h1m1 0h1m1 0h4m2 0h2m2 0h2m4 0h2m2 0h2M0 11.5h1m1 0h1m1 0h1m2 0h3m1 0h1m4 0h3m1 0h4m4 0h1M0 12.5h1m1 0h1m1 0h1m1 0h2m1 0h4m1 0h2m1 0h1m1 0h1m3 0h1m1 0h2M1 13.5h1m1 0h2m2 0h5m2 0h1m1 0h2m1 0h4m3 0h3M0 14.5h1m2 0h4m1 0h1m1 0h1m2 0h1m1 0h3m1 0h1m3 0h1m2 0h3M0 15.5h2m2 0h1m2 0h1m6 0h1m1 0h2m3 0h4m2 0h1M0 16.5h2m2 0h1m1 0h1m2 0h1m2 0h1m1 0h5m2 0h1m1 0h3m1 0h1M1 17.5h1m2 0h2m1 0h1m2 0h1m1 0h1m1 0h1m1 0h1m3 0h1m2 0h1m1 0h3M0 18.5h1m1 0h2m2 0h1m1 0h1m1 0h1m2 0h4m4 0h1m1 0h1m2 0h1M3 19.5h3m1 0h4m1 0h3m3 0h1m1 0h2m1 0h1m2 0h1M1 20.5h1m1 0h1m2 0h1m1 0h2m2 0h3m1 0h2m1 0h8M8 21.5h1m3 0h1m2 0h2m2 0h2m3 0h5M0 22.5h7m1 0h1m1 0h1m3 0h2m1 0h1m1 0h2m1 0h1m1 0h2m1 0h1M0 23.5h1m5 0h1m1 0h1m1 0h6m4 0h1m3 0h2m1 0h2M0 24.5h1m1 0h3m1 0h1m2 0h2m5 0h1m1 0h1m1 0h5m1 0h1M0 25.5h1m1 0h3m1 0h1m1 0h1m4 0h1m5 0h2m3 0h2m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h4m1 0h2m2 0h3m3 0h1m2 0h1m1 0h1M0 27.5h1m5 0h1m3 0h1m2 0h1m1 0h1m1 0h2m1 0h1m1 0h4m1 0h1M0 28.5h7m1 0h5m4 0h4m1 0h1m2 0h1m1 0h1"/></svg>
+</div><div class="c-body"><p class="c-name">Bruno Díaz</p><dl class="c-data"><div><dt>Código del colegio</dt><dd>sanjose</dd></div><div><dt>Usuario</dt><dd>brunod</dd></div><div><dt>Contraseña</dt><dd><span class="pw"><span class="pw-real">sapo-mesa-95</span><span class="pw-mask" aria-hidden="true">•••• ••••</span><span class="pw-sr sr-only">oculta en pantalla</span></span></dd></div></dl></div></article>
+    </div>
+  </div>
+</main>
+
+<nav class="mock" aria-label="Estados de esta maqueta">
+  <span>Opción C</span>
+  <a href="#lista">Lista</a><a href="#confirmar">Todo el grupo</a><a href="#confirmar-una">Una sola</a><a href="#una">Una lista</a>
+</nav>
+<script>// Maqueta: cada estado es un bloque [data-state]; el hash elige cuál se ve. ?captura esconde la barra de estados.
+(function () {
+  var root = document.documentElement;
+  if (new URLSearchParams(location.search).has("captura")) root.classList.add("captura");
+  var states = Array.prototype.slice.call(document.querySelectorAll("[data-state]"));
+  function show() {
+    var id = location.hash.slice(1);
+    var match = states.filter(function (s) { return s.dataset.state === id; })[0];
+    if (!match && id && document.getElementById(id)) return; // enlace a un campo dentro del estado actual
+    var current = match || states[0];
+    states.forEach(function (s) { s.hidden = s !== current; });
+    root.dataset.state = current.dataset.state;
+    document.querySelectorAll(".mock a").forEach(function (a) {
+      a.setAttribute("aria-current", a.getAttribute("href") === "#" + current.dataset.state ? "true" : "false");
+    });
+    var focus = current.querySelector("[data-focus]");
+    if (focus && location.hash && !root.classList.contains("captura")) focus.focus();
+  }
+  if (states.length) { addEventListener("hashchange", show); show(); }
+  // Mostrar u ocultar la contraseña: el botón cambia de texto y el campo de tipo.
+  document.querySelectorAll("[data-toggle]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var input = document.getElementById(b.getAttribute("aria-controls"));
+      var visible = input.type === "password";
+      input.type = visible ? "text" : "password";
+      b.textContent = visible ? "Ocultar" : "Mostrar";
+    });
+  });
+  // Enviar un formulario de la maqueta lleva al estado que dice data-go.
+  document.querySelectorAll("form[data-go]").forEach(function (f) {
+    f.addEventListener("submit", function (e) { e.preventDefault(); location.hash = f.dataset.go; });
+  });
+})();
+</script>
+</body>
+</html>
