@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, unstable_rethrow } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccessCardsScreen } from "@/components/access-cards/AccessCardsScreen";
 import { Loading } from "@/components/ui/States";
@@ -38,6 +39,8 @@ function Unavailable({ message }: { message: string }) {
 
 /** The group, or the neutral text to show when it cannot be read. No access or no group is a 404, as for any page. */
 async function load(groupId: string): Promise<{ group: Group } | { message: string }> {
+  // Reads the session of this request: dynamic, never prerendered (Supabase uses Date.now(), which a prerender forbids).
+  await connection();
   try {
     return { group: await listGroupAccounts(groupId) };
   } catch (error) {

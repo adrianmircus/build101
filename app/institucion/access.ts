@@ -1,4 +1,5 @@
 import "server-only";
+import { connection } from "next/server";
 import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import type { StaffActor } from "@/lib/domain/accounts/entities";
 import { Id } from "@/lib/domain/common";
@@ -10,6 +11,8 @@ import { getActor, requireAdmin } from "@/lib/server/auth/actor";
 
 /** The signed-in staff, or the redirect to where they belong: no session goes to the login, a student to their home. */
 export async function staffOrRedirect(): Promise<StaffActor> {
+  // Reads the session of this request: dynamic, never prerendered (Supabase uses Date.now(), which a prerender forbids).
+  await connection();
   const actor = await getActor();
   if (!actor) redirect("/ingresar/profesor");
   if (actor.kind === "student") redirect("/estudiante");
@@ -32,6 +35,8 @@ export type Loaded<T> = { ok: true; data: T } | { ok: false };
 
 /** Reads something with a service; a failure (not ready, down) is a value the page turns into a neutral message. */
 export async function load<T>(read: () => Promise<T>): Promise<Loaded<T>> {
+  // Reads the session of this request: dynamic, never prerendered (Supabase uses Date.now(), which a prerender forbids).
+  await connection();
   try {
     return { ok: true, data: await read() };
   } catch (error) {

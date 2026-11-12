@@ -1,5 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { getClaims, signOut } from "../repos/auth-session";
 import { getActor } from "./actor";
 
@@ -31,6 +32,8 @@ export async function loginGate(
   area: LoginArea,
   options: { cleaned?: boolean; canClean?: boolean } = {},
 ): Promise<void> {
+  // Reads the session of this request: dynamic, never prerendered (Supabase uses Date.now(), which a prerender forbids).
+  await connection();
   let actor;
   let hasClaims = false;
   try {
