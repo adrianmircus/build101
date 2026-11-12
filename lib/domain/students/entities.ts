@@ -17,6 +17,8 @@ export const Student = z.object({
   displayName: DisplayName,
   username: Username,
   userId: Id.nullable(),
+  // Derived from needs (sensitive for staff): only the student reads their own, in StudentHome.
+  interface: z.enum(["standard", "gaze", "voice"]),
   archivedAt: Timestamp.nullable(),
   revision: Revision,
 });

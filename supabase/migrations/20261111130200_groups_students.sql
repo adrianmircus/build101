@@ -47,6 +47,10 @@ create table app.students (
   username text not null check (username ~ '^[a-z0-9][a-z0-9._-]{1,39}$'),
   -- The student's Auth account once provisioned (phase 2).
   user_id uuid unique references app.app_users (id) on delete set null,
+  -- How the student answers (StudentHome.interface), derived from their needs by set_student_needs
+  -- (T1.3a): student RPCs run as tiza_student, which cannot read student_needs. Sensitive for staff
+  -- (it reveals a profile): no staff projection returns it; the student sees only their own.
+  interface text not null default 'standard' check (interface in ('standard', 'gaze', 'voice')),
   archived_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

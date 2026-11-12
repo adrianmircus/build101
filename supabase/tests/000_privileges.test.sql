@@ -89,11 +89,14 @@ select is_empty($$
    where n.nspname in ('app', 'api') and pg_get_userbyid(c.relowner) <> 'postgres'
   union all
   select p.oid::regprocedure::text from pg_proc p
-   where p.pronamespace in ('app'::regnamespace, 'api'::regnamespace) and pg_get_userbyid(p.proowner) <> 'postgres'
+   where p.pronamespace in ('app'::regnamespace, 'api'::regnamespace)
+     and pg_get_userbyid(p.proowner) <> case
+           when p.pronamespace = 'api'::regnamespace and starts_with(p.proname, 'student_') then 'tiza_student'
+           else 'postgres' end
   union all
   select t.typname::text from pg_type t
    where t.typnamespace in ('app'::regnamespace, 'api'::regnamespace) and pg_get_userbyid(t.typowner) <> 'postgres'
-$$, 'every object in app and api belongs to postgres');
+$$, 'every object in app and api belongs to postgres, except the student RPCs, which belong to tiza_student');
 
 select is_empty($$
   select pg_get_userbyid(d.defaclrole) || ' in ' || n.nspname from pg_default_acl d

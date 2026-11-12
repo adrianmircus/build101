@@ -50,19 +50,19 @@ export const DELIVERY_RPCS = {
       .strict(),
     result: z.object({ publicationId: Id, attempts: z.int().min(0) }).strict(),
   },
-  open_attempt: {
+  student_open_attempt: {
     args: z.object({ p_assignment_id: Id }).strict(),
     result: z.object({ attemptId: Id, status: AttemptStatus }).strict(),
   },
-  start_attempt: {
+  student_start_attempt: {
     args: attemptOnly,
     result: z.object({ attemptId: Id, status: AttemptStatus, draftRevision: Revision }).strict(),
   },
-  save_draft: {
+  student_save_draft: {
     args: z.object({ p_attempt_id: Id, p_revision: Revision, p_answers: Answers, p_choices: Choices }).strict(),
     result: z.object({ revision: Revision }).strict(),
   },
-  submit_attempt: {
+  student_submit_attempt: {
     args: z.object({ p_attempt_id: Id, p_revision: Revision }).strict(),
     // alreadySubmitted: a second click found it submitted and changed nothing.
     result: z.object({ submittedAt: Timestamp, late: z.boolean(), alreadySubmitted: z.boolean() }).strict(),

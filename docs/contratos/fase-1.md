@@ -2,12 +2,12 @@
 
 Este documento fija la base de datos de la fase 1: dónde viven las tablas, cómo se escriben las RPC, cómo se toman los locks y cómo se reparten los tickets. Lo escribió el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora las cuatro rondas de revisión de Codex del contrato (C1 a C22).
+Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora las seis rondas de revisión de Codex del contrato (C1 a C22).
 
 Archivos del contrato:
 
-- Migraciones `supabase/migrations/20261111130000` a `20261111131200`. Nacen cerradas y ningún ticket las edita.
-- Pruebas `supabase/tests/000_privileges.test.sql`, `001_contract.test.sql`, `002_contract_rules.test.sql`, `003_contract_history.test.sql` y `004_contract_redaction.test.sql`.
+- Migraciones `supabase/migrations/20261111130000` a `20261111131300`. Nacen cerradas y ningún ticket las edita.
+- Pruebas `supabase/tests/000_privileges.test.sql`, `001_contract.test.sql`, `002_contract_rules.test.sql`, `003_contract_history.test.sql`, `004_contract_redaction.test.sql` y `005_student_role.test.sql`.
 - Tipos y esquemas en `lib/domain/`, con el registro de RPC en `lib/domain/rpc.ts`.
 - El chequeo de compilación entre el registro y la base, en `lib/server/db/rpc-contract.ts`.
 - La regla de supresión de cada tabla con datos de un estudiante, en `lib/domain/permissions/erasure.ts`.
@@ -131,13 +131,29 @@ Actores en el historial (C7). Una fila que no se modifica nunca no puede tener u
 - Cambiar las instrucciones del práctico (`update_assessment`) marca `stale` sus versiones. Nunca cambia un texto ya aprobado debajo del profe; regenerar o editar lo actualiza.
 - Tiene la misma procedencia que un ejercicio (`instructions_written_by`, ver «Una salida de la IA»).
 
+### El rol del estudiante
+
+Lo que lee un estudiante nunca sale de la clave ni de los perfiles de nadie, y eso lo garantiza Postgres, no una revisión del código. Un chequeo estático de los cuerpos de las funciones no alcanza: no ve nombres entre comillas, helpers de otros esquemas, vistas, triggers ni cuerpos `BEGIN ATOMIC`.
+
+- Toda RPC `api.student_*` es `SECURITY DEFINER` y su dueño es `tiza_student` (`20261111131300_student_role.sql`). Corre con los privilegios de ese rol, por cualquier camino: helpers, vistas, triggers, cualquier esquema. Las RPC de intentos también llevan el prefijo: `student_open_attempt`, `student_start_attempt`, `student_save_draft` y `student_submit_attempt`.
+- `tiza_student` es `NOLOGIN` y `NOINHERIT`, no es miembro de ningún rol y ningún rol de la API es miembro suyo. Su único miembro es `postgres`, con `ADMIN OPTION` y sin `SET` ni `INHERIT`: Postgres se lo da a quien crea el rol, y es lo que deja a las migraciones pasarle funciones.
+- Tiene `SELECT` solo sobre `app_users`, `institutions`, `memberships`, `subjects`, `students`, `groups`, `enrollments`, `assessments`, `publications`, `assignments`, `assignment_attempts`, `submissions` y `grades`. De `consents`, solo las columnas que dicen si uno está vigente, nunca el texto ni el archivo. Escribe solo lo que pide el protocolo de intentos: `UPDATE` en `assignments` y `assignment_attempts`, e `INSERT` y `UPDATE` en `submissions`. Nada sobre `question_keys`, `answer_keys`, `answer_key_revisions`, perfiles, notas ni generaciones: cualquier camino hacia ellas falla con `insufficient_privilege`.
+- Sin `BYPASSRLS`. Las tablas fuerzan RLS sin políticas; una política `to tiza_student` en cada tabla concedida lo deja pasar. Los privilegios son todo el límite, y no hace falta un atributo que quizás Supabase hospedado no permita.
+- Solo ejecuta helpers `SECURITY INVOKER`: un helper `SECURITY DEFINER` de `postgres` le prestaría más derechos. Por eso los helpers de «Quién llama» pasan a ser invoker, y `app.session_user_id()` reemplaza a `auth.uid()` (el rol no tiene `USAGE` en `auth` y `postgres` no puede dárselo).
+- Los triggers de las tablas que escribe (`touch_row`, las guardias de intentos y entregas, `attempts_key_matches`) corren como quien escribe y solo leen `publications`, que está concedida. Un trigger nuevo sobre esas tablas tiene que poder correr con este rol.
+- Para crear, reemplazar o conceder una RPC del estudiante, la migración abre una ventana: `select app.begin_student_rpc_change();` antes y `select app.end_student_rpc_change();` después. La ventana le da a `postgres` `SET` e `INHERIT` sobre el rol y a este `CREATE` en `api`; al cerrarla, toda `api.student_*` pasa a ser de `tiza_student` y se devuelven los dos permisos.
+- Supabase hospedado: `postgres` tiene `CREATEROLE` también ahí, que es todo lo que esto necesita. T1.0 lo confirma al aplicar las migraciones en staging.
+
+`005_student_role` lo prueba: los atributos del rol y sus membresías; que toda `api.student_*` es definer y de `tiza_student`; que no puede ejecutar ninguna otra función definer; la lista exacta de tablas que puede tocar; que no tiene nada sobre la clave, los perfiles, las notas ni las generaciones, ni las columnas de texto de `consents`; que no borra nada; que toda política de `app` es solo para él. Y con funciones creadas en la prueba: una RPC del estudiante que llega a `answer_key_revisions` o a `student_needs` falla con `42501`, y el protocolo de empezar un intento, con sus triggers, funciona con el rol.
+
 ### Quién llama
 
-Funciones de `app`, sin `EXECUTE` para nadie. Las RPC las llaman como su dueño.
+Funciones de `app`, `SECURITY INVOKER`: corren con los derechos de la RPC que las llama. Solo `tiza_student` tiene `EXECUTE` sobre ellas, para las RPC del estudiante; las del staff corren como `postgres`.
 
 | Función | Devuelve |
 |---|---|
-| `app.actor_id()` | El usuario de `auth.uid()` si tiene fila en `app_users`; si no, nulo |
+| `app.session_user_id()` | El usuario de Auth del pedido, leído de los mismos valores que `auth.uid()` |
+| `app.actor_id()` | Ese usuario si tiene fila en `app_users`; si no, nulo |
 | `app.require_actor()` | Lo mismo, o `FORBIDDEN` con `no_session` |
 | `app.actor_institutions(roles)` | Las instituciones donde el actor tiene alguno de esos roles activos (conjunto) |
 | `app.is_member(institución, roles)` | Si el actor es miembro activo con alguno de esos roles |
@@ -154,7 +170,7 @@ Un sandbox vencido cuenta como sin membresía: después de `expires_at` su visit
 
 - `verbo_sustantivo` en inglés: `create_group`, `list_group_students`, `get_version`.
 - `internal_*`: solo `service_role`. Una prueba falla si `authenticated` puede ejecutar alguna.
-- `student_*`: los DTO del estudiante.
+- `student_*`: todo lo que llama un estudiante (sus DTO y sus intentos). Su dueño es `tiza_student` (ver «El rol del estudiante»).
 - El ticket que implementa una RPC la reemplaza con `CREATE OR REPLACE FUNCTION` en una migración nueva, con la misma firma, y concede `EXECUTE` a `authenticated` (las de usuario) o a `service_role` (las internas). En `api` nada tiene privilegios por defecto, ni siquiera para `service_role`: si el ticket no concede, nadie ejecuta. Cambiar una firma es cambiar el contrato.
 
 ## Decisiones que cambian el spec
@@ -172,6 +188,7 @@ Un sandbox vencido cuenta como sin membresía: después de `expires_at` su visit
 - **Guardar el perfil no exige todavía el consentimiento `store_profile`.** El chequeo y sus efectos llegan con T9.3. Hasta la compuerta legal (T10.6) no entra ningún dato real.
 - **Las RPC viven en `api`, no en `public`.** El spec habla de «RPC en `public`». Se cambia por los privilegios por defecto de `supabase_admin` (ver «Tres esquemas»).
 - **Las instrucciones generales se copian a cada versión.** El spec las pone en `assessments`. La versión tiene su propia copia, que se aprueba y se publica con el resto (ver «Instrucciones generales»).
+- **Las RPC del estudiante corren con el rol `tiza_student`.** Lo que no lee la clave ni los perfiles lo garantizan los privilegios de Postgres (ver «El rol del estudiante»). Las RPC de intentos pasan a llamarse `student_open_attempt`, `student_start_attempt`, `student_save_draft` y `student_submit_attempt`, y `students.interface` guarda la forma de responder derivada del perfil.
 - **La prueba de fugas garantiza solo lo estructural.** Si un texto aprobado dice la solución se trata como contenido, con un aviso al profe que no bloquea (ver «Prueba de fugas»).
 - **Los actores del historial no tienen FK.** En los eventos, las revisiones de la clave y las publicaciones, el id de quien actuó queda como dato histórico, como en `audit_log` (ver «Triggers»).
 
@@ -188,7 +205,7 @@ Todas en `app`. Las RLS y RPC de cada una las escribe el ticket de la columna «
 | `invitations` | `130100_identity` | T2.3 | |
 | `groups` | `130200_groups_students` | T1.2a | |
 | `group_staff` | `130200_groups_students` | T1.2a | |
-| `students` | `130200_groups_students` | T1.2b | |
+| `students` | `130200_groups_students` | T1.2b (`interface`: T1.3a) | `interface` (derivada del perfil) |
 | `enrollments` | `130200_groups_students` | T1.2b | |
 | `student_pseudonyms` | `130200_groups_students` | T1.2b | |
 | `account_provisioning` | `130200_groups_students` | T1.2b crea la fila; T2.5 la ejecuta | |
@@ -303,10 +320,10 @@ Todas en el esquema `api`, `SECURITY DEFINER`, con `search_path = ''`, devuelven
 | `approve_answer_key(p_version_id, p_revision_id)` | T1.4e |
 | `internal_record_answer_key_revision(p_generation_id, p_content)` | T1.4e |
 | `publish_version(p_version_id, p_revision, p_op_key, p_answer_key_revision_id = null)` | T1.5a |
-| `open_attempt(p_assignment_id)` | T1.5b |
-| `start_attempt(p_attempt_id)` | T1.5b |
-| `save_draft(p_attempt_id, p_revision, p_answers, p_choices)` | T1.5b |
-| `submit_attempt(p_attempt_id, p_revision)` | T1.5b |
+| `student_open_attempt(p_assignment_id)` | T1.5b |
+| `student_start_attempt(p_attempt_id)` | T1.5b |
+| `student_save_draft(p_attempt_id, p_revision, p_answers, p_choices)` | T1.5b |
+| `student_submit_attempt(p_attempt_id, p_revision)` | T1.5b |
 | `list_assessment_attempts(p_assessment_id)` | T1.5c |
 | `get_attempt_for_grading(p_attempt_id)` (auditada) | T1.5c |
 | `grade_attempt(p_attempt_id, p_feedback, p_exercise_results, p_score = null, p_revision = null)` | T1.5c |
@@ -442,13 +459,13 @@ Un intento usa siempre la revisión de la clave de su publicación (C8): lo exig
 
 Las RPC de un intento resuelven ids sin lock y después llaman a `app.lock_attempt_tree`, que bloquea asignación, intento y borrador en ese orden (C4). Publicar bloquea las asignaciones antes de tocar sus intentos. Así no se cruzan.
 
-Abrir (`open_attempt`): el estudiante ve su intento vigente si la tabla lo deja leer, y la primera vez se guarda `first_viewed_at`. No toma locks de escritura más allá de esa marca.
+Abrir (`student_open_attempt`): el estudiante ve su intento vigente si la tabla lo deja leer, y la primera vez se guarda `first_viewed_at`. No toma locks de escritura más allá de esa marca.
 
-Empezar (`start_attempt`): pasa `opened` a `started` y crea la fila de `submissions` con revisión 1. Si ya empezó, devuelve lo mismo.
+Empezar (`student_start_attempt`): pasa `opened` a `started` y crea la fila de `submissions` con revisión 1. Si ya empezó, devuelve lo mismo.
 
-Guardar (`save_draft`): exige `started` y que la tabla deje guardar; valida que cada id de ejercicio y de pregunta sea de la publicación del intento; compara `p_revision` con la del borrador (`CONFLICT revision_mismatch`) y la sube.
+Guardar (`student_save_draft`): exige `started` y que la tabla deje guardar; valida que cada id de ejercicio y de pregunta sea de la publicación del intento; compara `p_revision` con la del borrador (`CONFLICT revision_mismatch`) y la sube.
 
-Entregar (`submit_attempt`), lo que pide R3-4:
+Entregar (`student_submit_attempt`), lo que pide R3-4:
 
 ```sql
 perform app.rpc_begin();  -- primera línea de toda RPC: rechaza el modo supresión y reinicia los locks
@@ -532,7 +549,7 @@ Lo que la prueba garantiza, y con qué:
 - Un id prohibido (otro estudiante, un seudónimo, un perfil, una clave, una versión no asignada) no aparece en ningún lado: ni como valor, ni como clave, ni metido en un texto («Referencia: <id>»), tampoco en lo que escribió el estudiante (`forbiddenIds`).
 - Ninguna palabra de perfil (`PROFILE_WORDS`, sin importar mayúsculas ni tildes) aparece en texto que escribió el servidor. Lo que escribió el estudiante (`ownContent`) queda exento solo de esta búsqueda.
 - La opción correcta no aparece en ningún campo de id fuera de la lista de opciones (`questions.*.options.*.id`) y de la elección propia del estudiante (`draft.choices.*`) (`correctOptionIds`).
-- El SQL de las RPC del estudiante nunca lee la clave: `001_contract` calcula, con un CTE recursivo, el cierre de llamadas de cada RPC `student_*` (toda función de `app` o `api` que su cuerpo nombra, a cualquier profundidad) y falla si alguna nombra `question_keys`, `answer_keys` o `answer_key_revisions`, o usa SQL dinámico (`EXECUTE`, `format(`), que ningún chequeo estático puede seguir. La misma prueba crea una cadena de dos saltos y una RPC con SQL dinámico, y comprueba que el chequeo las atrapa.
+- Las RPC del estudiante nunca leen la clave ni los perfiles. La garantía es el rol `tiza_student` y sus privilegios (ver «El rol del estudiante»), que Postgres hace cumplir por cualquier camino. Además, como señal rápida, `001_contract` calcula, con un CTE recursivo, el cierre de llamadas de cada RPC `student_*` (toda función de `app` o `api` que su cuerpo nombra, a cualquier profundidad) y falla si alguna nombra `question_keys`, `answer_keys` o `answer_key_revisions`, o usa SQL dinámico (`EXECUTE`, `format(`), que ningún chequeo estático puede seguir. La misma prueba crea una cadena de dos saltos y una RPC con SQL dinámico, y comprueba que el chequeo las atrapa.
 
 El aviso, aparte (`lib/domain/delivery/reveal.ts`):
 
@@ -644,6 +661,8 @@ Criterios de aceptación:
   - get_student_needs, get_group_needs y list_student_need_events escriben una fila de audit_log por pedido,
     con el conjunto de estudiantes sin repetir; ninguna fila si no mostró a nadie.
   - Inclusión lee y edita perfiles de toda la institución; el admin no.
+  - set_student_needs mantiene students.interface: gaze si el perfil incluye motor, voice si incluye
+    dysgraphia, standard si no. Es lo que lee student_home, que no puede leer student_needs.
 Pruebas obligatorias: 012_needs.test.sql con las reglas comunes. 013_reconstruction.test.sql: como profe del
   grupo, llama a todas las RPC no auditadas que existan y comprueba que ninguna respuesta contiene un perfil, un
   apoyo, un interés, la configuración de una versión ni sus destinatarios. Cada ticket posterior que agrega una
@@ -839,7 +858,9 @@ Archivos que puede crear o cambiar: supabase/migrations/20261112200000_t1_5b_att
   supabase/tests/021_attempts.test.sql, tests/integration/submit-concurrency.test.ts.
 Contratos que usa (solo lectura): lib/domain/delivery/attempt-rules.ts, lib/domain/delivery/rpc.ts,
   app.lock_attempt_tree.
-Criterios de aceptación: el protocolo de «Intentos y entrega», con lock_attempt_tree en empezar, guardar y
+Criterios de aceptación: las cuatro RPC se escriben dentro de la ventana de «El rol del estudiante» y corren
+  como tiza_student, sin pedirle más privilegios (si algo falta, BLOQUEADO); el protocolo de «Intentos y
+  entrega», con lock_attempt_tree en empezar, guardar y
   entregar; cada celda de la tabla de attempt-rules (estado por momento) probada contra las RPC; guardar o
   entregar un intento opened es CONFLICT attempt_not_started; ids de otra publicación rechazados
   (unknown_exercise); un estudiante no toca el intento de otro.
@@ -876,7 +897,9 @@ Objetivo: los cuatro DTO del estudiante, con exactamente las claves de su lista.
 Archivos que puede crear o cambiar: supabase/migrations/20261112220000_t1_5d_student_dto.sql,
   supabase/tests/023_student_dto.test.sql, tests/integration/student-dto-leaks.test.ts.
 Contratos que usa (solo lectura): lib/domain/delivery/student-dto.ts, lib/domain/delivery/leaks.ts.
-Criterios de aceptación: interface, answer_mode y aids calculados en el servidor, sin nombrar perfiles; sin
+Criterios de aceptación: las cuatro RPC se escriben dentro de la ventana de «El rol del estudiante» y corren
+  como tiza_student, sin pedirle más privilegios (si algo falta, BLOQUEADO); interface sale de
+  students.interface, answer_mode y aids de la publicación, sin nombrar perfiles; sin
   consentimiento de dictado, voice pasa a typed en cada lectura; student_grades solo intentos corregidos.
 Pruebas obligatorias: en integración, un estudiante con perfil motor y otro con dislexia en el mismo grupo:
   checkStudentDto sobre cada DTO, con las opciones de «Prueba de fugas» (forbiddenIds, PROFILE_WORDS y las
@@ -989,10 +1012,10 @@ Agente: orquestador      Tanda: 1        Depende de: contrato
 Turno de base: no
 Objetivo: docs/PRIVACIDAD-DATOS.md dice, para cada tabla y campo con datos de un estudiante, qué pasa al
   borrarlo, y una prueba lo compara con el esquema y con erasure.ts.
-Archivos que puede crear o cambiar: docs/PRIVACIDAD-DATOS.md, supabase/tests/005_inventory.test.sql,
+Archivos que puede crear o cambiar: docs/PRIVACIDAD-DATOS.md, supabase/tests/006_inventory.test.sql,
   lib/domain/permissions/inventory.test.ts.
 Contratos que usa (solo lectura): este documento, lib/domain/permissions/tables.ts, lib/domain/permissions/erasure.ts.
-Criterios de aceptación: 005_inventory compara las tablas de app con una lista literal; inventory.test.ts
+Criterios de aceptación: 006_inventory compara las tablas de app con una lista literal; inventory.test.ts
   comprueba que esa lista, APP_TABLES y las tablas del inventario son las mismas, y que cada tabla de
   STUDENT_DATA_TABLES aparece con la regla de ERASURE_RULES y, campo por campo, qué se borra, qué se redacta y
   qué se conserva y por qué, incluidos los JSON (inputs, output, data, merge_result, result, id_map). También

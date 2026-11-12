@@ -143,9 +143,6 @@ export type Database = {
 "list_versions":
 { Args: { "p_assessment_id": string }; Returns: Json
                            },
-"open_attempt":
-{ Args: { "p_assignment_id": string }; Returns: Json
-                           },
 "publish_version":
 { Args: { "p_answer_key_revision_id"?: string,"p_op_key": string,"p_revision": number,"p_version_id": string }; Returns: Json
                            },
@@ -173,9 +170,6 @@ export type Database = {
 "revoke_consent":
 { Args: { "p_consent_id": string,"p_revision": number }; Returns: Json
                            },
-"save_draft":
-{ Args: { "p_answers": Json,"p_attempt_id": string,"p_choices": Json,"p_revision": number }; Returns: Json
-                           },
 "set_question_key":
 { Args: { "p_correct_option_id": string,"p_question_id": string,"p_revision"?: number }; Returns: Json
                            },
@@ -185,23 +179,29 @@ export type Database = {
 "set_version_recipients":
 { Args: { "p_op_id": string,"p_revision": number,"p_student_ids": (string)[],"p_version_id": string }; Returns: Json
                            },
-"start_attempt":
-{ Args: { "p_attempt_id": string }; Returns: Json
-                           },
 "student_grades":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
 "student_home":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"student_open_attempt":
+{ Args: { "p_assignment_id": string }; Returns: Json
+                           },
+"student_save_draft":
+{ Args: { "p_answers": Json,"p_attempt_id": string,"p_choices": Json,"p_revision": number }; Returns: Json
+                           },
+"student_start_attempt":
+{ Args: { "p_attempt_id": string }; Returns: Json
+                           },
+"student_submit_attempt":
+{ Args: { "p_attempt_id": string,"p_revision": number }; Returns: Json
+                           },
 "student_task":
 { Args: { "p_attempt_id": string }; Returns: Json
                            },
 "student_task_list":
 { Args: Record<PropertyKey, never>; Returns: Json
-                           },
-"submit_attempt":
-{ Args: { "p_attempt_id": string,"p_revision": number }; Returns: Json
                            },
 "unenroll_student":
 { Args: { "p_group_id": string,"p_student_id": string }; Returns: Json

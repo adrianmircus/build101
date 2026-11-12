@@ -98,10 +98,10 @@ const VERSIONS: Operation[] = [
 
 const DELIVERY: Operation[] = [
   op({ rpc: "publish_version", ticket: "T1.5a", allow: STAFF }),
-  op({ rpc: "open_attempt", ticket: "T1.5b", own: STUDENT }),
-  op({ rpc: "start_attempt", ticket: "T1.5b", own: STUDENT }),
-  op({ rpc: "save_draft", ticket: "T1.5b", own: STUDENT }),
-  op({ rpc: "submit_attempt", ticket: "T1.5b", own: STUDENT }),
+  op({ rpc: "student_open_attempt", ticket: "T1.5b", own: STUDENT }),
+  op({ rpc: "student_start_attempt", ticket: "T1.5b", own: STUDENT }),
+  op({ rpc: "student_save_draft", ticket: "T1.5b", own: STUDENT }),
+  op({ rpc: "student_submit_attempt", ticket: "T1.5b", own: STUDENT }),
   op({ rpc: "list_assessment_attempts", ticket: "T1.5c", allow: STAFF }),
   op({ rpc: "get_attempt_for_grading", ticket: "T1.5c", allow: STAFF, note: "Auditada." }),
   op({ rpc: "grade_attempt", ticket: "T1.5c", allow: STAFF }),

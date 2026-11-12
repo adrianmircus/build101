@@ -171,7 +171,7 @@ begin
   end;
   insert into app.audit_log (institution_id, actor_user_id, action, entity, entity_id, student_ids, request_id)
   values (
-    p_institution_id, auth.uid(), p_action, p_entity, p_entity_id,
+    p_institution_id, app.session_user_id(), p_action, p_entity, p_entity_id,
     array(select distinct s from unnest(p_student_ids) as s where s is not null order by s),
     v_request_id
   );

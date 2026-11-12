@@ -7,7 +7,7 @@
 -- nobody else.
 --
 -- Conventions (docs/contratos/fase-1.md): typed p_ parameters, jsonb output built key by key in
--- camelCase (never to_jsonb(row)), the actor from auth.uid(), errors with app.raise_error.
+-- camelCase (never to_jsonb(row)), the actor from app.session_user_id(), errors with app.raise_error.
 
 -- T1.2a · internal (service_role): the admin command, provisioning and test factories use these.
 create function api.internal_create_institution(p_name text, p_code text, p_kind text, p_expires_at timestamptz default null, p_owner_user_id uuid default null)

@@ -5,7 +5,7 @@ import type { AttemptStatus } from "./entities";
 // lets the UI show the right buttons and lets tests state the table once.
 //
 // Starting is its own step: an opened attempt can be read and started, and only a started one
-// has a draft to save and submit (start_attempt creates it).
+// has a draft to save and submit (student_start_attempt creates it).
 
 export type AttemptSituation = {
   status: AttemptStatus;
