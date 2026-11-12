@@ -142,6 +142,9 @@ select ok(pg_temp.add_member('instB', 'stud', 'teacher') is not null,
 -- A student row already tied to the account blocks staff roles before the membership exists.
 insert into app.students (id, institution_id, display_name, username, user_id)
   values (gen_random_uuid(), pg_temp.id('instB'), 'Est B', 'est.b.t1', null);
+-- create_student always writes its provisioning row; a student without it is never linked (T1.F12).
+insert into app.account_provisioning (institution_id, student_id, op_key)
+  select s.institution_id, s.id, gen_random_uuid() from app.students s where s.username = 'est.b.t1' and s.institution_id = pg_temp.id('instB');
 select is(pg_temp.err(format($$ update app.students set user_id = %L where username = 'est.b.t1' and institution_id = %L $$,
     pg_temp.id('userb'), pg_temp.id('instB'))),
   'P0001 CONFLICT role_conflict', 'a student row cannot be tied to an account that is staff in that institution');

@@ -268,8 +268,8 @@ select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = 
   'account_provisioning: nor is it emptied (T1.F10: the contract keeps the UUID after the Auth account is deleted)');
 select is(pg_temp.st(format('update app.account_provisioning set student_id = %s where student_id = %s', pg_temp.i('s2'), pg_temp.i('s1'))), 'P0004',
   'account_provisioning: a provisioning row does not pass to another student');
-select is(pg_temp.st(format('update app.account_provisioning set student_id = null, status = ''deleted'' where student_id = %s', pg_temp.i('s4'))), 'ok',
-  'control: the erasure nulls student_id');
+select is(pg_temp.st(format('update app.account_provisioning set student_id = null, status = ''deleted'' where student_id = %s', pg_temp.i('s4'))), 'P0004',
+  'account_provisioning: student_id goes to NULL only when the student is deleted (T1.F12; 002 covers the FK path)');
 select is(pg_temp.st(format('update app.students set user_id = %s where id = %s', pg_temp.i('stu_c'), pg_temp.i('s2'))), 'P0004',
   'students: an account tied to a student is not moved to another account');
 select is(pg_temp.st(format('update app.students set user_id = null where id = %s', pg_temp.i('s4'))), 'P0004',

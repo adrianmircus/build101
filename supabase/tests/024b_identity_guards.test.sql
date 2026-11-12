@@ -3,7 +3,7 @@
 -- authenticated it would fail earlier with 42501 and pass even without the guard) and has to fail with P0004.
 -- Placeholder data only. The whole file is rolled back.
 begin;
-select plan(69);
+select plan(74);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -16,7 +16,7 @@ begin
   execute p_sql into v_res;
   reset role;
   return v_res;
-exception when others then
+exception when assert_failure or others then  -- a guard's P0004 is ASSERT_FAILURE, which OTHERS does not cover
   get stacked diagnostics v_state = returned_sqlstate, v_message = message_text, v_detail = pg_exception_detail;
   reset role;
   return jsonb_build_object('error', v_state || ' ' || v_message || ' ' || coalesce(v_detail, ''));
@@ -159,6 +159,25 @@ select is(pg_temp.st(format('delete from app.app_users where id = %s', pg_temp.i
 select is((select s.user_id from app.students s where s.id = pg_temp.id('s3')), null::uuid, 'and the student is unlinked');
 select is((select ap.auth_user_id from app.account_provisioning ap where ap.student_id = pg_temp.id('s3')), pg_temp.id('gone'),
   'and the provisioning row still remembers which account it was');
+
+-- 3d. That memory lives as long as the student (T1.F12, round 5): it is not detached nor deleted, and a student without
+-- it is never linked. The path of the review, through the RPC: detach the row, delete Auth A, link to B.
+insert into ids (k, id) values ('b2', gen_random_uuid());
+insert into auth.users (id, email) values (pg_temp.id('b2'), 'b2@t1-f12.invalid');
+select pg_temp.as_service(format('select api.internal_upsert_app_user(%L, ''Persona b2'')', pg_temp.id('b2')));
+select is(pg_temp.st(format('update app.account_provisioning set status = ''deleted'', student_id = null where student_id = %s', pg_temp.i('s3'))), 'P0004',
+  'account_provisioning: student_id does not go to NULL while the student exists');
+select is(pg_temp.st(format('delete from app.account_provisioning where student_id = %s', pg_temp.i('s3'))), 'P0004',
+  'account_provisioning: nor is the row deleted while the student exists');
+select matches(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s3'), pg_temp.id('b2'))) ->> 'error', '^P0004',
+  'internal_link_student_user: the student whose account was deleted is not linked to another one');
+-- A row lost some other way (simulated with the guard off): the link is refused, not read as "never linked".
+alter table app.account_provisioning disable trigger account_provisioning_kept;
+delete from app.account_provisioning where student_id = pg_temp.id('s3');
+alter table app.account_provisioning enable trigger account_provisioning_kept;
+select matches(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s3'), pg_temp.id('b2'))) ->> 'error', '^P0004',
+  'internal_link_student_user: a student without its provisioning row is not linked');
+select is((select s.user_id from app.students s where s.id = pg_temp.id('s3')), null::uuid, 'and the student is still unlinked');
 
 -- ---------------------------------------------------------------------------------------------
 -- 4b. operations.op_key and kind, import_runs.op_key
