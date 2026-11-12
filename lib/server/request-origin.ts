@@ -6,7 +6,7 @@ import { z } from "zod";
  * configuration (NEXT_PUBLIC_SITE_URL, else the deployment URL), never from the Host or Origin headers of the
  * request: an attacker could set those and get a reset link that points at their own server.
  */
-export function publicOrigin(env: NodeJS.ProcessEnv = process.env): string {
+export function publicOrigin(env: Record<string, string | undefined> = process.env): string {
   // Netlify sets URL to the main address of the site; a deploy preview has its own DEPLOY_PRIME_URL.
   const raw = env.NEXT_PUBLIC_SITE_URL ?? env.URL ?? env.DEPLOY_PRIME_URL;
   const parsed = z.url({ protocol: /^https?$/ }).safeParse(raw);
