@@ -36,3 +36,18 @@ El barrido de las **45 tablas** también encontró identidades técnicas sin con
 Verificación exclusivamente `READ ONLY`: catálogo, restricciones y evaluación de guardas vigentes sobre variables sintéticas. No ejecuté UPDATE ni repetí pgTAP. Worktree intacto; ninguna alta identificada.
 
 Veredicto: fase no lista
+
+## Ronda 4
+
+**F1-4 sigue parcial (media): quedan dos reasignaciones `A → NULL → B` sin `P0004`.**
+
+- [students.user_id](supabase/migrations/20261113070000_t1_fix8.sql:649): la guardia permite vaciar la cuenta y después vincular otra. Reatribuye el estudiante; congelar `account_provisioning.auth_user_id` no bloquea este camino.
+- [invitations.accepted_by](supabase/migrations/20261113090000_t1_fix10.sql:79): incluso con la invitación aceptada, permite borrar el actor y fijar otro. La transición documentada a NULL no justifica la posterior reasignación a B.
+
+Hay que distinguir la vinculación inicial de una vinculación previa eliminada y probar ambos recorridos completos.
+
+El resto de lo señalado en ronda 3 queda corregido. No encontré otra alta/media en el diff: quitar la FK de `generations.requested_by` respeta C7 y la RPC conserva la validación inicial del actor; ningún RPC vigente cambia `institutions.kind/code` ni `files.bucket/path/purpose`. Esas guardas tampoco alteran el orden documentado de supresión.
+
+Barrido de las 45 tablas y comprobación en PostgreSQL **READ ONLY**: las 52 funciones de triggers coinciden con las migraciones. Evalué las guardas sobre variables sintéticas, sin UPDATE ni modificaciones del worktree; no repetí las suites informadas.
+
+Veredicto: fase no lista

@@ -547,7 +547,7 @@ select is((select count(*) from app.students where institution_id = pg_temp.id('
   'and no second student is created');
 select is(pg_temp.link('ss3', 'stu_r3') ->> 'id', pg_temp.id('ss3')::text, 'a sandbox student can be linked to an account');
 select is((select ap.status || ':' || coalesce(ap.auth_user_id::text, 'none') from app.account_provisioning ap where ap.student_id = pg_temp.id('ss3')),
-  'not_applicable:none', 'and its row stays not_applicable, with no auth account recorded');
+  'not_applicable:' || pg_temp.id('stu_r3')::text, 'and its row stays not_applicable, remembering the account it was linked to (T1.F11)');
 
 -- W2-6: nulls are INVALID, never a silent success.
 select is(pg_temp.as_user('teach', format('select api.create_student(%L, null, ''nulo.f'', gen_random_uuid())', pg_temp.id('g_f'))) ->> 'error',

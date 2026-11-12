@@ -3,7 +3,7 @@
 -- The only changes allowed are the documented ones of the erasure and of the foreign keys that set an actor to NULL.
 -- Placeholder data only. The whole file is rolled back.
 begin;
-select plan(52);
+select plan(53);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -272,8 +272,8 @@ select is(pg_temp.st(format('update app.account_provisioning set student_id = nu
   'control: the erasure nulls student_id');
 select is(pg_temp.st(format('update app.students set user_id = %s where id = %s', pg_temp.i('stu_c'), pg_temp.i('s2'))), 'P0004',
   'students: an account tied to a student is not moved to another account');
-select is(pg_temp.st(format('update app.students set user_id = null where id = %s', pg_temp.i('s4'))), 'ok',
-  'control: it can be untied');
+select is(pg_temp.st(format('update app.students set user_id = null where id = %s', pg_temp.i('s4'))), 'P0004',
+  'students: it is not untied while its account exists (only deleting the account empties it, T1.F11)');
 
 -- ---------------------------------------------------------------------------------------------
 -- groups, files, syllabi
@@ -331,7 +331,8 @@ insert into app.invitations (id, institution_id, email, role, token_hash, expire
 select is(pg_temp.st(format('update app.invitations set invited_by = %s', pg_temp.i('incl'))), 'P0004', 'invitations: invited_by is not handed to another person');
 select is(pg_temp.st(format('update app.invitations set status = ''accepted'', accepted_at = now(), accepted_by = %s', pg_temp.i('incl'))), 'ok', 'control: accepting sets accepted_by once');
 select is(pg_temp.st(format('update app.invitations set accepted_by = %s', pg_temp.i('nobody'))), 'P0004', 'invitations: and it is not handed to someone else afterwards');
-select is(pg_temp.st('update app.invitations set invited_by = null, accepted_by = null'), 'ok', 'control: the foreign keys set both to NULL');
+select is(pg_temp.st('update app.invitations set invited_by = null'), 'ok', 'control: invited_by goes to NULL');
+select is(pg_temp.st('update app.invitations set accepted_by = null'), 'P0004', 'invitations: accepted_by does not go to NULL while its account exists (T1.F11)');
 
 insert into app.notifications (id, institution_id, user_id, kind, entity, entity_id)
   values (gen_random_uuid(), pg_temp.id('i_n'), pg_temp.id('teach'), 'task_new', 'assignment', gen_random_uuid());

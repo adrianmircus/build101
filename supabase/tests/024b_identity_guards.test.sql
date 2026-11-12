@@ -3,7 +3,7 @@
 -- authenticated it would fail earlier with 42501 and pass even without the guard) and has to fail with P0004.
 -- Placeholder data only. The whole file is rolled back.
 begin;
-select plan(58);
+select plan(69);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -129,6 +129,36 @@ select is(pg_temp.st(format('update app.invitations set status = ''accepted'', a
 select is(pg_temp.st('update app.invitations set email = ''otra@ejemplo.invalid'''), 'P0004', 'invitations: nor after it was accepted');
 select is(pg_temp.st('update app.invitations set email = null'), 'P0004', 'invitations: nor emptied');
 select is(pg_temp.st('update app.invitations set email = email, expires_at = now() + interval ''2 days'''), 'ok', 'control: the same email and the rest of the row can still be updated');
+-- 3b. invitations.accepted_by and accepted_at (T1.F11): only the acceptance sets them; no A → NULL → B.
+select is(pg_temp.st('update app.invitations set accepted_by = null'), 'P0004', 'invitations: accepted_by does not go to NULL while its account exists');
+select is(pg_temp.st(format('update app.invitations set accepted_by = %s', pg_temp.i('teach'))), 'P0004', 'invitations: nor to another person after the acceptance');
+select is(pg_temp.st('update app.invitations set accepted_at = now() - interval ''1 day'''), 'P0004', 'invitations: accepted_at never changes once set');
+
+-- 3c. students.user_id (T1.F11): it is emptied only when its account is deleted, and a student once linked is never
+-- linked to another account. The first link is remembered in account_provisioning.auth_user_id.
+insert into ids (k, id) values
+  ('s2', (pg_temp.as_user('teach', format('select api.create_student(%L, ''Estudiante 2'', ''est.2'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'id')::uuid);
+select is(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s2'), pg_temp.id('other'))) ->> 'error', null,
+  'control: a student is linked to an account');
+select is((select ap.auth_user_id from app.account_provisioning ap where ap.student_id = pg_temp.id('s2')), pg_temp.id('other'),
+  'and the link is remembered in its provisioning row');
+select is(pg_temp.st(format('update app.students set user_id = null where id = %s', pg_temp.i('s2'))), 'P0004',
+  'students: user_id does not go to NULL while its account exists');
+select is(pg_temp.st(format('update app.students set user_id = %s where id = %s', pg_temp.i('teach'), pg_temp.i('s2'))), 'P0004',
+  'students: nor moves to another account');
+select is(pg_temp.st(format('update app.students set user_id = %s where id = %s', pg_temp.i('other'), pg_temp.i('s1'))), 'P0004',
+  'students: a student whose provisioning remembers another account is not linked to a new one');
+insert into ids (k, id) values ('gone', gen_random_uuid());
+insert into auth.users (id, email) values (pg_temp.id('gone'), 'gone@t1-f11.invalid');
+select pg_temp.as_service(format('select api.internal_upsert_app_user(%L, ''Persona gone'')', pg_temp.id('gone')));
+insert into ids (k, id) values
+  ('s3', (pg_temp.as_user('teach', format('select api.create_student(%L, ''Estudiante 3'', ''est.3'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'id')::uuid);
+select pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s3'), pg_temp.id('gone')));
+select is(pg_temp.st(format('delete from app.app_users where id = %s', pg_temp.i('gone'))), 'ok',
+  'control: deleting the account empties the link through its foreign key');
+select is((select s.user_id from app.students s where s.id = pg_temp.id('s3')), null::uuid, 'and the student is unlinked');
+select is((select ap.auth_user_id from app.account_provisioning ap where ap.student_id = pg_temp.id('s3')), pg_temp.id('gone'),
+  'and the provisioning row still remembers which account it was');
 
 -- ---------------------------------------------------------------------------------------------
 -- 4b. operations.op_key and kind, import_runs.op_key
