@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { NextStep, RecoveryVerified } from "@/lib/domain/accounts/results";
 import { textLink } from "@/components/ui/styles";
 import type { ActionFn } from "./actionFn";
@@ -21,16 +21,21 @@ type Props = {
 export function RecoveryFlow({ verifyRecovery, setNewPassword }: Props) {
   const [phase, setPhase] = useState<RecoveryPhase>({ kind: "checking" });
   const [round, setRound] = useState(0);
+  // The token serves once. Asking twice for the same round (the action gets a new identity when the bar is cleaned and Next
+  // renders the page again, and Strict Mode runs effects twice in development) would burn it and show «vencido» to someone with a good link.
+  const check = useRef<{ round: number; result: Promise<RecoveryPhase> } | null>(null);
+  const [verify] = useState(() => verifyRecovery);
 
   useEffect(() => {
     let current = true;
-    recoveryPhaseFor(verifyRecovery, takeFragmentToken()).then((next) => {
+    if (check.current?.round !== round) check.current = { round, result: recoveryPhaseFor(verify, takeFragmentToken()) };
+    check.current.result.then((next) => {
       if (current) setPhase(next);
     });
     return () => {
       current = false;
     };
-  }, [verifyRecovery, round]);
+  }, [verify, round]);
 
   function retry() {
     setPhase({ kind: "checking" });

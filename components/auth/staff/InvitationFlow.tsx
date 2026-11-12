@@ -18,11 +18,14 @@ export function InvitationFlow({ read, actions }: Props) {
   const [token, setToken] = useState("");
   const [round, setRound] = useState(0);
   const [wantsSignIn, setWantsSignIn] = useState(false);
+  // The first identity of the action is kept: after the session changes (accepting an invitation) Next renders the page again and
+  // hands over a new reference, and reading the invitation again would replace «Ya sos parte» with «Esta invitación ya no sirve».
+  const [readInvitation] = useState(() => read);
 
   useEffect(() => {
     let current = true;
     const held = takeFragmentToken();
-    invitationPhaseFor(read, held).then((next) => {
+    invitationPhaseFor(readInvitation, held).then((next) => {
       if (!current) return;
       setToken(held);
       setPhase(next);
@@ -30,7 +33,7 @@ export function InvitationFlow({ read, actions }: Props) {
     return () => {
       current = false;
     };
-  }, [read, round]);
+  }, [readInvitation, round]);
 
   function reload() {
     setPhase({ kind: "loading" });

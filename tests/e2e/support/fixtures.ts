@@ -1,9 +1,19 @@
+import { randomInt } from "node:crypto";
 import { test as base, expect } from "@playwright/test";
 import { ALLOWED_CONSOLE_ERRORS } from "../known-gaps";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-export const test = base.extend<{ externalGuard: void; consoleGuard: void }>({
+export const test = base.extend<{ externalGuard: void; consoleGuard: void; ownIp: void }>({
+  // The limit of attempts counts by IP and every browser of the run comes from this machine. Each test says it comes from an address of
+  // its own (the server trusts x-forwarded-for outside Netlify), so a test that burns its attempts never blocks another, nor the next run.
+  ownIp: [
+    async ({ context }, use) => {
+      await context.setExtraHTTPHeaders({ "x-forwarded-for": `10.${randomInt(0, 256)}.${randomInt(0, 256)}.${randomInt(1, 255)}` });
+      await use();
+    },
+    { auto: true },
+  ],
   // The guided demo must never reach an AI provider, a voice service or any other third party: it runs on fixtures.
   // Every request to a host that is not local is aborted and recorded, and the test fails at the end if there was one.
   externalGuard: [

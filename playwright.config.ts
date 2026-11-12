@@ -1,11 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
+import { PORT, serverEnv } from "./tests/e2e/support/env";
 
-// Each worktree can pick its own port: two checkouts must not test each other's build.
-const PORT = Number(process.env.E2E_PORT ?? 3100);
+// Each worktree can pick its own port (E2E_PORT): two checkouts must not test each other's build.
 const CI = !!process.env.CI;
 
 export default defineConfig({
   testDir: "tests/e2e",
+  // One school per run (its own admin, group and teacher), deleted at the end: see tests/e2e/support/global-setup.ts (it returns its own teardown).
+  globalSetup: "./tests/e2e/support/global-setup.ts",
   // The guided demo has real delays (several seconds per version), so each test gets a generous budget.
   timeout: 120_000,
   expect: { timeout: 20_000 },
@@ -36,13 +38,7 @@ export default defineConfig({
     // Only when asked (E2E_REUSE=1): a server left over from another checkout would test someone else's build.
     reuseExistingServer: process.env.E2E_REUSE === "1" && !CI,
     timeout: 600_000,
-    env: {
-      // Throwaway value: a production build refuses to sign sessions without one. It protects nothing real.
-      SESSION_SECRET: "e2e-only-not-a-real-secret",
-      // The demo must never reach an AI provider; empty keys also make any accidental call fail fast.
-      ANTHROPIC_API_KEY: "",
-      OPENROUTER_API_KEY: "",
-      ELEVENLABS_API_KEY: "",
-    },
+    // The local Supabase, Mailpit and the demo's throwaway values: see tests/e2e/support/env.ts.
+    env: serverEnv(),
   },
 });
