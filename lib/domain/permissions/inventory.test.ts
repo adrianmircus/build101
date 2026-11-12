@@ -38,6 +38,7 @@ const REDACTABLE: Record<string, string[]> = {
 // Exactly which fields are unlinked or redacted (for tables that follow a version, in a shared one).
 const CHANGED: Record<string, string> = {
   "student_pseudonyms.student_id": "desvincula",
+  "access_card_issues.student_ids": "redacta",
   "account_provisioning.student_id": "desvincula",
   "account_provisioning.op_identity": "desvincula",
   "versions.config": "redacta",

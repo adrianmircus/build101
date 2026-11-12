@@ -23,17 +23,22 @@ export type Failure = {
   fields?: Record<string, string>;
   /** Lets support find the log line without the user sending any data. */
   requestId?: string;
+  /** When RATE_LIMITED: the moment (ISO 8601) from which trying again makes sense. */
+  retryAt?: string;
 };
 
 export type Result<T> = { ok: true; data: T } | Failure;
 
 export class AppError extends Error {
   readonly code: ErrorCode;
+  /** Only for RATE_LIMITED: the end of the window (ISO 8601), so the screen can say when to come back. */
+  readonly retryAt: string | undefined;
 
-  constructor(code: ErrorCode, message: string, options?: { cause?: unknown }) {
-    super(message, options);
+  constructor(code: ErrorCode, message: string, options?: { cause?: unknown; retryAt?: string }) {
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.name = "AppError";
     this.code = code;
+    this.retryAt = options?.retryAt;
   }
 }
 

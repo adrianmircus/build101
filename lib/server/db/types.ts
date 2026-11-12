@@ -14,7 +14,10 @@ export type Database = {
             [_ in never]: never
           }
           Functions: {
-            "add_exercise":
+            "accept_invitation":
+{ Args: { "p_token_hash": string }; Returns: Json
+                           },
+"add_exercise":
 { Args: { "p_assessment_id": string,"p_body": string,"p_label": string,"p_op_key": string,"p_topic_id"?: string }; Returns: Json
                            },
 "add_group_staff":
@@ -41,6 +44,9 @@ export type Database = {
 "archive_version":
 { Args: { "p_revision": number,"p_version_id": string }; Returns: Json
                            },
+"begin_access_cards":
+{ Args: { "p_cards": Json,"p_group_id": string,"p_op_key": string }; Returns: Json
+                           },
 "confirm_answer_key":
 { Args: { "p_base_revision_id": string,"p_version_id": string }; Returns: Json
                            },
@@ -49,6 +55,9 @@ export type Database = {
                            },
 "create_group":
 { Args: { "p_institution_id": string,"p_name": string,"p_op_key": string,"p_school_year": number,"p_subject_id": string }; Returns: Json
+                           },
+"create_invitation":
+{ Args: { "p_email": string,"p_institution_id": string,"p_op_key": string,"p_role": string,"p_token_hash": string }; Returns: Json
                            },
 "create_student":
 { Args: { "p_display_name": string,"p_group_id": string,"p_op_key": string,"p_username": string }; Returns: Json
@@ -65,6 +74,9 @@ export type Database = {
 "enroll_student":
 { Args: { "p_group_id": string,"p_student_id": string }; Returns: Json
                            },
+"finish_access_cards":
+{ Args: { "p_done": (string)[],"p_issue_id": string }; Returns: Json
+                           },
 "get_answer_key":
 { Args: { "p_version_id": string }; Returns: Json
                            },
@@ -80,6 +92,9 @@ export type Database = {
 "get_group_needs":
 { Args: { "p_group_id": string }; Returns: Json
                            },
+"get_institution_summary":
+{ Args: { "p_institution_id": string }; Returns: Json
+                           },
 "get_student_needs":
 { Args: { "p_student_ids": (string)[] }; Returns: Json
                            },
@@ -92,17 +107,50 @@ export type Database = {
 "internal_add_membership":
 { Args: { "p_institution_id": string,"p_role": string,"p_user_id": string }; Returns: Json
                            },
+"internal_claim_card_password":
+{ Args: { "p_issue_id": string,"p_student_id": string }; Returns: Json
+                           },
 "internal_create_generation":
 { Args: { "p_inputs": Json,"p_kind": string,"p_op_key": string,"p_profiles_hash": string,"p_profiles_revision": string,"p_prompt_version": string,"p_requested_by"?: string,"p_required_jobs": number,"p_target_exercise_id"?: string,"p_version_id": string }; Returns: Json
                            },
 "internal_create_institution":
 { Args: { "p_code": string,"p_expires_at"?: string,"p_kind": string,"p_name": string,"p_owner_user_id"?: string }; Returns: Json
                            },
+"internal_create_invitation":
+{ Args: { "p_email": string,"p_institution_id": string,"p_role": string,"p_token_hash": string }; Returns: Json
+                           },
+"internal_fail_student_account":
+{ Args: { "p_error_code": string,"p_provisioning_id": string }; Returns: Json
+                           },
+"internal_find_auth_user":
+{ Args: { "p_email": string }; Returns: Json
+                           },
+"internal_find_institution":
+{ Args: { "p_code": string }; Returns: Json
+                           },
 "internal_finish_generation":
 { Args: { "p_error_code"?: string,"p_generation_id": string,"p_status": string }; Returns: Json
                            },
+"internal_finish_invitation_signup":
+{ Args: { "p_display_name": string,"p_token_hash": string,"p_user_id": string }; Returns: Json
+                           },
+"internal_get_invitation":
+{ Args: { "p_token_hash": string }; Returns: Json
+                           },
+"internal_get_student_accounts":
+{ Args: { "p_student_ids": (string)[] }; Returns: Json
+                           },
 "internal_link_student_user":
 { Args: { "p_student_id": string,"p_user_id": string }; Returns: Json
+                           },
+"internal_list_unfinished_accounts":
+{ Args: { "p_limit": number }; Returns: Json
+                           },
+"internal_rate_limit_clear":
+{ Args: { "p_keys": (string)[] }; Returns: Json
+                           },
+"internal_rate_limit_hit":
+{ Args: { "p_keys": (string)[],"p_limits": (number)[],"p_window_seconds": number }; Returns: Json
                            },
 "internal_record_answer_key_revision":
 { Args: { "p_content": Json,"p_generation_id": string }; Returns: Json
@@ -110,8 +158,20 @@ export type Database = {
 "internal_record_generation_output":
 { Args: { "p_generation_id": string,"p_kind": string,"p_output": Json,"p_version_exercise_id"?: string }; Returns: Json
                            },
+"internal_remember_student_account":
+{ Args: { "p_auth_user_id": string,"p_provisioning_id": string }; Returns: Json
+                           },
+"internal_resolve_access_card":
+{ Args: { "p_token_hash": string }; Returns: Json
+                           },
+"internal_resolve_student_login":
+{ Args: { "p_code": string,"p_username": string }; Returns: Json
+                           },
 "internal_revoke_membership":
 { Args: { "p_membership_id": string }; Returns: Json
+                           },
+"internal_revoke_user_sessions":
+{ Args: { "p_user_id": string }; Returns: Json
                            },
 "internal_upsert_app_user":
 { Args: { "p_display_name"?: string,"p_user_id": string }; Returns: Json
@@ -122,8 +182,17 @@ export type Database = {
 "list_assessments":
 { Args: { "p_group_id": string,"p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number }; Returns: Json
                            },
+"list_group_accounts":
+{ Args: { "p_group_id": string }; Returns: Json
+                           },
 "list_group_students":
 { Args: { "p_group_id": string,"p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number }; Returns: Json
+                           },
+"list_institution_staff":
+{ Args: { "p_institution_id": string }; Returns: Json
+                           },
+"list_invitations":
+{ Args: { "p_institution_id": string }; Returns: Json
                            },
 "list_my_groups":
 { Args: { "p_include_archived"?: boolean,"p_institution_id": string,"p_limit"?: number,"p_offset"?: number }; Returns: Json
@@ -140,8 +209,14 @@ export type Database = {
 "list_student_notes":
 { Args: { "p_student_id": string }; Returns: Json
                            },
+"list_taken_usernames":
+{ Args: { "p_bases": (string)[],"p_institution_id": string }; Returns: Json
+                           },
 "list_versions":
 { Args: { "p_assessment_id": string }; Returns: Json
+                           },
+"mark_invitation_sent":
+{ Args: { "p_invitation_id": string }; Returns: Json
                            },
 "publish_version":
 { Args: { "p_answer_key_revision_id"?: string,"p_op_key": string,"p_revision": number,"p_version_id": string }; Returns: Json
@@ -161,6 +236,9 @@ export type Database = {
 "reorder_exercises":
 { Args: { "p_assessment_id": string,"p_exercise_ids": (string)[],"p_revision": number }; Returns: Json
                            },
+"resend_invitation":
+{ Args: { "p_invitation_id": string,"p_revision": number,"p_token_hash": string }; Returns: Json
+                           },
 "restore_group":
 { Args: { "p_group_id": string,"p_revision": number }; Returns: Json
                            },
@@ -169,6 +247,9 @@ export type Database = {
                            },
 "revoke_consent":
 { Args: { "p_consent_id": string,"p_revision": number }; Returns: Json
+                           },
+"revoke_invitation":
+{ Args: { "p_invitation_id": string,"p_revision": number }; Returns: Json
                            },
 "set_question_key":
 { Args: { "p_correct_option_id": string,"p_question_id": string,"p_revision"?: number }; Returns: Json

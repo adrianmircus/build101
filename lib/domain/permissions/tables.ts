@@ -16,6 +16,8 @@ export const APP_TABLES = [
   "enrollments",
   "student_pseudonyms",
   "account_provisioning",
+  "access_card_issues",
+  "access_cards",
   "student_needs",
   "student_need_events",
   "student_notes",

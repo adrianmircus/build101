@@ -25,6 +25,8 @@ export const REASON_MESSAGES: Record<string, string> = {
   archived: "Está archivado. Restauralo para cambiarlo.",
   assessment_archived: "Este práctico está archivado y ya no se puede cambiar. Si lo necesitás, creá uno nuevo.",
   sandbox_restricted: "En la demo no se puede hacer esto.",
+  // Temporary: the stubs of phase 2 raise it until their tickets replace them; the last one removes it (also from 030_reasons).
+  not_implemented: "Esto todavía no está disponible.",
   username_taken: "Ese usuario ya existe en la institución. Elegí otro.",
   not_enrolled: "No está en el grupo. Si es destinatario de una versión, sacalo de la versión antes de publicar.",
   not_a_member: "Esa persona no es parte de la institución.",

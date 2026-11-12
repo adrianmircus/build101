@@ -30,7 +30,9 @@ export function invalidInput(error: z.ZodError, requestId: string): Failure {
 export function toFailure(entry: string, requestId: string, error: unknown): Failure {
   // redirect() and notFound() throw on purpose: they must reach Next untouched.
   unstable_rethrow(error);
-  if (error instanceof AppError) return fail(error.code, error.message, { requestId });
+  if (error instanceof AppError) {
+    return fail(error.code, error.message, error.retryAt === undefined ? { requestId } : { requestId, retryAt: error.retryAt });
+  }
   log.error("entry.unexpected", { entry, requestId, ...describeError(error) });
   return fail("INTERNAL", MESSAGES.INTERNAL, { requestId });
 }

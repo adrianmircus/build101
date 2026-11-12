@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import { describe, expect, it } from "vitest";
-import { MESSAGES, ok, type Result } from "@/lib/errors";
+import { MESSAGES, fail, ok, type Result } from "@/lib/errors";
 import { callAction } from "./callAction";
 
 const failing = (error: unknown) => async (): Promise<Result<number>> => {
@@ -11,6 +11,11 @@ const failing = (error: unknown) => async (): Promise<Result<number>> => {
 describe("callAction", () => {
   it("returns the action result untouched", async () => {
     expect(await callAction(async (n: number) => ok(n + 1), 1)).toEqual({ ok: true, data: 2 });
+  });
+
+  it("lets retryAt reach the screen", async () => {
+    const blocked = fail("RATE_LIMITED", "Esperá unos minutos.", { retryAt: "2026-11-12T15:00:00.000Z" });
+    expect(await callAction(async () => blocked, undefined)).toEqual(blocked);
   });
 
   it("answers STALE_CLIENT for an action the new build no longer has", async () => {

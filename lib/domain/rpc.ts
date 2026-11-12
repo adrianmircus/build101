@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { ACCOUNT_RPCS } from "./accounts/rpc";
 import { ASSESSMENT_RPCS } from "./assessments/rpc";
 import { GENERATION_RPCS } from "./assessments/rpc-generations";
 import { VERSION_RPCS } from "./assessments/rpc-versions";
@@ -15,6 +16,7 @@ import { STUDENT_RPCS } from "./students/rpc";
 
 export const RPCS = {
   ...IDENTITY_RPCS,
+  ...ACCOUNT_RPCS,
   ...GROUP_RPCS,
   ...STUDENT_RPCS,
   ...SENSITIVE_RPCS,

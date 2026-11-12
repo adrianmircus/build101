@@ -27,6 +27,7 @@ insert into expected (reason) values
   ('missing_consent'), ('missing_questions'), ('no_answer_key'), ('no_exercises'),
   ('no_session'), ('not_a_member'), ('not_a_student'), ('not_approved'),
   ('not_author'), ('not_enrolled'), ('not_found'), ('not_published'),
+  ('not_implemented'), -- temporary: phase 2 stubs; the last ticket to replace one removes it here and in reasons.ts
   ('not_submitted'), ('op_key_reused'), ('options_repeated'), ('recipient_in_other_version'),
   ('revision_mismatch'), ('revision_required'), ('role_conflict'), ('sandbox_restricted'),
   ('stale_answer_key'), ('too_many_exercises'), ('unknown_choice'), ('unknown_exercise'),

@@ -112,7 +112,38 @@ const DELIVERY: Operation[] = [
   op({ rpc: "student_grades", ticket: "T1.5d", own: STUDENT }),
 ];
 
-export const PERMISSIONS: readonly Operation[] = [...IDENTITY, ...STUDENTS, ...SENSITIVE, ...ASSESSMENTS, ...VERSIONS, ...DELIVERY];
+// Phase 2 (docs/contratos/fase-2.md). since: 2, so the phase 1 matrix run leaves them out until their tickets land.
+const ACCOUNTS: Operation[] = [
+  op({ rpc: "internal_revoke_user_sessions", ticket: "T2.7", since: 2 }),
+  op({ rpc: "internal_rate_limit_hit", ticket: "T2.7", since: 2 }),
+  op({ rpc: "internal_rate_limit_clear", ticket: "T2.7", since: 2 }),
+  op({ rpc: "create_invitation", ticket: "T2.3", since: 2, allow: ["admin"], note: "No en un sandbox: es un efecto real." }),
+  op({ rpc: "resend_invitation", ticket: "T2.3", since: 2, allow: ["admin"] }),
+  op({ rpc: "revoke_invitation", ticket: "T2.3", since: 2, allow: ["admin"] }),
+  op({ rpc: "mark_invitation_sent", ticket: "T2.3", since: 2, allow: ["admin"] }),
+  op({ rpc: "list_invitations", ticket: "T2.3", since: 2, allow: ["admin"] }),
+  op({ rpc: "list_institution_staff", ticket: "T2.3", since: 2, allow: ["admin"] }),
+  op({ rpc: "get_institution_summary", ticket: "T2.3", since: 2, allow: ["admin"] }),
+  op({ rpc: "internal_get_invitation", ticket: "T2.3", since: 2 }),
+  op({ rpc: "internal_create_invitation", ticket: "T2.3", since: 2 }),
+  op({ rpc: "internal_find_auth_user", ticket: "T2.3", since: 2 }),
+  op({ rpc: "internal_finish_invitation_signup", ticket: "T2.3", since: 2 }),
+  op({ rpc: "accept_invitation", ticket: "T2.3", since: 2, note: "Lo acepta quien tiene el correo de la invitación, sea cual sea su rol; ningún rol de la matriz lo es. Un estudiante no puede." }),
+  op({ rpc: "list_taken_usernames", ticket: "T2.5a", since: 2, allow: ANY_TEACHER, note: "Admin o profe de la institución." }),
+  op({ rpc: "list_group_accounts", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group", "sandbox_anonymous"], note: "No dice nada del perfil." }),
+  op({ rpc: "begin_access_cards", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group"], note: "No en un sandbox." }),
+  op({ rpc: "finish_access_cards", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group"], note: "Solo el mismo actor que empezó la emisión; otra persona recibe NOT_FOUND." }),
+  op({ rpc: "internal_claim_card_password", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_get_student_accounts", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_remember_student_account", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_fail_student_account", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_list_unfinished_accounts", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_find_institution", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_resolve_student_login", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_resolve_access_card", ticket: "T2.5a", since: 2 }),
+];
+
+export const PERMISSIONS: readonly Operation[] = [...IDENTITY, ...STUDENTS, ...SENSITIVE, ...ASSESSMENTS, ...VERSIONS, ...DELIVERY, ...ACCOUNTS];
 
 /** What the UI asks: may this role do this now? (own counts: the screen only offers it on own data). */
 export function can(rpc: string, role: MatrixRole, phase: number): boolean {

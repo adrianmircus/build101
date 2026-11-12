@@ -29,6 +29,18 @@ describe("defineAction", () => {
     expect(await action({ title: "x" })).toMatchObject({ ok: false, code: "CONFLICT", message: MESSAGES.CONFLICT });
   });
 
+  it("passes retryAt of a RATE_LIMITED error to the failure", async () => {
+    const retryAt = "2026-11-12T15:00:00.000Z";
+    const action = defineAction({ name: "test.limit", input }, async () => {
+      throw new AppError("RATE_LIMITED", "Esperá unos minutos.", { retryAt });
+    });
+    expect(await action({ title: "x" })).toMatchObject({ ok: false, code: "RATE_LIMITED", retryAt });
+    const plain = await defineAction({ name: "test.nolimit", input }, async () => {
+      throw new AppError("CONFLICT", MESSAGES.CONFLICT);
+    })({ title: "x" });
+    expect(plain).not.toHaveProperty("retryAt");
+  });
+
   it("hides unexpected errors behind a generic message and logs them with the request id", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const action = defineAction({ name: "test.bug", input }, async () => {

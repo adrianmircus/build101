@@ -24,6 +24,8 @@ select set_eq(
     ('enrollments'),
     ('student_pseudonyms'),
     ('account_provisioning'),
+    ('access_card_issues'),
+    ('access_cards'),
     ('student_needs'),
     ('student_need_events'),
     ('student_notes'),
@@ -87,6 +89,8 @@ select set_eq(
   $$
     values
     -- columns:begin
+    ('access_card_issues.created_at'), ('access_card_issues.finished_at'), ('access_card_issues.group_id'), ('access_card_issues.id'), ('access_card_issues.institution_id'), ('access_card_issues.issued_by'), ('access_card_issues.lease_until'), ('access_card_issues.op_key'), ('access_card_issues.status'), ('access_card_issues.student_ids'),
+    ('access_cards.activated_at'), ('access_cards.created_at'), ('access_cards.id'), ('access_cards.institution_id'), ('access_cards.issue_id'), ('access_cards.revoked_at'), ('access_cards.status'), ('access_cards.student_id'), ('access_cards.token_hash'),
     ('account_provisioning.attempts'), ('account_provisioning.auth_user_id'), ('account_provisioning.created_at'), ('account_provisioning.error_code'), ('account_provisioning.id'), ('account_provisioning.institution_id'), ('account_provisioning.op_identity'), ('account_provisioning.op_key'), ('account_provisioning.revision'), ('account_provisioning.status'), ('account_provisioning.student_id'), ('account_provisioning.updated_at'),
     ('answer_key_revisions.answer_key_id'), ('answer_key_revisions.author_user_id'), ('answer_key_revisions.content'), ('answer_key_revisions.created_at'), ('answer_key_revisions.exercise_revisions'), ('answer_key_revisions.generation_id'), ('answer_key_revisions.id'), ('answer_key_revisions.institution_id'), ('answer_key_revisions.instructions_revision'), ('answer_key_revisions.number'), ('answer_key_revisions.question_revisions'), ('answer_key_revisions.source'), ('answer_key_revisions.version_id'), ('answer_key_revisions.version_revision'),
     ('answer_keys.approved_revision_id'), ('answer_keys.created_at'), ('answer_keys.current_generation_id'), ('answer_keys.current_revision_id'), ('answer_keys.error_code'), ('answer_keys.id'), ('answer_keys.institution_id'), ('answer_keys.revision'), ('answer_keys.stale'), ('answer_keys.status'), ('answer_keys.updated_at'), ('answer_keys.version_id'),
@@ -109,7 +113,7 @@ select set_eq(
     ('groups.archived_at'), ('groups.created_at'), ('groups.created_by'), ('groups.id'), ('groups.institution_id'), ('groups.name'), ('groups.op_identity'), ('groups.op_key'), ('groups.revision'), ('groups.school_year'), ('groups.subject_id'), ('groups.updated_at'),
     ('import_runs.created_at'), ('import_runs.error_code'), ('import_runs.format_version'), ('import_runs.id'), ('import_runs.id_map'), ('import_runs.institution_id'), ('import_runs.op_key'), ('import_runs.parts_done'), ('import_runs.parts_total'), ('import_runs.revision'), ('import_runs.status'), ('import_runs.updated_at'), ('import_runs.user_id'),
     ('institutions.code'), ('institutions.created_at'), ('institutions.expires_at'), ('institutions.id'), ('institutions.kind'), ('institutions.name'), ('institutions.owner_user_id'), ('institutions.revision'), ('institutions.updated_at'),
-    ('invitations.accepted_at'), ('invitations.accepted_by'), ('invitations.created_at'), ('invitations.email'), ('invitations.expires_at'), ('invitations.id'), ('invitations.institution_id'), ('invitations.invited_by'), ('invitations.revision'), ('invitations.role'), ('invitations.status'), ('invitations.token_hash'), ('invitations.updated_at'),
+    ('invitations.accepted_at'), ('invitations.accepted_by'), ('invitations.created_at'), ('invitations.email'), ('invitations.expires_at'), ('invitations.id'), ('invitations.institution_id'), ('invitations.invited_by'), ('invitations.op_identity'), ('invitations.op_key'), ('invitations.revision'), ('invitations.role'), ('invitations.sent_at'), ('invitations.status'), ('invitations.token_hash'), ('invitations.updated_at'),
     ('memberships.created_at'), ('memberships.id'), ('memberships.institution_id'), ('memberships.revision'), ('memberships.revoked_at'), ('memberships.role'), ('memberships.updated_at'), ('memberships.user_id'),
     ('notifications.created_at'), ('notifications.data'), ('notifications.entity'), ('notifications.entity_id'), ('notifications.id'), ('notifications.institution_id'), ('notifications.kind'), ('notifications.read_at'), ('notifications.revision'), ('notifications.updated_at'), ('notifications.user_id'),
     ('operations.assessment_id'), ('operations.created_at'), ('operations.error_code'), ('operations.file_id'), ('operations.finished_at'), ('operations.group_id'), ('operations.id'), ('operations.institution_id'), ('operations.kind'), ('operations.merge_result'), ('operations.op_key'), ('operations.requested_by'), ('operations.required_parts'), ('operations.status'), ('operations.updated_at'),

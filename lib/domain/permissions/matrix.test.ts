@@ -42,7 +42,8 @@ describe("permissions matrix", () => {
     expect(can("publish_version", "teacher_of_group", 0)).toBe(false);
     expect(can("publish_version", "teacher_of_group", 1)).toBe(true);
     expect(operationsFor(0)).toEqual([]);
-    expect(operationsFor(1)).toHaveLength(PERMISSIONS.length);
+    expect(operationsFor(1)).toHaveLength(PERMISSIONS.filter((operation) => operation.since <= 1).length);
+    expect(operationsFor(2)).toHaveLength(PERMISSIONS.length);
     expect(can("not_an_rpc", "admin", 9)).toBe(false);
   });
 });

@@ -14,6 +14,7 @@ export type MemberRole = z.infer<typeof MemberRole>;
 
 /** Roles an invitation can carry: students are provisioned, never invited. */
 export const InvitedRole = z.enum(["admin", "teacher", "inclusion"]);
+export type InvitedRole = z.infer<typeof InvitedRole>;
 
 export const INVITATION_STATUSES = ["pending", "accepted", "revoked", "expired"] as const;
 

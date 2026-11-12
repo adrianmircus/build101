@@ -19,6 +19,14 @@ describe("errors", () => {
     expect(error.code).toBe("RATE_LIMITED");
   });
 
+  it("carries retryAt only when it is given", () => {
+    const when = "2026-11-12T15:00:00.000Z";
+    expect(new AppError("RATE_LIMITED", "Esperá.", { retryAt: when }).retryAt).toBe(when);
+    expect(new AppError("RATE_LIMITED", "Esperá.").retryAt).toBeUndefined();
+    expect(new AppError("UNAVAILABLE", "No.", { cause: 3 }).cause).toBe(3);
+    expect(fail("RATE_LIMITED", "Esperá.", { retryAt: when })).toEqual({ ok: false, code: "RATE_LIMITED", message: "Esperá.", retryAt: when });
+  });
+
   it("unwrap throws on failures", () => {
     expect(unwrap(ok("x"))).toBe("x");
     expect(() => unwrap(fail("INVALID", "Mal formado."))).toThrow("INVALID");

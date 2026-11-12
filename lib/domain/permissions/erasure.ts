@@ -49,6 +49,8 @@ export const ERASURE_RULES = {
     why: "La marca deleted y el op_key impiden que reconcile_accounts recree la cuenta. Sin nombre ni vínculo con el estudiante; op_identity (sha256 de grupo y username) se pone en nulo porque permite comprobar usernames candidatos; auth_user_id deja de ser personal porque la cuenta de Auth se borra antes de cerrar la supresión (paso 3).",
     nullifies: ["student_id", "op_identity"],
   },
+  access_cards: { rule: "delete", why: "Sus tarjetas de acceso (su id y el hash del token); se van en cascada al borrar al estudiante." },
+  access_card_issues: { rule: "redact", why: "La emisión es del grupo; solo se saca el id del estudiante de student_ids, dentro de la supresión (la guardia lo permite solo ahí). Una emisión que quedaría sin estudiantes se borra entera." },
   student_needs: { rule: "delete", why: "Dato de salud." },
   student_need_events: { rule: "delete", why: "Historial de un dato de salud." },
   student_notes: { rule: "delete", why: "Notas privadas sobre el estudiante." },

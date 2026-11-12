@@ -1,4 +1,5 @@
 import type { RpcName } from "@/lib/domain/rpc";
+import { ACCOUNT_CALLS } from "./calls-accounts";
 import { ASSESSMENT_CALLS } from "./calls-assessments";
 import { DELIVERY_CALLS } from "./calls-delivery";
 import { IDENTITY_CALLS } from "./calls-identity";
@@ -11,6 +12,7 @@ import type { Call } from "./types";
 
 export const CALLS: Record<RpcName, Call> = {
   ...IDENTITY_CALLS,
+  ...ACCOUNT_CALLS,
   ...SENSITIVE_CALLS,
   ...ASSESSMENT_CALLS,
   ...VERSION_CALLS,
