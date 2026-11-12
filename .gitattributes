@@ -1,0 +1,2 @@
+# The pgTAP helpers build strings with E'...' that must not get carriage returns on Windows checkouts.
+supabase/**/*.sql text eol=lf
