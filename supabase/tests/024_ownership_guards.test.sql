@@ -3,7 +3,7 @@
 -- The only changes allowed are the documented ones of the erasure and of the foreign keys that set an actor to NULL.
 -- Placeholder data only. The whole file is rolled back.
 begin;
-select plan(46);
+select plan(52);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -255,6 +255,17 @@ select is(pg_temp.st(format('update app.student_pseudonyms set student_id = null
   'control: the erasure unlinks it (student_id goes to NULL)');
 select is(pg_temp.st(format('update app.student_pseudonyms set student_id = %s where student_id is null and id in (select id from app.student_pseudonyms where unlinked_at is not null)', pg_temp.i('s2'))), 'P0004',
   'and an unlinked pseudonym is not linked again');
+select is((select count(*) from app.student_pseudonyms where unlinked_at is not null) > 0, true, 'there is an unlinked pseudonym to try');
+select is(pg_temp.st('update app.student_pseudonyms p set institution_id = (select i.id from app.institutions i where i.id <> p.institution_id limit 1) where p.unlinked_at is not null'), 'P0004',
+  'student_pseudonyms: an unlinked pseudonym does not move to another institution');
+select is(pg_temp.st(format('update app.student_pseudonyms set created_at = now() - interval ''1 day'' where student_id = %s', pg_temp.i('s1'))), 'P0004',
+  'student_pseudonyms: its creation date is frozen too');
+select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = coalesce(auth_user_id, ''00000000-0000-4000-8000-0000000000f1'') where student_id = %s', pg_temp.i('s1'))), 'ok',
+  'control: an account is linked once');
+select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = ''00000000-0000-4000-8000-0000000000f2'' where student_id = %s', pg_temp.i('s1'))), 'P0004',
+  'account_provisioning: a linked account is not swapped for another');
+select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = null where student_id = %s', pg_temp.i('s1'))), 'ok',
+  'control: it goes to NULL when the Auth account is deleted');
 select is(pg_temp.st(format('update app.account_provisioning set student_id = %s where student_id = %s', pg_temp.i('s2'), pg_temp.i('s1'))), 'P0004',
   'account_provisioning: a provisioning row does not pass to another student');
 select is(pg_temp.st(format('update app.account_provisioning set student_id = null, status = ''deleted'' where student_id = %s', pg_temp.i('s4'))), 'ok',
