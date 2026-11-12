@@ -33,3 +33,4 @@ Lo que Codex encontró una y otra vez en los tickets de base (T1.2a, T1.2b). Tod
 - La matriz de permisos se prueba por RPC, no repartida entre funciones: para cada RPC, cada rol que la niega según `lib/domain/permissions/matrix.ts`, un usuario de otra institución y sin sesión, comprobando código y razón completos y que no cambió nada.
 - Cada regla de estado tiene su prueba en los dos sentidos (por ejemplo, en un grupo archivado se rechaza agregar y también quitar, o se documenta por qué no).
 - Una prueba tiene que fallar si se rompe lo que dice probar.
+- Una guardia de inmutabilidad se prueba como dueño de la tabla y exigiendo `P0004`. Como `authenticated` el `UPDATE` falla antes por privilegios (`42501`) y la prueba pasaría aunque la guardia no existiera.
