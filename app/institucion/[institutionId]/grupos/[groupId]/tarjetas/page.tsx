@@ -17,11 +17,12 @@ type Group = Awaited<ReturnType<typeof listGroupAccounts>> & { canIssueCards?: b
 
 export default function CardsPage({ params }: Props) {
   return (
-    <main id="main-content" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-16 print:max-w-none print:p-0">
+    // The <main> is the one of app/institucion/layout.tsx: two of them nested would be an invalid structure.
+    <div className="mx-auto w-full max-w-6xl print:m-0 print:max-w-none print:p-0">
       <Suspense fallback={<Loading />}>
         <Content params={params} />
       </Suspense>
-    </main>
+    </div>
   );
 }
 

@@ -4,7 +4,7 @@ import type { Failure } from "@/lib/errors";
 
 // The state of the cards page, as pure data and a pure reducer, so every state can be tested without a browser.
 // The passwords live only in `held`: memory of this component while the page is open. They are never written to
-// localStorage, sessionStorage or the URL, and `clear` (the «Listo» button and pagehide) drops them.
+// localStorage, sessionStorage or the URL, and `clear` (the «Listo» button) and `deactivate` (the screen leaves: hidden, unmounted, or pagehide) drop them.
 
 export const CARDS_PER_SHEET = 4;
 /** The most students in one request (IssueAccessCardsInput and issue_access_cards: from 1 to 60). */
@@ -28,6 +28,11 @@ export type State = {
   /** Ids waiting in the confirm dialog; null when it is closed. */
   asking: string[] | null;
   running: boolean;
+  /**
+   * The id of the request in flight; 0 when none. An answer carries the id it was asked with and counts only if it is
+   * still this one: when the screen goes away (deactivate) the id goes to 0 and a late answer is dropped with its passwords.
+   */
+  request: number;
   /** The students of the last request, to try again. */
   lastRequest: string[];
   /** The cards of the last print. Only in memory, only while the page is open. */
@@ -35,8 +40,6 @@ export type State = {
   /** The students that got no card in the last request, with the reason. */
   others: OtherCard[];
   notice: Notice | null;
-  /** Goes up each time the sheet has to be printed; the screen prints when it changes. */
-  printNonce: number;
   /** Goes up with each new batch of cards (not with a reprint): the panel of the batch takes the focus again. */
   batch: number;
   /** What the polite live region says. */
@@ -49,22 +52,23 @@ export type Action =
   | { type: "toggleAll"; ids: string[]; on: boolean }
   | { type: "ask"; ids: string[] }
   | { type: "cancelAsk" }
-  | { type: "start"; ids: string[] }
-  | { type: "issued"; data: IssuedCards }
-  | { type: "failed"; failure: Pick<Failure, "code" | "message"> }
+  | { type: "start"; ids: string[]; request: number }
+  | { type: "issued"; data: IssuedCards; request: number }
+  | { type: "failed"; failure: Pick<Failure, "code" | "message">; request: number }
   | { type: "reprint" }
-  | { type: "clear" };
+  | { type: "clear" }
+  | { type: "deactivate" };
 
 export function initialState(accounts: readonly AccountRow[]): State {
   return {
     selected: accounts.map((row) => row.studentId),
     asking: null,
     running: false,
+    request: 0,
     lastRequest: [],
     held: null,
     others: [],
     notice: null,
-    printNonce: 0,
     batch: 0,
     announcement: "",
     noticeKey: 0,
@@ -145,23 +149,29 @@ function toggle(state: State, id: string): State {
   return { ...state, selected };
 }
 
-function issued(state: State, data: IssuedCards): State {
+function select(state: State, action: Extract<Action, { type: "toggle" | "toggleAll" }>): State {
+  return action.type === "toggle" ? toggle(state, action.id) : { ...state, selected: selectAll(action.ids, action.on) };
+}
+
+function issued(state: State, data: IssuedCards, request: number): State {
+  if (request !== state.request) return state;
   const printed = data.cards.length > 0;
   return {
     ...state,
     running: false,
+    request: 0,
     held: printed ? data.cards : state.held,
     others: data.others,
     notice: null,
-    printNonce: printed ? state.printNonce + 1 : state.printNonce,
     batch: printed ? state.batch + 1 : state.batch,
     announcement: describeIssued(data),
   };
 }
 
-function failed(state: State, failure: Pick<Failure, "code" | "message">): State {
+function failed(state: State, failure: Pick<Failure, "code" | "message">, request: number): State {
+  if (request !== state.request) return state;
   const noticeKey = state.noticeKey + 1;
-  return { ...state, running: false, noticeKey, notice: noticeFor(failure, noticeKey), announcement: "" };
+  return { ...state, running: false, request: 0, noticeKey, notice: noticeFor(failure, noticeKey), announcement: "" };
 }
 
 function ask(state: State, ids: string[]): State {
@@ -169,7 +179,7 @@ function ask(state: State, ids: string[]): State {
 }
 
 function reprint(state: State): State {
-  return state.held === null ? state : { ...state, printNonce: state.printNonce + 1, announcement: "Se abre la ventana de impresión." };
+  return state.held === null ? state : { ...state, announcement: "Se abre la ventana de impresión." };
 }
 
 function cleared(state: State): State {
@@ -177,26 +187,40 @@ function cleared(state: State): State {
   return { ...state, held: null, announcement };
 }
 
+/** The screen goes away (hidden by Activity, unmounted, or the page is left): no passwords, no request in flight. */
+function deactivated(state: State): State {
+  return { ...state, held: null, running: false, request: 0, asking: null, notice: null, others: [], announcement: "" };
+}
+
+/** The actions about the end of a request and the end of the screen: what happens to the passwords. */
+function ending(state: State, action: Extract<Action, { type: "issued" | "failed" | "reprint" | "clear" | "deactivate" }>): State {
+  switch (action.type) {
+    case "issued":
+      return issued(state, action.data, action.request);
+    case "failed":
+      return failed(state, action.failure, action.request);
+    case "reprint":
+      return reprint(state);
+    case "clear":
+      return cleared(state);
+    case "deactivate":
+      return deactivated(state);
+  }
+}
+
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "toggle":
-      return toggle(state, action.id);
     case "toggleAll":
-      return { ...state, selected: selectAll(action.ids, action.on) };
+      return select(state, action);
     case "ask":
       return ask(state, action.ids);
     case "cancelAsk":
       return { ...state, asking: null };
     case "start":
       // A new request answers the older one: its notice and its list of pending students go away.
-      return { ...state, asking: null, running: true, lastRequest: action.ids, notice: null, others: [], announcement: "Creando las tarjetas…" };
-    case "issued":
-      return issued(state, action.data);
-    case "failed":
-      return failed(state, action.failure);
-    case "reprint":
-      return reprint(state);
-    case "clear":
-      return cleared(state);
+      return { ...state, asking: null, running: true, request: action.request, lastRequest: action.ids, notice: null, others: [], announcement: "Creando las tarjetas…" };
+    default:
+      return ending(state, action);
   }
 }

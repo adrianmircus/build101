@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fail, ok } from "@/lib/errors";
-import { NEW_GROUP, initialCreate, type Fields } from "./createFlowState";
-import { createRows, groupFor, nextAttempt, partialText, previewRows, type CreateActions } from "./createSteps";
+import { NEW_GROUP, createReducer, initialCreate, type CreateAction, type Fields } from "./createFlowState";
+import { confirmCreate, createRows, groupFor, nextAttempt, partialText, previewRows, type CreateActions } from "./createSteps";
 import { draftRows } from "./usernameReview";
 
 const FIELDS: Fields = { groupChoice: NEW_GROUP, groupName: " 4.º B ", subjectId: "math", schoolYear: "2026", names: "Lucía Fernández\nMateo Silva" };
@@ -35,33 +35,96 @@ describe("previewRows", () => {
   });
 });
 
+// The flow as the hook runs it: every dispatch goes through the real reducer, and each confirm starts from the state
+// the screen would have, so a retry sees only what the first attempt left in it.
+function flow(a: CreateActions, start = initialCreate(FIELDS)) {
+  let state = start;
+  const dispatch = (action: CreateAction) => {
+    state = createReducer(state, action);
+  };
+  const run = () => confirmCreate({ institutionId: "i1", actions: a }, state, dispatch);
+  return { run, dispatch, get state() { return state; } };
+}
+const keys = (fn: unknown) => (fn as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0].opKey);
+const lost = () => Promise.reject(new TypeError("fetch failed"));
+const REVIEWED = { ...initialCreate(FIELDS), step: "review" as const, rows: draftRows([{ displayName: "Lucía Fernández", username: "luciaf" }]) };
+
 describe("groupFor", () => {
   const ctx = (a: CreateActions) => ({ institutionId: "i1", actions: a });
 
   it("un grupo existente no crea nada", async () => {
     const a = actions();
     const state = initialCreate({ ...FIELDS, groupChoice: "g1" });
-    expect(await groupFor(ctx(a), state, null)).toEqual({ ok: true, value: { id: "g1", attempt: null } });
+    expect(await groupFor(ctx(a), state, () => undefined)).toEqual({ ok: true, value: "g1" });
     expect(a.createGroup).not.toHaveBeenCalled();
   });
 
   it("uno nuevo se crea con el nombre sin espacios y el año como número", async () => {
     const a = actions();
-    const result = await groupFor(ctx(a), initialCreate(FIELDS), null);
+    const result = await groupFor(ctx(a), initialCreate(FIELDS), () => undefined);
     expect(a.createGroup).toHaveBeenCalledWith(expect.objectContaining({ institutionId: "i1", name: "4.º B", subjectId: "math", schoolYear: 2026 }));
-    expect(result.ok && result.value.id).toBe("g-nuevo");
+    expect(result).toEqual({ ok: true, value: "g-nuevo" });
   });
 
-  it("si ya se creó, no se crea otro; y si falló, el reintento usa la misma clave", async () => {
-    const a = actions({ createGroup: vi.fn(async () => unavailable) });
-    const first = await groupFor(ctx(a), initialCreate(FIELDS), null);
-    expect(first.ok).toBe(false);
-    const key = (a.createGroup as ReturnType<typeof vi.fn>).mock.calls[0]?.[0].opKey;
-    const again = actions();
-    await groupFor(ctx(again), initialCreate(FIELDS), { opKey: key, signature: JSON.stringify([" 4.º B ", "math", "2026"]) });
-    expect((again.createGroup as ReturnType<typeof vi.fn>).mock.calls[0]?.[0].opKey).toBe(key);
-    const made = await groupFor(ctx(again), { ...initialCreate(FIELDS), groupId: "ya" }, null);
-    expect(made).toEqual({ ok: true, value: { id: "ya", attempt: null } });
+  it("si el grupo ya se creó, no se crea otro", async () => {
+    const a = actions();
+    expect(await groupFor(ctx(a), { ...initialCreate(FIELDS), groupId: "ya" }, () => undefined)).toEqual({ ok: true, value: "ya" });
+    expect(a.createGroup).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmCreate: las claves del pedido", () => {
+  it("la clave del grupo está en el estado antes de que salga el pedido", async () => {
+    let inState: string | undefined;
+    const createGroup = vi.fn(async () => ((inState = f.state.groupAttempt?.opKey), ok({ id: "g-nuevo" })));
+    const f = flow(actions({ createGroup }), REVIEWED);
+    await f.run();
+    expect(inState).toBeDefined();
+    expect(keys(createGroup)).toEqual([inState]);
+  });
+
+  it("si se pierde la respuesta del grupo, el reintento usa la misma clave y no crea otro", async () => {
+    const createGroup = vi.fn().mockImplementationOnce(lost).mockImplementation(async () => ok({ id: "g-nuevo" }));
+    const f = flow(actions({ createGroup }), REVIEWED);
+    expect((await f.run()).ok).toBe(false);
+    expect((await f.run()).ok).toBe(true);
+    const [first, second] = keys(createGroup);
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+  });
+
+  it("si el pedido falla con un error, también conserva la clave", async () => {
+    const createGroup = vi.fn().mockImplementationOnce(async () => unavailable).mockImplementation(async () => ok({ id: "g-nuevo" }));
+    const f = flow(actions({ createGroup }), REVIEWED);
+    await f.run();
+    await f.run();
+    expect(keys(createGroup)[1]).toBe(keys(createGroup)[0]);
+  });
+
+  it("si el usuario cambia los datos del grupo, la clave se renueva", async () => {
+    const createGroup = vi.fn(async () => unavailable);
+    const f = flow(actions({ createGroup }), REVIEWED);
+    await f.run();
+    f.dispatch({ type: "field", name: "groupName", value: "4.º C" });
+    await f.run();
+    const [first, second] = keys(createGroup);
+    expect(second).not.toBe(first);
+  });
+
+  it("con el grupo creado, un grupo nuevo con los mismos datos es otro pedido", async () => {
+    const createGroup = vi.fn(async () => ok({ id: "g-nuevo" }));
+    const f = flow(actions({ createGroup }), REVIEWED);
+    await f.run();
+    expect(f.state.groupAttempt).toBeNull();
+  });
+
+  it("si se pierde la respuesta de las cuentas, el reintento usa la misma clave", async () => {
+    const create = vi.fn().mockImplementationOnce(lost).mockImplementation(async () => ok([{ index: 0, outcome: "created" as const, studentId: "s1" }]));
+    const f = flow(actions({ create }), REVIEWED);
+    expect((await f.run()).ok).toBe(false);
+    expect((await f.run()).ok).toBe(true);
+    expect(keys(create)[1]).toBe(keys(create)[0]);
+    expect(keys(create)[0]).toBeDefined();
   });
 });
 

@@ -1,10 +1,9 @@
 "use client";
 
-import { useReducer, useRef, useState } from "react";
+import { useReducer, useState } from "react";
 import type { GroupSummary } from "@/lib/domain/groups/rpc";
-import { createRows, groupFor, nextAttempt, partialText, previewRows, type CreateActions } from "./createSteps";
+import { confirmCreate, partialText, previewRows, type CreateActions } from "./createSteps";
 import { NEW_GROUP, createReducer, initialCreate, pasteProblems, type Fields } from "./createFlowState";
-import type { Attempt } from "./opKey";
 import { useFlowMessages } from "./useFlowMessages";
 import { blockingProblems } from "./usernameReview";
 
@@ -23,7 +22,6 @@ export function useCreateFlow({ institutionId, groups, subjects, year, actions }
   const [state, dispatch] = useReducer(createReducer, undefined, () => initialCreate(initialFields(groups, subjects, year)));
   const [pending, setPending] = useState(false);
   const [visited, setVisited] = useState(false);
-  const groupAttempt = useRef<Attempt | null>(null);
   const messages = useFlowMessages();
   const { say } = messages;
   const ctx = { institutionId, actions };
@@ -43,12 +41,7 @@ export function useCreateFlow({ institutionId, groups, subjects, year, actions }
   async function confirm() {
     if (messages.flag(blockingProblems(state.rows, state.flags))) return;
     setPending(true);
-    const group = await groupFor(ctx, state, groupAttempt.current);
-    if (!group.ok) return stop(group.text);
-    groupAttempt.current = group.value.attempt;
-    const attempt = nextAttempt(state, group.value.id);
-    dispatch({ type: "started", groupId: group.value.id, attempt });
-    const made = await createRows(ctx, { groupId: group.value.id, rows: state.rows, attempt });
+    const made = await confirmCreate(ctx, state, dispatch);
     if (!made.ok) return stop(made.text);
     setPending(false);
     const created = made.value.filter((row) => row.outcome === "created").length;
