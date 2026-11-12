@@ -3,7 +3,7 @@
 -- authenticated it would fail earlier with 42501 and pass even without the guard) and has to fail with P0004.
 -- Placeholder data only. The whole file is rolled back.
 begin;
-select plan(80);
+select plan(84);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -201,6 +201,17 @@ select is(pg_temp.st(format('insert into app.students (institution_id, display_n
   'students: a student is not inserted already linked to an account');
 select is(pg_temp.st(format('insert into app.students (institution_id, display_name, username) values (%s, ''Estudiante 4'', ''est.4'')', pg_temp.i('i_n'))), 'ok',
   'control: inserted unlinked, it is accepted (the link comes afterwards, through the RPC)');
+
+-- 3g. Actors set once by an event are born empty (T1.F15, round 8): born as A they could be replaced by B when the
+-- event happens. The race of the first account is in tests/integration/races/first-account.test.ts.
+select is(pg_temp.st(format('insert into app.invitations (institution_id, email, role, token_hash, expires_at, accepted_by) values (%s, ''p2@ejemplo.invalid'', ''teacher'', decode(repeat(''01'', 32), ''hex''), now() + interval ''1 day'', %s)', pg_temp.i('i_n'), pg_temp.i('b2'))), 'P0004',
+  'invitations: a pending invitation is not born with whoever accepts it');
+select is(pg_temp.st(format('insert into app.invitations (institution_id, email, role, token_hash, expires_at) values (%s, ''p2@ejemplo.invalid'', ''teacher'', decode(repeat(''01'', 32), ''hex''), now() + interval ''1 day'')', pg_temp.i('i_n'))), 'ok',
+  'control: born without it, it is accepted');
+select is(pg_temp.st(format('insert into app.consents (institution_id, student_id, purpose, text_version, revoked_by) values (%s, %s, ''ai_analysis'', ''v1'', %s)', pg_temp.i('i_n'), pg_temp.i('s2'), pg_temp.i('b2'))), 'P0004',
+  'consents: a consent is not born with whoever revokes it');
+select is(pg_temp.st(format('insert into app.consents (institution_id, student_id, purpose, text_version) values (%s, %s, ''ai_analysis'', ''v1'')', pg_temp.i('i_n'), pg_temp.i('s2'))), 'ok',
+  'control: born without it, it is accepted');
 
 -- ---------------------------------------------------------------------------------------------
 -- 4b. operations.op_key and kind, import_runs.op_key
