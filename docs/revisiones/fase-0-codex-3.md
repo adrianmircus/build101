@@ -184,3 +184,24 @@ Veredicto: no listo
 Pasaron lint, **453 pruebas** y ambos chequeos de tipos. No ejecuté Playwright. Árbol limpio.
 
 Veredicto: no listo
+
+## Ronda 15 (sistemática, por regla)
+
+Probé en memoria: named, default, namespace, type-only, re-export e import dinámico literal; también `export *`.
+
+| Regla | Resultado |
+|---|---|
+| components/lib/client → lib/server | Bloqueado |
+| domain → next/react/@supabase/server/client | Bloqueado |
+| db/client fuera de repos/*.ts | Bloqueado |
+| db/admin fuera de repos/admin y tests | Bloqueado |
+| repos/admin desde otras capas fuera de jobs/services/admin | Bloqueado |
+| app → repos/db | Bloqueado |
+| Código nuevo → legacy | Bloqueado |
+| server-only ausente, tardío o sin efecto | Bloqueado |
+
+Los controles permitidos pasaron. Sin brechas reproducidas ni otros hallazgos nuevos de severidad alta/media en el diff solicitado.
+
+Lint y ambos chequeos de tipos pasaron. Vitest no ejecutó pruebas: `EPERM` al crear su directorio temporal bajo el entorno de solo lectura. Sin modificaciones; árbol limpio.
+
+Veredicto: listo para push
