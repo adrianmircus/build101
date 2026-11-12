@@ -111,7 +111,6 @@ export const ACCOUNT_RPCS = {
     result: z
       .object({
         issueId: Id,
-        leaseUntil: Timestamp,
         institutionCode: InstitutionCode,
         institutionName: z.string(),
         items: z.array(z.object({ studentId: Id, displayName: DisplayName, username: Username }).strict()),
