@@ -264,8 +264,8 @@ select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = 
   'control: an account is linked once');
 select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = ''00000000-0000-4000-8000-0000000000f2'' where student_id = %s', pg_temp.i('s1'))), 'P0004',
   'account_provisioning: a linked account is not swapped for another');
-select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = null where student_id = %s', pg_temp.i('s1'))), 'ok',
-  'control: it goes to NULL when the Auth account is deleted');
+select is(pg_temp.st(format('update app.account_provisioning set auth_user_id = null where student_id = %s', pg_temp.i('s1'))), 'P0004',
+  'account_provisioning: nor is it emptied (T1.F10: the contract keeps the UUID after the Auth account is deleted)');
 select is(pg_temp.st(format('update app.account_provisioning set student_id = %s where student_id = %s', pg_temp.i('s2'), pg_temp.i('s1'))), 'P0004',
   'account_provisioning: a provisioning row does not pass to another student');
 select is(pg_temp.st(format('update app.account_provisioning set student_id = null, status = ''deleted'' where student_id = %s', pg_temp.i('s4'))), 'ok',

@@ -523,7 +523,12 @@ do $$ begin
 end $$;
 select is(pg_temp.new_student('admin', 'g_f', 'Olga', 'olga.f', pg_temp.id('opf')) ->> 'id', pg_temp.id('sf4')::text,
   'nor is the enrollment: the original request answers the same after the student left the group');
+-- The erasure forgets the identity (T1.F10: outside the erasure of its institution the guard refuses it); then the mode is closed.
+insert into ids (k, id) values ('era_f', gen_random_uuid());
+insert into app.erasures (id, institution_id, kind) values (pg_temp.id('era_f'), pg_temp.id('i_f'), 'institution');
+select app.begin_erasure(pg_temp.id('era_f'));
 update app.account_provisioning set op_identity = null where student_id = pg_temp.id('sf4');
+select set_config('tiza.erasure', '', true);
 select is(pg_temp.new_student('admin', 'g_f', 'Olga', 'olga.f', pg_temp.id('opf')) ->> 'error', 'P0001 CONFLICT op_key_reused',
   'a row with no stored identity is never answered by guesswork');
 
