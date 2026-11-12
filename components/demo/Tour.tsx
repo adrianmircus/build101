@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { primaryButton } from "@/components/ui/styles";
-import { demoViewAs } from "@/lib/auth/actions";
+import { demoViewAs } from "@/app/demo/actions";
 import { STAGES, STEPS, type Step } from "@/lib/demo/steps";
 import { setTour, type TourState } from "@/lib/demo/tour";
 import { useData } from "@/lib/groups/store";

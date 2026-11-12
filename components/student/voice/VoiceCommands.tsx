@@ -1,9 +1,11 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, startTransition, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { primaryButton, secondaryButton } from "@/components/ui/styles";
-import { logout } from "@/lib/auth/actions";
+import { signOutAction } from "@/app/salir/actions";
+import { callAction } from "@/lib/client/callAction";
+import { isDemo } from "@/lib/demo/mode";
 import { useDictation } from "@/lib/speech/useDictation";
 import type { VoiceCommand } from "@/lib/voice/commands";
 import { interpret } from "@/lib/voice/interpret";
@@ -42,6 +44,17 @@ export function VoiceCommands({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [help, setHelp] = useState<VoiceCommand[] | null>(null);
 
+  // The demo leaves by its own door (a full reload drops its data); a real session closes with the action.
+  const leave = async () => {
+    if (isDemo()) {
+      window.location.assign(new URL("/demo/salir", window.location.origin));
+      return;
+    }
+    const result = await callAction(signOutAction, {});
+    if (result.ok) router.replace(result.data.next);
+    else setStatus({ reply: "No pudimos cerrar tu sesión ahora. Probá de nuevo en un rato.", tone: "error" });
+  };
+
   const goToGrades = () => {
     if (pathname === "/estudiante") {
       const heading = document.getElementById("calificaciones");
@@ -56,7 +69,7 @@ export function VoiceCommands({ children }: { children: ReactNode }) {
     { id: "home", label: "Inicio: tus prácticos", phrases: ["inicio", "mis practicos", "mis parciales", "volver al inicio", "volver a mis practicos"], run: () => router.push("/estudiante") },
     { id: "grades", label: "Calificaciones", phrases: ["calificaciones", "mis notas", "notas", "mis calificaciones"], run: goToGrades },
     { id: "help", label: "Ayuda: qué puedo decir", phrases: ["ayuda", "que puedo decir", "comandos"], run: () => setHelp(all()) },
-    { id: "logout", label: "Salir", phrases: ["salir", "cerrar sesion"], run: () => startTransition(() => void logout()) },
+    { id: "logout", label: "Salir", phrases: ["salir", "cerrar sesion"], run: () => void leave() },
   ];
 
   function all(): VoiceCommand[] {
