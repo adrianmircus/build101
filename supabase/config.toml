@@ -187,7 +187,7 @@ enable_anonymous_sign_ins = true
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+minimum_password_length = 10
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
 password_requirements = ""
@@ -210,11 +210,17 @@ sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
 anonymous_users = 30
 # Number of sessions that can be refreshed in a 5 minute interval per IP address.
-token_refresh = 150
+# T2.7: Auth sees the IP of our server (Netlify), not the one of the user, until Sb-Forwarded-For is confirmed (see
+# docs/contratos/fase-2-notas.md). A whole school goes out through that one IP, so the defaults (150) would lock a class
+# out. Raised just enough for ~4 classes of 40 refreshing in the same 5 minutes. Our own counters (app.rate_limits) are the real limit.
+token_refresh = 600
 # Number of sign up and sign-in requests that can be made in a 5 minute interval per IP address (excludes anonymous users).
-sign_in_sign_ups = 30
+# T2.7: staff sign in with signInWithPassword and students with a magic link from our server, all from the same IP.
+# 300 in 5 minutes covers several classes entering at once; guessing is limited by app.rate_limits and the 10-character minimum.
+sign_in_sign_ups = 300
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
-token_verifications = 30
+# T2.7: every student sign in is a verifyOtp from our server (same IP for the whole school).
+token_verifications = 300
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
 web3 = 30
 
