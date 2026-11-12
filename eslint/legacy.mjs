@@ -9,7 +9,7 @@ const legacyRules = {
   "app/page.tsx": {"tiza/function-size":{"max":40,"componentMax":212},"max-lines":255},
   "components/assessments/AssessmentDetail.tsx": {"tiza/function-size":{"max":40,"componentMax":540},"complexity":81,"max-lines":573},
   "components/assessments/NewAssessment.tsx": {"tiza/function-size":{"max":40,"componentMax":337},"complexity":41,"max-lines":407},
-  "components/demo/Tour.tsx": {"tiza/function-size":{"max":72,"componentMax":150},"complexity":25,"max-lines":248},
+  "components/demo/Tour.tsx": {"complexity":25},
   "components/results/GradeExercises.tsx": {"complexity":18,"max-lines":374},
   "components/results/ResultsTab.tsx": {"complexity":12,"max-lines":419,"tiza/function-size":{"max":51,"componentMax":150}},
   "components/solve/DictationAnswer.tsx": {"tiza/function-size":{"max":40,"componentMax":297},"complexity":48,"max-lines":310},
