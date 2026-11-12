@@ -397,6 +397,11 @@ select is(pg_temp.err(pg_temp.u('teach', format('select api.internal_fail_studen
 -- =============================================================================================
 -- 8. internal_list_unfinished_accounts
 -- =============================================================================================
+-- Other runs can leave unfinished rows in a shared local database; inside this rolled-back transaction they are
+-- pushed past the retry limit so the listing below only sees the rows of this file.
+update app.account_provisioning set attempts = 5
+ where status in ('pending', 'failed') and attempts < 5
+   and student_id is not null and student_id <> all (array[pg_temp.id('s3'), pg_temp.id('sfail')]);
 -- s3: failed, id remembered (acct-s3), 2 attempts -> listed. sfail: failed, its id remembered (acct-sfail), 1 attempt -> listed.
 select is((select array_agg(i ->> 'studentId' order by i ->> 'studentId') from jsonb_array_elements(pg_temp.s('select api.internal_list_unfinished_accounts(50)') -> 'items') i
             where (i ->> 'studentId')::uuid in (pg_temp.id('s3'), pg_temp.id('sfail'))),
