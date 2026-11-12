@@ -1,4 +1,4 @@
--- T1.3a, widened in T1.3b: reconstruction. A teacher of the group calls every staff RPC that is not
+-- T1.3a, widened in T1.3b and T1.4b: reconstruction. A teacher of the group calls every staff RPC that is not
 -- an audited read and none of the answers may carry a profile, a support, an interest, a review date,
 -- the interface of a student, the configuration of a version, its recipients or the inputs of a
 -- generation: those come out only through the audited reads.
@@ -188,6 +188,11 @@ insert into specs (name, spec) values
   ('remove_exercise', '{"id":"s","revision":"s"}'),
   ('reorder_exercises', '{"id":"s","revision":"s"}'),
   ('list_assessments', '{"items":[{"createdAt":"s","dueAt":"s","exerciseCount":"s","id":"s","kind":"s","publishAt":"s","revision":"s","status":"s","subjectId":"s","topic":"s","versionCount":"s"}],"total":"s"}'),
+  ('create_version', '{"id":"s","revision":"s","position":"s"}'),
+  ('update_version_config', '{"id":"s","revision":"s"}'),
+  ('set_version_recipients', '{"id":"s","revision":"s"}'),
+  ('archive_version', '{"id":"s","revision":"s"}'),
+  ('list_versions', '{"items":[{"approved":"s","exerciseCount":"s","id":"s","position":"s","readyCount":"s","revision":"s","stale":"s","status":"s"}]}'),
   ('get_assessment', '{"assessment":{"createdAt":"s","dueAt":"s","generalInstructions":"s","groupId":"s","id":"s","kind":"s","publishAt":"s","revision":"s","sourceFileId":"s","status":"s","subjectId":"s","topic":"s"},"exercises":[{"body":"s","id":"s","label":"s","position":"s","revision":"s","topicId":"s"}]}');
 
 -- A control: the detector does flag the audited read of the same data, so a green result below is not a blind detector.
@@ -247,13 +252,24 @@ select pg_temp.call('update_assessment', 'api.update_assessment(uuid,integer,tex
 select pg_temp.call('remove_exercise', 'api.remove_exercise(uuid,integer)', format('select api.remove_exercise(%L, 1)', pg_temp.id('eb')));
 select pg_temp.call('list_assessments', 'api.list_assessments(uuid,boolean,integer,integer)', format('select api.list_assessments(%L, true, 50, 0)', pg_temp.id('g')));
 select pg_temp.call('get_assessment', 'api.get_assessment(uuid)', format('select api.get_assessment(%L)', pg_temp.id('aa')));
-select pg_temp.call('archive_assessment', 'api.archive_assessment(uuid,integer)', format('select api.archive_assessment(%L, 3)', pg_temp.id('aa')));
+-- Versions (T1.4b): the configuration and the recipients go in, and what comes out is only an id, a
+-- revision and a position. The recipient of the new version joins the seeded pairs, so the detector also
+-- looks for it. list_versions shows how many versions and exercises there are, never for whom. get_version
+-- is an audited read (below).
+select pg_temp.call('create_version', 'api.create_version(uuid,jsonb,text,uuid,uuid)', format($$ select api.create_version(%L, '{"profiles":["motor"],"supports":["recordatorio"],"interests":["centinela-nuevo"]}', 'gaze', gen_random_uuid(), null) $$, pg_temp.id('aa')));
+insert into ids (k, id) select 'va', (res ->> 'id')::uuid from answers where name = 'create_version';
+select pg_temp.call('set_version_recipients', 'api.set_version_recipients(uuid,integer,uuid[],uuid)', format('select api.set_version_recipients(%L, 1, array[%L]::uuid[], gen_random_uuid())', pg_temp.id('va'), pg_temp.id('s3')));
+insert into pairs values (pg_temp.id('va')::text, pg_temp.id('s3')::text);
+select pg_temp.call('update_version_config', 'api.update_version_config(uuid,integer,jsonb,text)', format($$ select api.update_version_config(%L, 2, '{"profiles":["dyslexia"],"supports":[],"interests":["centinela-otro"]}', 'typed') $$, pg_temp.id('va')));
+select pg_temp.call('list_versions', 'api.list_versions(uuid)', format('select api.list_versions(%L)', pg_temp.id('aa')));
+select pg_temp.call('archive_version', 'api.archive_version(uuid,integer)', format('select api.archive_version(%L, 3)', pg_temp.id('va')));
+select pg_temp.call('archive_assessment','api.archive_assessment(uuid,integer)', format('select api.archive_assessment(%L, 3)', pg_temp.id('aa')));
 
 select is((select count(*) from answers where res ? 'error'), 0::bigint, 'every call worked: none answered an error (so each answer is a real one)');
 select is((select string_agg(a.name, ',' order by a.name) from answers a where pg_temp.verdict(a.res, (select sp.spec from specs sp where sp.name = a.name)) <> ''), null::text,
   'no answer carries a profile, a support, an interest, a review date, an interface, a configuration, inputs or a recipient, and each one conforms to its keys');
 select is((select count(*) from answers a join specs sp on sp.name = a.name), (select count(*) from answers), 'every answer has its spec of keys');
-select is((select count(*) from answers), 31::bigint, 'thirty-one RPCs were called');
+select is((select count(*) from answers), 36::bigint, 'thirty-six RPCs were called');
 select is(jsonb_array_length((select res -> 'items' from answers where name = 'list_group_students')), 4,
   'and the roster answer did list the students that have needs (so there was something to leak)');
 select is((select string_agg(k, ',' order by k) from (select jsonb_object_keys(res -> 'items' -> 0) k from answers where name = 'list_group_students') t),
@@ -334,7 +350,8 @@ create temp table audited (sig text primary key);
 insert into audited (sig) values
   ('api.get_student_needs(uuid[])'::regprocedure::text), ('api.get_group_needs(uuid)'::regprocedure::text),
   ('api.list_student_need_events(uuid,integer,integer)'::regprocedure::text),
-  ('api.list_student_notes(uuid)'::regprocedure::text), ('api.list_student_consents(uuid)'::regprocedure::text);
+  ('api.list_student_notes(uuid)'::regprocedure::text), ('api.list_student_consents(uuid)'::regprocedure::text),
+  ('api.get_version(uuid)'::regprocedure::text);
 select is((select string_agg(p.oid::regprocedure::text, ',' order by p.oid::regprocedure::text)
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'api' and has_function_privilege('authenticated', p.oid, 'execute')

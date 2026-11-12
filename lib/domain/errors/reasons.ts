@@ -68,6 +68,14 @@ export const REASON_MESSAGES: Record<string, string> = {
   unknown_topic: "Ese tema no está en el programa del grupo.",
   too_many_exercises: "Un práctico puede tener hasta 200 ejercicios.",
   exercises_mismatch: "La lista de ejercicios cambió mientras la ordenabas. Recargá y volvé a ordenarla.",
+  invalid_config: "La configuración de la versión no es válida. Revisá los perfiles, los apoyos y los intereses elegidos.",
+  invalid_answer_mode: "Elegí cómo va a responder el estudiante: escribiendo, con la mirada o dictando.",
+  invalid_keep: "Hay ejercicios elegidos que no son de este práctico o que ya no están. Recargá y volvé a elegir.",
+  invalid_base_version: "La versión de la que partís no es de este práctico.",
+  no_exercises: "Este práctico no tiene ejercicios para armar una versión. Agregá al menos uno.",
+  keep_changed: "Los ejercicios de una versión no se pueden cambiar. Creá otra versión con los que quieras.",
+  version_archived: "Esta versión está archivada y ya no se puede cambiar.",
+  recipient_in_other_version: "Alguno de los estudiantes ya recibe otra versión de este práctico. Sacalo de esa versión primero.",
 };
 
 export function messageFor(code: ErrorCode, reason: string | undefined): string {
