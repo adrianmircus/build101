@@ -36,6 +36,8 @@ export function Spotlight({ hole, block, glide, vw, vh }: { hole: Box | null; bl
         className={`pointer-events-none fixed z-[70] rounded-xl outline-3 outline-amber-300 ${
           glide ? "transition-[top,left,width,height] duration-[250ms] ease-out motion-reduce:transition-none" : ""
         }`}
+        // The shadow darkens the rest of the screen. It only stays cheap because the tour's layer clips its painting
+        // to the screen (contain: paint in Tour.tsx): without that, every page change froze slow devices.
         style={{ ...hole, boxShadow: "0 0 0 9999px rgb(2 6 23 / 0.6)" }}
       />
       {block && panels.map((p, i) => <div key={i} aria-hidden="true" className="pointer-events-auto fixed z-[70]" style={p} />)}
