@@ -17,6 +17,7 @@ export const REASON_MESSAGES: Record<string, string> = {
   not_implemented: "Esto todavía no está disponible.",
   no_session: "Tu sesión terminó. Volvé a entrar.",
   not_found: DEFAULT_MESSAGES.NOT_FOUND,
+  not_a_student: "Esta pantalla es solo para estudiantes. Entrá con tu cuenta de estudiante.",
   revision_required: "Recargá la página y volvé a intentar.",
   revision_mismatch: DEFAULT_MESSAGES.CONFLICT,
   archived: "Está archivado. Restauralo para cambiarlo.",
