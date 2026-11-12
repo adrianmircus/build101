@@ -15,7 +15,7 @@ export type Database = {
           }
           Functions: {
             "add_exercise":
-{ Args: { "p_assessment_id": string,"p_body": string,"p_label": string,"p_topic_id"?: string }; Returns: Json
+{ Args: { "p_assessment_id": string,"p_body": string,"p_label": string,"p_op_key": string,"p_topic_id"?: string }; Returns: Json
                            },
 "add_group_staff":
 { Args: { "p_group_id": string,"p_role": string,"p_user_id": string }; Returns: Json
@@ -45,10 +45,10 @@ export type Database = {
 { Args: { "p_base_revision_id": string,"p_version_id": string }; Returns: Json
                            },
 "create_assessment":
-{ Args: { "p_general_instructions": string,"p_group_id": string,"p_kind": string,"p_topic": string }; Returns: Json
+{ Args: { "p_general_instructions": string,"p_group_id": string,"p_kind": string,"p_op_key": string,"p_topic": string }; Returns: Json
                            },
 "create_group":
-{ Args: { "p_institution_id": string,"p_name": string,"p_school_year": number,"p_subject_id": string }; Returns: Json
+{ Args: { "p_institution_id": string,"p_name": string,"p_op_key": string,"p_school_year": number,"p_subject_id": string }; Returns: Json
                            },
 "create_student":
 { Args: { "p_display_name": string,"p_group_id": string,"p_op_key": string,"p_username": string }; Returns: Json
@@ -57,7 +57,7 @@ export type Database = {
 { Args: { "p_body": string,"p_op_key": string,"p_student_id": string }; Returns: Json
                            },
 "create_version":
-{ Args: { "p_answer_mode": string,"p_assessment_id": string,"p_base_version_id"?: string,"p_config": Json }; Returns: Json
+{ Args: { "p_answer_mode": string,"p_assessment_id": string,"p_base_version_id"?: string,"p_config": Json,"p_op_key": string }; Returns: Json
                            },
 "edit_answer_key":
 { Args: { "p_base_revision_id"?: string,"p_content": Json,"p_version_id": string }; Returns: Json

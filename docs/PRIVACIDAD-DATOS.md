@@ -92,6 +92,7 @@ Nombre del grupo, materia y año. El nombre es del grupo («3.º A»), no de una
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
 | `name`, `subject_id`, `school_year`, `archived_at`, `created_by`, `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Datos del grupo. |
+| `op_key`, `op_identity` | conserva | no personal | Identidad del alta (T1.F3): el uuid del pedido y el sha256 de institución, materia, año y nombre del grupo. |
 
 ### `group_staff`
 
@@ -237,6 +238,7 @@ El práctico original, del profe. `topic` y `general_instructions` son texto lib
 |---|---|---|---|
 | `topic`, `general_instructions` | redacta | personal | Texto libre del profe. Si nombra al estudiante, se redacta esa parte; si no, queda como estaba. |
 | `group_id`, `subject_id`, `kind`, `status`, `publish_at`, `due_at`, `source_file_id`, `created_by` | conserva | no personal | Datos del práctico, no de un estudiante. |
+| `op_key`, `op_identity` | redacta | no personal | Identidad del alta (T1.F3), para que repetir el pedido no cree otro práctico: el `op_key` es un uuid del navegador y `op_identity` el sha256 de grupo, tipo, tema e instrucciones tal como se crearon. Sin el texto no dicen nada de nadie, pero con un nombre candidato se podría comprobar un texto redactado: si se redacta `topic` o `general_instructions`, los dos se ponen en nulo juntos (la guardia lo deja solo dentro del modo supresión); si no, quedan. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
 ### `assessment_exercises`
@@ -249,6 +251,7 @@ Ejercicios del original. El original es del profe; si su texto nombra al estudia
 |---|---|---|---|
 | `body`, `label` | redacta | personal | Texto libre. Si nombra al estudiante, se redacta esa parte; si no, queda como estaba. |
 | `assessment_id`, `position`, `topic_id`, `removed_at` | conserva | no personal | Posición y referencias dentro del práctico: no dicen nada de un estudiante. |
+| `op_key`, `op_identity` | redacta | no personal | Identidad del alta (T1.F3), para que repetir el pedido no agregue otro ejercicio: el `op_key` es un uuid del navegador y `op_identity` el sha256 de práctico, etiqueta, enunciado y tema tal como se agregaron. Sin el texto no dicen nada de nadie, pero con un nombre candidato se podría comprobar un texto redactado: si se redacta `label` o `body`, los dos se ponen en nulo juntos (la guardia lo deja solo dentro del modo supresión); si no, quedan. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
 ### `versions`
@@ -264,6 +267,7 @@ La configuración de una versión (`config`) tiene perfiles y apoyos: dato de sa
 | `answer_mode`, `status`, `stale`, `error_code`, `approved_revision`, `instructions_revision` | individual: borra; compartida: conserva | no personal | Estado de la versión. No identifican a nadie y no hay forma de atribuirlos a un destinatario. |
 | `assessment_id`, `position`, `base_version_id`, `current_generation_id`, `archived_at` | individual: borra; compartida: conserva | no personal | Posición y referencias dentro del práctico: no dicen nada de un estudiante. |
 | `created_by` | individual: borra; compartida: conserva | no personal | Id del profe que creó la versión. No es de un estudiante. |
+| `op_key`, `op_identity` | individual: borra; compartida: redacta | personal | Identidad de la creación (T1.F3), para que repetir el pedido no cree otra versión: el `op_key` es un uuid del navegador y `op_identity` el sha256 del práctico, la configuración, el modo de respuesta y la versión base tal como se crearon. Se deriva de la configuración, que es dato de salud, y se trata igual que ella. En una compartida, si se redacta la configuración, los dos se ponen en nulo juntos (la guardia lo deja solo dentro del modo supresión); si no, quedan. |
 | `instructions_written_by` | individual: borra; compartida: conserva | no personal | Id de la generación que escribió las instrucciones. Es nulo si las escribió el profe a mano. No es un id de profe ni de estudiante. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | individual: borra; compartida: conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
@@ -398,6 +402,7 @@ Copia inmutable de lo que vio el estudiante.
 | `aids` | individual: borra; compartida: conserva | personal | JSON con las ayudas activas (lectura en voz alta y similares). Se calculan desde los perfiles, así que dejan deducirlos. |
 | `answer_mode` | individual: borra; compartida: conserva | personal | Mirada, dictado o escritura: deduce el perfil motriz o de disgrafía. |
 | `version_revision`, `published_by`, `published_at`, `withdrawn_at` | individual: borra; compartida: conserva | no personal | Cuándo y quién publicó: dato del profe y de la versión, no de un destinatario. |
+| `op_key`, `op_identity`, `op_attempts` | individual: borra; compartida: conserva | no personal | Identidad de la publicación (T1.F3), para que repetir el pedido no publique dos veces: el `op_key` es un uuid que genera el navegador; `op_identity` es el sha256 de la versión, la revisión aprobada y la revisión de la clave (solo ids y números, ningún texto); `op_attempts` es cuántos intentos creó o movió esa publicación, la respuesta que se repite. No se derivan de ningún dato de un estudiante. |
 | `assessment_id`, `version_id`, `answer_key_revision_id`, `id`, `institution_id`, `created_at` | individual: borra; compartida: conserva | no personal | Referencias y control de la fila. |
 
 ### `assignments`

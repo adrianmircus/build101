@@ -70,8 +70,8 @@ begin
   perform pg_temp.as_service(format('select api.internal_add_membership(%L, %L, %L)', v_inst, pg_temp.id(u.k), u.role))
      from (values ('admin', 'admin'), ('teach', 'teacher'), ('other', 'teacher'), ('incl', 'inclusion')) as u(k, role);
   insert into ids (k, id) values
-    ('g_' || p, (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026)', v_inst)) ->> 'id')::uuid),
-    ('go_' || p, (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026)', v_inst)) ->> 'id')::uuid);
+    ('g_' || p, (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026, gen_random_uuid())', v_inst)) ->> 'id')::uuid),
+    ('go_' || p, (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026, gen_random_uuid())', v_inst)) ->> 'id')::uuid);
 end
 $$;
 -- Creates a student through the RPC and registers it under the key p_key.
@@ -263,7 +263,7 @@ select is(pg_temp.setn('adm2', 'sn1', '{motor}', '{}', '{}', 'i4') ->> 'error', 
 insert into ids (k, id) select 'i_s', (pg_temp.as_service(format(
   $$ select api.internal_create_institution('Demo', 't1-3a-demo', 'sandbox', now() + interval '1 day', %L) $$, pg_temp.id('visitor'))) ->> 'id')::uuid;
 select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''teacher'')', pg_temp.id('i_s'), pg_temp.id('visitor')));
-insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select api.create_group(%L, ''Demo'', ''math'', 2026)', pg_temp.id('i_s'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select api.create_group(%L, ''Demo'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_s'))) ->> 'id')::uuid;
 select pg_temp.new_student('ss1', 'visitor', 'g_s');
 select is(pg_temp.setn('visitor', 'ss1', '{motor}', '{}', '{}', 'i1') ->> 'revision', '1', 'the sandbox visitor edits needs in their sandbox, with an op_id used in another institution');
 select is((select s.interface from app.students s where s.id = pg_temp.id('ss1')), 'gaze', 'and the interface follows');
@@ -335,7 +335,7 @@ select is(pg_temp.audits('i_n', 'get_group_needs'), 4::bigint, 'every read of th
 select is(jsonb_array_length(pg_temp.getg('incl', 'go_n') -> 'items'), 1, 'inclusion reads the group of any teacher');
 select is(jsonb_array_length(pg_temp.getg('adm2', 'go_n') -> 'items'), 1, 'and an admin who teaches the group');
 select is(pg_temp.getg('adm2', 'g_n') ->> 'error', 'P0001 FORBIDDEN forbidden', 'but not a group they do not teach');
-insert into ids (k, id) select 'ge_n', (pg_temp.as_user('teach', format('select api.create_group(%L, ''Vacío'', ''math'', 2026)', pg_temp.id('i_n'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'ge_n', (pg_temp.as_user('teach', format('select api.create_group(%L, ''Vacío'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_n'))) ->> 'id')::uuid;
 select is(pg_temp.audits('i_n', 'get_group_needs'), 6::bigint, 'one row per read of go_n');
 select is(pg_temp.getg('teach', 'ge_n'), jsonb_build_object('items', '[]'::jsonb), 'a group where nobody has needs answers an empty list');
 select is(pg_temp.audits('i_n', 'get_group_needs'), 6::bigint, 'and writes no audit row');

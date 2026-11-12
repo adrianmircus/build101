@@ -25,7 +25,7 @@ async function finish(session: Session, outcome: Outcome): Promise<void> {
 }
 
 /** Waits until the call settles or its connection is blocked on a lock; returns what it waited on. */
-async function waitUntilBlocked(blocked: Session, observer: Session, settled: () => boolean): Promise<string | null> {
+export async function waitUntilBlocked(blocked: Session, observer: Session, settled: () => boolean): Promise<string | null> {
   const deadline = Date.now() + WAIT_LIMIT_MS;
   while (Date.now() < deadline && !settled()) {
     const event = await blocked.waitEvent(observer);

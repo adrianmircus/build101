@@ -62,8 +62,8 @@ insert into ids (k, id) select 'inst', (pg_temp.as_service(
 select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, %L)', pg_temp.id('inst'), pg_temp.id(u.k), u.role))
   from (values ('admin', 'admin'), ('teach', 'teacher'), ('other', 'teacher'), ('incl', 'inclusion')) as u(k, role);
 insert into ids (k, id) values
-  ('g', (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026)', pg_temp.id('inst'))) ->> 'id')::uuid),
-  ('go', (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026)', pg_temp.id('inst'))) ->> 'id')::uuid);
+  ('g', (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026, gen_random_uuid())', pg_temp.id('inst'))) ->> 'id')::uuid),
+  ('go', (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026, gen_random_uuid())', pg_temp.id('inst'))) ->> 'id')::uuid);
 -- Three students in g, one in go.
 insert into ids (k, id)
   select 's' || n, (pg_temp.as_user('teach', format('select api.create_student(%L, %L, %L, gen_random_uuid())',
@@ -204,7 +204,7 @@ begin
 end
 $$;
 select pg_temp.call('list_my_institutions', 'api.list_my_institutions()', 'select api.list_my_institutions()');
-select pg_temp.call('create_group', 'api.create_group(uuid,text,text,integer)', format('select api.create_group(%L, ''Taller'', ''math'', 2026)', pg_temp.id('inst')));
+select pg_temp.call('create_group', 'api.create_group(uuid,text,text,integer,uuid)', format('select api.create_group(%L, ''Taller'', ''math'', 2026, gen_random_uuid())', pg_temp.id('inst')));
 insert into ids (k, id) select 'gx', (res ->> 'id')::uuid from answers where name = 'create_group';
 select pg_temp.call('update_group', 'api.update_group(uuid,integer,text,integer)', format('select api.update_group(%L, 1, ''Taller 2'', 2026)', pg_temp.id('gx')));
 select pg_temp.call('archive_group', 'api.archive_group(uuid,integer)', format('select api.archive_group(%L, 2)', pg_temp.id('gx')));
@@ -236,11 +236,11 @@ select pg_temp.call('revoke_consent', 'api.revoke_consent(uuid,integer)', format
 -- Assessments and original exercises (T1.4a): not sensitive and not audited. The group already has an
 -- assessment with two versions that carry a configuration and recipients: its summary says how many
 -- versions there are and nothing else.
-select pg_temp.call('create_assessment', 'api.create_assessment(uuid,text,text,text)', format('select api.create_assessment(%L, ''worksheet'', ''Repaso'', ''Resolvé todo.'')', pg_temp.id('g')));
+select pg_temp.call('create_assessment', 'api.create_assessment(uuid,text,text,text,uuid)', format('select api.create_assessment(%L, ''worksheet'', ''Repaso'', ''Resolvé todo.'', gen_random_uuid())', pg_temp.id('g')));
 insert into ids (k, id) select 'aa', (res ->> 'id')::uuid from answers where name = 'create_assessment';
-select pg_temp.call('add_exercise', 'api.add_exercise(uuid,text,text,uuid)', format('select api.add_exercise(%L, ''1'', ''Texto del primer ejercicio'', null)', pg_temp.id('aa')));
+select pg_temp.call('add_exercise', 'api.add_exercise(uuid,text,text,uuid,uuid)', format('select api.add_exercise(%L, ''1'', ''Texto del primer ejercicio'', gen_random_uuid(), null)', pg_temp.id('aa')));
 insert into ids (k, id) select 'ea', (res ->> 'id')::uuid from answers where name = 'add_exercise';
-insert into ids (k, id) select 'eb', (pg_temp.as_user('teach', format('select api.add_exercise(%L, ''2'', ''Texto del segundo ejercicio'', null)', pg_temp.id('aa'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'eb', (pg_temp.as_user('teach', format('select api.add_exercise(%L, ''2'', ''Texto del segundo ejercicio'', gen_random_uuid(), null)', pg_temp.id('aa'))) ->> 'id')::uuid;
 select pg_temp.call('update_exercise', 'api.update_exercise(uuid,integer,text,text,uuid)', format('select api.update_exercise(%L, 1, ''1'', ''Texto corregido'', null)', pg_temp.id('ea')));
 select pg_temp.call('reorder_exercises', 'api.reorder_exercises(uuid,integer,uuid[])', format('select api.reorder_exercises(%L, 1, array[%L, %L]::uuid[])', pg_temp.id('aa'), pg_temp.id('eb'), pg_temp.id('ea')));
 select pg_temp.call('update_assessment', 'api.update_assessment(uuid,integer,text,text,text)', format('select api.update_assessment(%L, 2, ''exam'', ''Repaso final'', ''Resolvé todo y justificá.'')', pg_temp.id('aa')));

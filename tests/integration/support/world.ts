@@ -55,6 +55,7 @@ export async function createWorld(): Promise<World> {
     p_name: "Grupo de carreras",
     p_subject_id: "math",
     p_school_year: 2027,
+    p_op_key: randomUUID(),
   });
   return { institutionId, teacher, groupId: idOf(group) };
 }
@@ -66,6 +67,7 @@ export async function createGroup(world: World): Promise<string> {
     p_name: "Otro grupo",
     p_subject_id: "math",
     p_school_year: 2027,
+    p_op_key: randomUUID(),
   });
   return idOf(outcome);
 }

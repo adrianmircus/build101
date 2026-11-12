@@ -37,7 +37,8 @@ const assessmentRevision = z.object({ p_assessment_id: Id, p_revision: Revision 
 export const ASSESSMENT_RPCS = {
   create_assessment: {
     args: z
-      .object({ p_group_id: Id, p_kind: AssessmentKind, p_topic: Topic, p_general_instructions: GeneralInstructions })
+      // p_op_key: one per attempt to create, reused on a retry (T1.F3).
+      .object({ p_group_id: Id, p_kind: AssessmentKind, p_topic: Topic, p_general_instructions: GeneralInstructions, p_op_key: Id })
       .strict(),
     result: Written,
   },
@@ -65,7 +66,7 @@ export const ASSESSMENT_RPCS = {
   },
   add_exercise: {
     args: z
-      .object({ p_assessment_id: Id, p_label: ExerciseLabel, p_body: ExerciseBody, p_topic_id: Id.optional() })
+      .object({ p_assessment_id: Id, p_label: ExerciseLabel, p_body: ExerciseBody, p_op_key: Id, p_topic_id: Id.optional() })
       .strict(),
     result: Written,
   },
