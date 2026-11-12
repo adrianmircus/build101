@@ -21,6 +21,8 @@ vi.mock("next/headers", () => ({
   }),
 }));
 vi.mock("next/cache", () => ({ cacheLife: vi.fn() }));
+// connection() only works inside a request: here it is a no-op.
+vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), connection: async () => undefined }));
 // The cookie of the demo: there is none here, and reading it needs a request scope.
 vi.mock("@/lib/auth/session", () => ({ readSession: async () => null }));
 // redirect() throws in Next; the message says where, so the test sees every hop.
