@@ -91,3 +91,117 @@
 ### Qué se cambió
 
 Todos los hallazgos entran en la versión 2 del contrato: tokens en el fragmento (F2C-1), alta por invitación atómica con la cuenta de esa invitación (F2C-2, F2C-8), correo actual de auth.users (F2C-3), emisiones de tarjetas con plazo y estados (F2C-4, F2C-5), id de Auth elegido y recordado antes de crear (F2C-6, F2C-7), sesión vigente en rpc_begin (F2C-9), recuperar sin redirección y con plantilla (F2C-10), defensa de Auth directa y Sb-Forwarded-For medido (F2C-11, F2C-13), contar antes de probar (F2C-12), sujeto con el colegio (F2C-14), respuesta pareja (F2C-15), retryAt en Failure (F2C-16), servicios de lectura del panel (F2C-17), archivos asignados (F2C-18), guardias de estados y memoria de revocadas (F2C-19), camelCase (F2C-20) y CONFLICT role_conflict (F2C-21).
+
+## Ronda 2
+
+1. **F2C-22 · Alta · El alta por invitación sigue permitiendo cambios de contraseña atrasados.**  
+   **Dónde:** [contrato:133](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:133), pasos 1–3.  
+   **Escenario:** A y B encuentran la cuenta de esa invitación todavía sin ingresos. B se demora después de consultar. A termina la aceptación e inicia sesión. B continúa y cambia la contraseña; recién después `internal_finish_invitation_signup` rechaza la invitación ya aceptada. La membresía fue atómica, pero la contraseña quedó elegida por un intento que perdió. También puede ocurrir después de un reenvío que invalidó el token de B.  
+   **Propongo:** una intención durable y exclusiva de alta que gobierne también los efectos en Auth. Integrar la búsqueda en una RPC autorizada por token: `internal_find_auth_user(p_email)` permite consultar cualquier correo y no acredita por sí misma autorización para modificar esa cuenta. No reutilizar `hasSignedIn` como reserva.
+
+2. **F2C-23 · Media · La cuenta huérfana de una invitación revocada no tiene un recorrido completo de aceptación.**  
+   **Dónde:** [contrato:135](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:135), línea 137 y `accept_invitation`.  
+   **Escenario:** se crea Auth, se revoca la invitación y falla `internal_finish_invitation_signup`. Queda Auth sin `app_user`. Otra invitación manda a esa persona a «Ya tenés cuenta». Puede autenticarse, pero el recorrido de aceptación con sesión solo prescribe sumar la membresía: falta crear el padre `app_users` que exige su FK. Aplicar además el `require_actor` habitual de fase 1 lo rechazaría antes.  
+   **Propongo:** definir expresamente cómo la aceptación con sesión crea o recupera ese `app_user`, dentro de su transacción y después de verificar la identidad actual. Probar revocación → nueva invitación → ingreso → aceptación.
+
+3. **F2C-24 · Alta · El plazo de las tarjetas no serializa las escrituras en Auth.**  
+   **Dónde:** [contrato:121](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:121), especialmente líneas 122 y 125.  
+   **Escenario:** A obtiene el claim y se demora; vence su plazo; B abandona esa emisión, cambia la contraseña y entrega una tarjeta válida; A continúa y sobrescribe la contraseña de B. El claim no acompaña a `updateUserById` como condición comprobable por Auth. La demora también puede estar en una llamada de resultado incierto, no solamente entre dos instrucciones locales.  
+   **Propongo:** no habilitar un sucesor mientras la escritura anterior siga indeterminada; definir serialización y recuperación del efecto externo. Agregar otro chequeo SQL antes de llamar tampoco elimina la carrera. Si se acepta deliberadamente esta garantía menor, corregir el criterio que promete una sola contraseña imprimible que funciona y probar explícitamente el caso del trabajador atrasado.
+
+4. **F2C-25 · Alta · Aprovisionar puede recrear Auth después de una supresión; además hay dos políticas contradictorias.**  
+   **Dónde:** [contrato:106](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:106), pasos 1–6, línea 113 y criterio de T2.5b en línea 500.  
+   **Escenario:** A lee un aprovisionamiento pendiente con su UUID recordado y se detiene. Otro proceso marca `deleted`, suprime al estudiante y borra Auth. A continúa con `createUser` y recrea ese UUID. Si cae antes de la compensación, queda Auth nuevamente creado; incluso vuelve a resolver a una persona el identificador conservado en la marca de supresión. Evitar `active → failed` no cierra esta carrera.  
+   **Propongo:** definir coordinación durable entre aprovisionamiento y supresión, incluida recuperación de creaciones de resultado incierto. `deleted` debe impedir nuevos intentos y la supresión debe resolver los que ya estaban en curso. Separar expresamente «Auth borrado accidentalmente» de «cuenta suprimida»: línea 113 manda recrear y T2.5b manda no recrear.
+
+5. **F2C-26 · Alta · El nuevo `rpc_begin` rompe el aislamiento de ejecución del estudiante.**  
+   **Dónde:** [contrato:239](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:239); [contrato de fase 1:136](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-1.md:136).  
+   **Escenario:** una RPC `student_*` real ejecuta `rpc_begin` como `tiza_student`. Ese rol no tiene acceso al esquema `auth`, ni a `auth.jwt()` ni a `auth.sessions`. El chequeo falla con permisos insuficientes. Convertir `rpc_begin` en `SECURITY DEFINER` contradice la prohibición de helpers que presten privilegios y hace fallar `005_student_role`. Las pruebas sin `session_id` pueden ocultarlo.  
+   **Propongo:** resolver en el contrato cómo validar sesiones desde ese rol: una proyección mínima con permisos y aislamiento adecuados, o una excepción mínima y explícitamente revisada al modelo anterior. Asignar sus cambios de permisos y pruebas. No conceder lectura global de sesiones como arreglo incidental.
+
+6. **F2C-27 · Alta · El correo sintético estable no sustituye la defensa por cuenta en Auth.**  
+   **Dónde:** [contrato:80](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:80), líneas 87 y 100.  
+   **Escenario:** alguien copia una sesión en una computadora compartida y obtiene su correo sintético. El docente emite una tarjeta nueva y expulsa esa sesión, pero el correo permanece igual. El atacante ya puede dirigir intentos distribuidos al endpoint público de Auth contra una contraseña de unos 24 bits, sin pasar por los contadores de Tiza.  
+   **Propongo:** aplicar una defensa por cuenta dentro de Auth —por ejemplo, un hook si el plan lo permite— o cambiar el esquema de credenciales y su análisis de seguridad. El límite por IP no equivale al límite por sujeto. [Supabase documenta ambos mecanismos](https://supabase.com/docs/guides/auth/rate-limits), [incluido el hook](https://supabase.com/docs/guides/auth/auth-hooks).
+
+7. **F2C-28 · Alta · Las invitaciones todavía pierden la memoria de revocación mediante DML.**  
+   **Dónde:** [contrato:225](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:225), guardias de estados y memoria.  
+   **Escenario:** como dueño, se borra una invitación revocada y se inserta otra `pending` con el mismo hash y vencimiento futuro. Cumple nacimiento y unicidad; las guardias de transición nunca comparan ambas filas. La prohibición de borrar que prescribe el documento alcanza tarjetas y emisiones, pero no invitaciones.  
+   **Propongo:** conservar la memoria de hashes invalidados, proteger su borrado y definir cómo sobrevive al reenvío y a la retención. Probar `DELETE + INSERT`, reutilización del hash y carreras entre conexiones, además de `TRUNCATE`.
+
+8. **F2C-29 · Media · La inmutabilidad de `token_hash` contradice el reenvío.**  
+   **Dónde:** [contrato:224](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:224), frente a líneas 225 y 256.  
+   **Escenario:** `resend_invitation` intenta cambiar el hash de una invitación pendiente o vencida. La guardia general dice que `token_hash` no cambia y debe rechazarlo con `P0004`.  
+   **Propongo:** separar las reglas de tarjetas e invitaciones. Para invitaciones, permitir la rotación definida por el contrato sin permitir recuperar hashes invalidados; no implementar una excepción que simplemente olvide el anterior.
+
+9. **F2C-30 · Media · La supresión de estudiantes contradice la identidad y las restricciones de las emisiones.**  
+   **Dónde:** [contrato:183](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:183), líneas 224 y 229.  
+   **Escenario:** al suprimir un estudiante hay que quitarlo de `student_ids`, pero esa columna es inmutable. Si era el único, el arreglo vacío también viola `cardinality BETWEEN 1 AND 60`. Si se permite editarlo sin más, cambia el conjunto usado como identidad del `op_key`.  
+   **Propongo:** definir la excepción de supresión dentro de `begin_erasure`, el caso sin integrantes y el destino de la identidad de operación. Protegerla como fase 1 protege las identidades redactables: una edición ordinaria no debe poder alterar el conjunto.
+
+10. **F2C-31 · Media · Falta el resultado de reintentar una emisión `abandoned`.**  
+    **Dónde:** [contrato:127](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:127), estado y unicidad de `access_card_issues`.  
+    **Escenario:** una emisión vence y otra la marca `abandoned`. El navegador original reintenta con el mismo `op_key`. El contrato define `running` y `done`, pero no `abandoned`; tampoco puede insertar otra fila porque la clave sigue ocupada.  
+    **Propongo:** fijar código, razón y comportamiento de pantalla para ese replay, incluido el uso de una clave nueva. Exigir la comparación de identidad también en este estado.
+
+11. **F2C-32 · Media · El acuse del correo puede confirmar el envío de otro token.**  
+    **Dónde:** [contrato:138](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:138), `resend_invitation` y `mark_invitation_sent` en líneas 256–258.  
+    **Escenario:** A envía el correo con H1 y demora su acuse. B rota a H2 y su envío falla. A llama a `mark_invitation_sent(id)` y deja marcada como enviada la invitación que ahora contiene H2. El reintento ve `sentAt` y no recupera el envío fallido; el correo recibido contiene H1, invalidado.  
+    **Propongo:** vincular envío y acuse a una revisión o generación de token; reiniciar el estado de envío al rotar y rechazar acuses atrasados. La misma identidad debe gobernar los reintentos.
+
+12. **F2C-33 · Media · Esperar hasta 800 ms establece un mínimo, no una respuesta pareja.**  
+    **Dónde:** [contrato:78](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:78).  
+    **Escenario:** el usuario inexistente responde a los 800 ms; para uno existente, Auth tarda 1,5 segundos en rechazar. Mediciones repetidas vuelven a distinguirlos. También falta resolver la contradicción con T2.5b, que exige un error específico para colegio inexistente.  
+    **Propongo:** definir trabajo negativo comparable, tiempos máximos y tratamiento uniforme de errores; probar las distribuciones con Auth lento y con fallos. Acordar qué diferencias de respuesta se permiten para colegios.
+
+13. **F2C-34 · Media · Crear un grupo sigue sin recibir su materia.**  
+    **Dónde:** [contrato:300](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:300); [RPC existente](C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/domain/groups/rpc.ts:39).  
+    **Escenario:** el panel intenta crear un grupo mediante `createGroup({institutionId, name, schoolYear, opKey})`, pero `create_group` exige `p_subject_id`. El servicio no tiene el dato y tampoco está definido cómo elegirlo. Fijar matemática incumpliría las reglas del proyecto.  
+    **Propongo:** agregar `subjectId` al recorrido completo y definir la fuente del selector de materias habilitadas.
+
+14. **F2C-35 · Media · Los archivos asignados chocan con las fronteras de imports existentes.**  
+    **Dónde:** [contrato:295](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:295), tickets T2.1/T2.3/T2.5b; [regla de capas](C:/Users/adrim/build101/.claude/worktrees/fase-1/eslint/rules/layers.mjs:25).  
+    **Escenario:** `services/student-accounts.ts`, `services/invitations.ts` y `services/rate-limit.ts` necesitan los repos privilegiados asignados, pero ESLint solo permite importarlos desde `services/admin/**`, jobs, tests u otros repos admin. `auth/actor.ts` tampoco puede importar `db/client.ts`; los repos existentes requieren recibir el cliente. No está asignado un recorrido compatible para obtenerlo.  
+    **Propongo:** fijar las fachadas, repos de sesión y servicios privilegiados necesarios, con sus rutas y propietarios, antes de repartir. Asignar también dónde se implementan los encabezados HTTP de las páginas con tokens: los tickets de front no pueden establecerlos desde un Client Component.
+
+Las APIs señaladas **sí están disponibles** en la instalación revisada:
+
+- `createUser({ id })`: `AdminUserAttributes.id` existe y el SDK envía los atributos al endpoint admin. También lo admite la [implementación de Auth consultada](https://raw.githubusercontent.com/supabase/auth/master/internal/api/admin.go).
+- `verifyOtp({ token_hash, type: "recovery" })`: está tipado y guarda la sesión al verificar.
+- `signOut({ scope: "local" | "others" })`: ambos alcances existen. `others` conserva la sesión actual; el JWT viejo requiere el chequeo adicional en base. [Semántica oficial](https://supabase.com/docs/guides/auth/signout).
+- Fragmento → lectura en cliente → Server Action por POST es viable. El fragmento no reemplaza al argumento: hay que conservar el token en memoria para las acciones posteriores.
+- La guía instalada sí recomienda `use cache: private`; `cacheComponents` ya está habilitado. No encuentro una incompatibilidad intrínseca ahí.
+
+Respecto de la primera cuenta, **reservar el UUID antes de crear Auth es compatible con fase 1**: `auth_user_id` no tiene FK a Auth; `account_provisioning_born` exige concordancia cuando el estudiante ya está vinculado y `frozen` conserva el primer UUID. El orden estudiante → provisioning de `internal_remember_student_account` también coincide con `t1_fix15`. No hace falta debilitar esas guardias. Lo pendiente es la coordinación con la supresión descrita en F2C-25.
+
+El estado de la ronda anterior corresponde al **diseño del documento**, no a los stubs en reescritura:
+
+| Hallazgo | Estado | Motivo |
+|---|---|---|
+| F2C-1 | **Cerrado** | Fragmento, POST y exclusión explícita de logs. |
+| F2C-2 | **Abierto** | La membresía es atómica; los efectos sobre Auth siguen sin reserva exclusiva. F2C-22/23. |
+| F2C-3 | **Cerrado** | Exige correo actual y confirmado de `auth.users`. |
+| F2C-4 | **Abierto** | El plazo no impide escrituras externas atrasadas. F2C-24. |
+| F2C-5 | **Abierto** | Mejoró el protocolo, pero faltan replay `abandoned` y acuse ligado al token. F2C-31/32. |
+| F2C-6 | **Cerrado** | Se recuerda y reutiliza el primer UUID; la política de recreación necesita aclaración en F2C-25. |
+| F2C-7 | **Abierto** | Se evita degradar `active`, pero permanece la carrera contra supresión. F2C-25. |
+| F2C-8 | **Cerrado** | El aprovisionamiento puede recuperar por UUID mediante `getUserById`. El lookup general abre F2C-22. |
+| F2C-9 | **Abierto** | La solución no contempla los privilegios de `tiza_student`. F2C-26. |
+| F2C-10 | **Cerrado** | Recuperación sin redirección y plantilla asignada. |
+| F2C-11 | **Abierto** | UUID oculto y límite por IP no garantizan el límite por cuenta. F2C-27. |
+| F2C-12 | **Cerrado** | Contar atómicamente antes de probar cierra la ráfaga de fallos descrita. |
+| F2C-13 | **Cerrado** | Ahora contempla `/token`, forwarding soportado y medición de cuotas. |
+| F2C-14 | **Cerrado** | El sujeto incluye colegio y usuario normalizados. |
+| F2C-15 | **Abierto** | El piso de 800 ms no iguala recorridos más lentos. F2C-33. |
+| F2C-16 | **Cerrado** | Define transporte de `retryAt` y responsabilidad del contrato. |
+| F2C-17 | **Abierto** | Falta la materia en el alta de grupo. F2C-34. |
+| F2C-18 | **Abierto** | Persisten recorridos sin archivos asignados compatibles con las capas. F2C-35. |
+| F2C-19 | **Abierto** | Las invitaciones permiten recuperar el hash mediante borrado y reinserción. F2C-28. |
+| F2C-20 | **Cerrado** | Salidas y DTO declarados en camelCase. |
+| F2C-21 | **Cerrado** | Corrige a `CONFLICT role_conflict`. |
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 3 del contrato: la regla del plazo para toda escritura en Auth, apoyada en el corte de 60 s de Netlify (F2C-24, F2C-25); internal_claim_provisioning y la supresión que espera el plazo (F2C-25); el alta por invitación nunca cambia la contraseña de una cuenta existente y accept_invitation crea el app_user que falte; sale internal_find_auth_user (F2C-22, F2C-23); app.session_alive para tiza_student (F2C-26); correo sintético que cambia con cada tarjeta y contraseñas de tres palabras (F2C-27); invitation_spent_tokens y memoria de invitaciones (F2C-28, F2C-29); emisiones sin ids de estudiantes, con op_identity (F2C-30); card_issue_abandoned (F2C-31); mark_invitation_sent con revisión (F2C-32); cuenta señuelo y plazo de 5 s en Auth (F2C-33); subjectId y list_enabled_subjects (F2C-34); servicios privilegiados en services/admin y repo de sesión de Auth (F2C-35).
