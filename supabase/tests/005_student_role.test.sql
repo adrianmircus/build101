@@ -2,7 +2,7 @@
 -- anyone's needs: every api.student_* runs as tiza_student, and Postgres denies what the role is
 -- not granted, whatever path the SQL takes. Runs as postgres; everything is rolled back.
 begin;
-select plan(28);
+select plan(32);
 
 -- The role itself.
 select ok(
@@ -39,7 +39,16 @@ select is_empty($$
   select p.oid::regprocedure::text from pg_proc p
    where p.prosecdef and has_function_privilege('tiza_student', p.oid, 'execute')
      and not (p.pronamespace = 'api'::regnamespace and starts_with(p.proname, 'student_'))
+     -- The one reviewed exception (T2.7, F2C-9, F2C-26): it takes no argument, reads no table of the student and says only if the
+     -- session of the caller still exists in auth.sessions, which tiza_student cannot see. It is pinned below.
+     and p.oid <> 'app.session_alive()'::regprocedure
 $$, 'every other function tiza_student can execute is SECURITY INVOKER: no helper lends it more rights');
+select ok(
+  (select p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres' and p.pronargs = 0 and p.prorettype = 'boolean'::regtype
+          and p.proconfig = array['search_path=""'] and has_function_privilege('tiza_student', p.oid, 'execute')
+          and not has_function_privilege('authenticated', p.oid, 'execute') and not has_function_privilege('service_role', p.oid, 'execute')
+     from pg_proc p where p.oid = 'app.session_alive()'::regprocedure),
+  'the exception is app.session_alive: definer of postgres, no argument, search_path pinned, executable by tiza_student alone');
 
 -- What it can touch: exactly these tables, never the key, needs, notes or generations.
 select is(
@@ -196,6 +205,14 @@ create function api.student_zz_hijack() returns jsonb language plpgsql security 
     return '{}';
   end
   $p$;
+-- What T2.7 adds to rpc_begin, seen from a student RPC: the session of the claim is asked as tiza_student.
+create function api.student_zz_alive() returns jsonb language plpgsql security definer set search_path = ''
+  as $p$
+  begin
+    perform app.rpc_begin();
+    return jsonb_build_object('alive', app.session_alive());
+  end
+  $p$;
 select app.end_student_rpc_change();
 
 -- The window is open again only to let postgres call what tiza_student now owns.
@@ -213,6 +230,15 @@ select is(api.student_zz_peek() -> 'otherInterface', 'null'::jsonb, 'nor another
 select is(api.student_zz_peek() - 'students' - 'otherInterface',
   '{"ownPublications": 1, "otherPublications": 0, "otherAttempts": 0}'::jsonb,
   'its own publication is visible; another student''s publication and attempt are not');
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000005f1', 'alive@t2-7.invalid');
+insert into auth.sessions (id, user_id) values ('00000000-0000-0000-0000-0000000005f2', '00000000-0000-0000-0000-0000000005f1');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000005f1","session_id":"00000000-0000-0000-0000-0000000005f2"}', true);
+select is(api.student_zz_alive(), '{"alive": true}'::jsonb, 'as tiza_student, a student RPC with the claim of a live session passes rpc_begin');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000005f1","session_id":"00000000-0000-0000-0000-0000000005f3"}', true);
+select throws_ok($$ select api.student_zz_alive() $$, 'P0001', 'FORBIDDEN', 'as tiza_student, the claim of a session that does not exist is FORBIDDEN no_session');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000005f1"}', true);
+select is(api.student_zz_alive(), '{"alive": true}'::jsonb, 'and a claim without session_id passes');
+select set_config('request.jwt.claims', '', true);
 select app.end_student_rpc_change();
 select is(
   (select status from app.assignment_attempts where id = '00000000-0000-0000-0000-0000000005e1'),
