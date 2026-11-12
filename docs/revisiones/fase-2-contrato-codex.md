@@ -557,3 +557,121 @@ Mantengo como suficientes las razones ya aceptadas para el alta exclusiva de pro
 ### Qué se cambió
 
 Versión 7, un cambio de diseño: la contraseña del estudiante deja de vivir en Supabase Auth. Vive como hash scrypt en app.student_credentials y la verifica nuestro servidor; la sesión se abre con generateLink y verifyOtp del lado del servidor, sin correo. Emitir tarjetas es una sola transacción en la base, sin escrituras en Auth: desaparecen la reserva, los plazos, begin y finish, y los riesgos de escrituras atrasadas o inciertas sobre contraseñas (F2C-4, F2C-24, F2C-36, F2C-43, F2C-44, F2C-47, F2C-50, F2C-51). La cuenta de Auth del estudiante no tiene contraseña y un trigger impide ponérsela o cambiarle el correo, sin excepciones, así que no hay recifrado que rechazar (F2C-53) ni sesión copiada que se quede con una contraseña propia (F2C-47). Un trigger BEFORE INSERT con FOR SHARE impide que nazca la cuenta de un estudiante suprimido (F2C-54). El criterio contradictorio de T2.5a desaparece con begin (F2C-55). Sin contraseñas de estudiantes en Auth, el límite de intentos no tiene otra puerta: sale la cuenta señuelo de Auth y la rotación del correo.
+
+## Ronda 7
+
+1. **F2C-56 · Alta — Un login con la contraseña vieja puede abrir una sesión después de emitir la tarjeta nueva.**
+
+   **Dónde:** [login del estudiante](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:114), emisión en la línea 158 y garantía de la línea 164.
+
+   **Escenario:** A obtiene el hash viejo y verifica correctamente la contraseña. Se demora antes de `generateLink` o `verifyOtp`. B emite una tarjeta nueva: cambia el hash y borra todas las sesiones existentes. A continúa, completa `verifyOtp` y crea **una sesión nueva**, que `session_alive()` acepta. Quien conocía la contraseña anterior conserva acceso después de la rotación.
+
+   El canje OTP crea la sesión sin conocer qué versión de `student_credentials` verificó nuestro servidor. [Recorrido de verificación de GoTrue](https://github.com/supabase/auth/blob/master/internal/api/verify.go).
+
+   **Propongo:** incorporar una versión de credencial y una finalización del login coordinada con el mismo lock que usa la emisión. La sesión debe quedar autorizada únicamente si corresponde a la versión vigente; ninguna cookie debe entregarse antes de esa validación. Probar la carrera deteniendo A después de verificar scrypt y antes de crear la sesión.
+
+2. **F2C-57 · Alta — El INSERT permite que una cuenta de estudiante nazca con contraseña o con otro correo.**
+
+   **Dónde:** [guardia de nacimiento](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:141) y guardias de las líneas 301 y 302.
+
+   **Escenario:** existe un UUID recordado con estado `pending`, `failed` o `active`, pero su cuenta de Auth todavía no existe o desapareció. El dueño inserta una fila válida de `auth.users` con ese UUID, una contraseña conocida y un correo elegido. El trigger de nacimiento solo rechaza `deleted`; el de actualización nunca interviene.
+
+   La cuenta ya nace incumpliendo «nunca tiene contraseña». Emitir nuevas tarjetas tampoco elimina esa contraseña de Auth.
+
+   **Propongo:** exigir en el nacimiento de una cuenta recordada una contraseña ausente y el correo sintético canónico. Cubrir también el orden inverso: recordar un UUID cuya fila de Auth ya existe. Probar ambos órdenes como dueño y comprobar que las cuentas de staff conservan su comportamiento.
+
+3. **F2C-58 · Alta — Se puede recrear el UUID suprimido mediante UPDATE.**
+
+   **Dónde:** [los dos triggers de Auth](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:300).
+
+   **Escenario:** queda una marca `deleted` para el UUID X y Auth X ya fue borrado. El dueño inserta una fila técnica de Auth con otro UUID Y, sin referencias hijas, y ejecuta `UPDATE auth.users SET id = X WHERE id = Y`.
+
+   No ocurre ningún INSERT de X. Tampoco cambia `email` ni `encrypted_password`. Ninguna de las condiciones contractuales rechaza la operación.
+
+   **Propongo:** proteger las transiciones de identidad de `auth.users`, incluyendo el UUID de destino. La protección del UUID suprimido debe aplicarse también cuando una fila llega a él por UPDATE. Agregar la prueba como dueño.
+
+4. **F2C-59 · Alta — La marca que impide renacer puede borrarse después de suprimir al estudiante.**
+
+   **Dónde:** [terminalidad de `deleted`](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:299) y [guardia heredada `account_provisioning_kept`](/C:/Users/adrim/build101/.claude/worktrees/fase-1/supabase/migrations/20261113110000_t1_fix12.sql:44).
+
+   **Escenario:** la supresión elimina al estudiante y deja `account_provisioning.student_id = NULL`, con estado `deleted`. La guardia heredada permite borrar esa fila porque el estudiante ya no existe. El dueño la borra y después inserta Auth con el UUID recordado: el trigger ya no encuentra la marca y permite nacer.
+
+   Hacer terminal el estado protege UPDATE; no protege DELETE.
+
+   **Propongo:** conservar la marca y el UUID contra DELETE mientras exista su institución, con una excepción explícita para la eliminación de esta. Probar DELETE seguido de INSERT de Auth, también concurrentemente.
+
+5. **F2C-60 · Media — `generateLink(magiclink)` puede crear una segunda cuenta si desaparece la original.**
+
+   **Dónde:** [apertura de sesión](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:117) y `magicLinkToken(email)` en la línea 386.
+
+   **Escenario:** la RPC devuelve una cuenta activa, pero alguien borra Auth antes de `generateLink`. En el GoTrue consultado, `magiclink` para un correo inexistente cambia a `signup`, genera una contraseña aleatoria y crea un usuario con **otro UUID**. El trigger busca por el UUID nuevo, que no está recordado, y lo permite.
+
+   El canje fijo como `magiclink` no corresponde al token de signup. Además queda ocupado el correo sintético necesario para recrear la identidad original. [Implementación de `adminGenerateLink`](https://github.com/supabase/auth/blob/master/internal/api/mail.go).
+
+   **Propongo:** impedir en la base que un correo sintético nazca con un UUID diferente del que codifica y autoriza el aprovisionamiento. Validar además `data.user.id` y `verification_type` antes del canje. Un `getUserById` previo, por sí solo, conserva la carrera. Probar desaparición entre resolución y generación.
+
+6. **F2C-61 · Media — Falta definir cómo se actualiza `student_credentials.issue_id`.**
+
+   **Dónde:** [tabla de credenciales](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:261), pertenencia en la línea 295 y conservación en la línea 305.
+
+   **Escenario:** al emitir la segunda tarjeta, el implementador actualiza el hash y apunta `issue_id` a la emisión nueva. La guardia lo rechaza porque declara ese campo inmutable. Borrar e insertar tampoco está permitido mientras exista el estudiante.
+
+   Conservar el `issue_id` original permitiría renovar el hash, pero entonces ese campo identifica la primera emisión, aunque la credencial pertenezca a otra. El documento no elige esa semántica.
+
+   **Propongo:** definir expresamente si referencia la emisión originaria o la vigente. Si es la vigente, permitir su transición bajo las condiciones de `issue_access_cards`; si es la originaria, documentarlo y nombrarlo en consecuencia.
+
+7. **F2C-62 · Media — Los parámetros scrypt fallan con el límite de memoria predeterminado de Node.**
+
+   **Dónde:** [formato scrypt](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:92), señuelo en la línea 83 y T2.5b.
+
+   **Escenario:** se implementa `crypto.scrypt` con `N=32768`, `r=8`, `p=1` y las demás opciones predeterminadas. Reproduje en Node 24.20.0 `ERR_CRYPTO_INVALID_SCRYPT_PARAMS` por exceder la memoria. Con `maxmem=64 MiB`, funciona. [Opciones oficiales de Node](https://nodejs.org/docs/latest-v24.x/api/crypto.html#cryptoscryptpassword-salt-keylen-options-callback).
+
+   **Propongo:** fijar `maxmem`, longitud de la clave derivada y validación estricta del formato, parámetros y longitudes decodificadas. Usar exactamente la misma configuración para el señuelo. Exigir además que coincidir con el señuelo nunca habilite el paso de apertura de sesión cuando los campos reales son nulos.
+
+8. **F2C-63 · Media — La capacidad de login estudiantil no contempla el límite de `/verify`.**
+
+   **Dónde:** [límites de Auth](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:81), `verifyOtp` en la línea 118 y T2.7.
+
+   **Escenario:** varios estudiantes entran simultáneamente mediante el servidor y comparten su IP de salida. Pasan los contadores propios y scrypt, pero `/auth/v1/verify` aplica otro límite por IP. La documentación indica una ráfaga predeterminada de 30 verificaciones. El contrato solo prevé medir y ajustar `/token`, bajo el apartado de staff. [Límites oficiales de Auth](https://supabase.com/docs/guides/auth/rate-limits).
+
+   **Propongo:** incluir `/verify` en la prueba de capacidad y configuración de T2.7, usando el cliente real de sesión. Definir el transporte de IP o el ajuste necesario y el tratamiento de 429. La política de envío de correos no resuelve este límite.
+
+9. **F2C-64 · Baja — El resultado de aprovisionamiento incierto tiene dos clasificaciones.**
+
+   **Dónde:** [paso inicial de emisión](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:153), frente a la salida de `issueAccessCards` en la línea 401 y T2.6b.
+
+   **Escenario:** `createUser` queda incierto y el estudiante no llega a `active`. El protocolo exige devolverlo como `failed`; la definición del servicio y la pantalla contemplan `uncertain`. Dos implementadores pueden producir resultados distintos siguiendo el documento.
+
+   **Propongo:** distinguir en ambos lugares el fallo confirmado de la incertidumbre de aprovisionamiento. Esta incertidumbre sigue siendo válida aunque hayan desaparecido las reservas de emisión.
+
+El estado de los hallazgos solicitados queda así:
+
+| Hallazgo | Estado en v7 |
+|---|---|
+| **F2C-4** | **Cerrado en su defecto concreto:** desaparece la sobrescritura tardía de contraseñas en Auth. La garantía de revocación conserva F2C-56. |
+| **F2C-24** | **Cerrado en su defecto concreto:** emitir ya no depende de escrituras remotas de credenciales. |
+| **F2C-47** | **Cerrado para el endpoint público y la sesión copiada.** La invariante general de cuenta sin contraseña conserva F2C-57. |
+| **F2C-53** | **Cerrado en el diseño:** el recorrido estudiantil ya no verifica ni recifra una contraseña de Auth. |
+| **F2C-54** | **Parcialmente cerrado:** el INSERT del UUID recordado queda coordinado con la supresión, pero permanecen F2C-58 y F2C-59. |
+| **F2C-55** | **Cerrado:** desapareció el criterio contradictorio ligado a `begin`. |
+| **F2C-36** | **Cerrado:** desaparece la escritura incierta de contraseña durante la emisión. |
+| **F2C-43** | **Cerrado:** desaparece la extensión temporal posterior al error. |
+| **F2C-44** | **Cerrado:** desaparece la exclusión dependiente de la tarjeta pendiente. |
+| **F2C-50** | **Cerrado:** desaparece la separación entre `begin` y claim. |
+| **F2C-51** | **Cerrado respecto de reservas y horas de reintento.** Queda la clasificación distinta señalada en F2C-64. |
+
+Sobre las demás comprobaciones:
+
+- **Tipos y correo:** el SDK admite `magiclink` tanto en `generateLink` como en `verifyOtp({token_hash})`. La generación administrativa construye el enlace sin enviarlo. Para una cuenta existente y confirmada, las rutas consultadas no exigen un proveedor de envío ni pasan por `requireEmailProvider`. Staff sí necesita mantener habilitado el proveedor email para entrar con contraseña. [Rutas de GoTrue](https://github.com/supabase/auth/blob/master/internal/api/api.go), [login con contraseña](https://github.com/supabase/auth/blob/master/internal/api/token.go).
+- **Login y refresh:** en los recorridos consultados, la recuperación de una cuenta confirmada modifica tokens de recuperación; el refresh trabaja sobre sesiones y tokens. No encontré una reescritura de `email` o `encrypted_password` que reproduzca F2C-53 en el caso elegido. Conviene probar login y refresh contra la versión efectivamente desplegada. [Modelo de usuario](https://github.com/supabase/auth/blob/master/internal/models/user.go), [servicio de tokens](https://github.com/supabase/auth/blob/master/internal/tokens/service.go).
+- **Logs:** no encontré un registro obligatorio del `hashed_token` en este flujo normal. El SDK trae `debug: false`, pero habilitarlo registra sesiones completas, con tokens, desde `_saveSession` y las notificaciones. GoTrue también puede registrar argumentos SQL con su configuración `all`. La prueba de fugas debe cubrir esos canales, además de `log.ts`. [SDK local](/C:/Users/adrim/build101/.claude/worktrees/fase-1/node_modules/@supabase/auth-js/src/GoTrueClient.ts:5289), [logging de GoTrue](https://github.com/supabase/auth/blob/master/internal/observability/logging.go).
+- **Carrera INSERT/supresión:** `FOR SHARE` es adecuado para la fila recordada: entra en conflicto con el UPDATE de supresión y permite observar su resultado confirmado. El problema restante es cubrir todos los caminos y conservar esa fila. [Locks de PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html).
+- **Hash e inventario:** el contrato restringe correctamente `internal_get_student_login` a `service_role`, excluye el hash de las proyecciones de usuario y asigna a T2.5a inventario, regla de supresión y cascada de `student_credentials`. No considero hallazgo que esos cambios todavía falten en los archivos que están migrándose.
+
+No encontré exigencias residuales de reservas, leases, `begin/finish`, esperas de quince minutos ni rotación del correo sintético en el documento v7. Las rotaciones mencionadas corresponden a tokens de invitación. Las contradicciones que permanecen son las de **F2C-61** y **F2C-64**.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 8: versión de la credencial y internal_bind_student_session bajo el lock de la emisión, con verifyOtp en un cliente sin cookies y setSession recién después del bind (F2C-56); forma fija de las cuentas de estudiantes en auth.users para INSERT y UPDATE, incluido el id y el correo sintético con otro id (F2C-57, F2C-58, F2C-60); la marca deleted no se borra mientras exista la institución (F2C-59); issue_id vigente que cambia junto con el hash y la versión (F2C-61); parámetros de scrypt con maxmem y validación estricta (F2C-62); límites de /verify en T2.7 y 429 sin contar intento (F2C-63); uncertain contra failed al aprovisionar (F2C-64).
