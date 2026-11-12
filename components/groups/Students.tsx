@@ -38,24 +38,24 @@ function StudentRow({ group, student, suggestions }: { group: Group; student: St
   const supports = student.supports ?? [];
 
   return (
-    // Mobile: name and the buttons on the first row, chips below. From sm up: one row.
+    // Mobile: one column (name, chips, buttons), nothing wider than the screen. From sm up: one row.
     // Same DOM order everywhere (name, profiles, buttons, panel), so the tab order doesn't change.
-    <li className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-3 py-3 sm:flex sm:flex-wrap sm:px-6 sm:py-4">
-      <div className="min-w-40 sm:flex-1">
+    <li className="grid grid-cols-1 items-center gap-x-4 gap-y-2 px-3 py-3 sm:flex sm:flex-wrap sm:px-6 sm:py-4">
+      <div className="min-w-0 break-words sm:min-w-40 sm:flex-1">
         <span className="text-lg font-semibold">{student.name}</span>
         {interests.length > 0 && <p className="text-base text-slate-700">Gustos: {interests.join(", ")}</p>}
         {supports.length > 0 && (
           <p className="text-base text-slate-700">Razonamiento disminuido: {supports.map(supportLabel).join(", ").toLowerCase()}</p>
         )}
       </div>
-      <div className="col-span-2 row-start-2">
+      <div className="min-w-0">
         <ProfileSelector
           legend={`Perfiles de ${student.name}`}
           selected={student.profiles}
           onChange={(profiles) => setProfiles(group.id, student.id, profiles)}
         />
       </div>
-      <div className="col-start-2 row-start-1 flex justify-self-end">
+      <div className="flex flex-wrap">
         <button
           type="button"
           className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 py-2 text-base font-semibold text-indigo-800 underline-offset-4 transition-colors hover:bg-indigo-50 hover:underline"
@@ -81,7 +81,7 @@ function StudentRow({ group, student, suggestions }: { group: Group; student: St
         </button>
       </div>
       {open && (
-        <div id={panelId} className="col-span-2 space-y-6 rounded-xl bg-slate-50 p-4 sm:basis-full">
+        <div id={panelId} className="min-w-0 space-y-6 rounded-xl bg-slate-50 p-4 sm:basis-full">
           <InterestsEditor
             studentName={student.name}
             interests={interests}
@@ -117,7 +117,7 @@ function AddStudentForm({ groupId }: { groupId: string }) {
         input.current?.focus();
       }}
     >
-      <div className="min-w-60 flex-1">
+      <div className="min-w-0 flex-1 basis-60">
         <label htmlFor="student-name" className="mb-1 block text-lg font-semibold">
           Agregar estudiante
         </label>

@@ -56,8 +56,8 @@ export function GroupDetail() {
     <>
       <Breadcrumbs items={[{ text: "Mis grupos", href: "/grupos" }, { text: group.name }]} />
       <div className="flex flex-wrap items-start justify-between gap-6">
-        <div className="space-y-3">
-          <h1 className="text-4xl font-bold tracking-tight">{group.name}</h1>
+        <div className="min-w-0 space-y-3">
+          <h1 className="break-words text-4xl font-bold tracking-tight">{group.name}</h1>
           <p className="text-xl text-slate-700">
             {group.students.length} estudiantes · cada práctico sale en {versions}{" "}
             {versions === 1 ? "versión" : "versiones"}
@@ -74,7 +74,7 @@ export function GroupDetail() {
         </Link>
       </div>
 
-      <div role="tablist" aria-label="Secciones del grupo" className="mt-10 flex gap-2 border-b-2 border-slate-200">
+      <div role="tablist" aria-label="Secciones del grupo" className="mt-10 flex flex-wrap gap-x-2 border-b-2 border-slate-200">
         {TABS.map((t) => {
           const active = t.id === tab;
           return (
@@ -88,7 +88,7 @@ export function GroupDetail() {
               tabIndex={active ? 0 : -1}
               onClick={() => select(t.id)}
               onKeyDown={withArrows}
-              className={`relative -mb-0.5 min-h-11 flex-1 px-4 py-3 text-lg font-semibold transition-colors sm:flex-none ${
+              className={`relative -mb-0.5 min-h-11 max-w-full flex-auto break-words px-2 py-3 text-base sm:flex-none sm:px-4 sm:text-lg font-semibold transition-colors ${
                 active ? "text-indigo-950" : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
               }`}
             >
