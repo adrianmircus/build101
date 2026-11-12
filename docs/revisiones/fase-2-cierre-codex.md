@@ -104,3 +104,43 @@ El estado de los anteriores queda así:
 **F2-10 conserva un escenario concreto:** con `NODE_ENV=production`, `MAIL_DRIVER=mailpit`, sitio y secreto válidos, pero sin `RESEND_API_KEY`, [startup-config.ts:30](/C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/startup-config.ts:30) permite arrancar. Después, [mail/index.ts:26](/C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/mail/index.ts:26) exige esa clave en toda producción y rechaza el envío. Lo confirmé con una sonda en memoria. Unificaría la validación del arranque y la selección del emisor; también rechazaría drivers desconocidos.
 
 Pasaron los dos chequeos de TypeScript con `--noEmit --incremental false`. Las sondas usaron dependencias simuladas y no escribieron datos. No ejecuté build, pgTAP ni Playwright, por lo que la impresión, la accesibilidad y la demo no tienen validación nueva de navegador en esta revisión.
+
+## Ronda 3
+
+1. **F2-17 · Alta · Las contraseñas del login sobreviven a la navegación y al logout.**  
+   **Dónde:** [useStudentLogin.ts:46](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/useStudentLogin.ts:46), [SignOutButton.tsx:38](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/SignOutButton.tsx:38) y [StaffLoginForm.tsx:33](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/StaffLoginForm.tsx:33).  
+   **Escenario:** el estudiante entra y después sale en una computadora compartida. El login conserva contraseña, `reveal` y `busy`: no hay limpieza y ambas navegaciones usan el router. La [guía local de Next:255](/C:/Users/adrim/build101/.claude/worktrees/fase-1/node_modules/next/dist/docs/01-app/02-guides/preserving-ui-state.md:255) confirma que Activity conserva estado y valores de formularios incluso al cambiar la autenticación. Al recuperar esa pantalla, otra persona puede revelar la contraseña; además, el botón puede seguir ocupado. El formulario de staff tampoco limpia su contraseña.  
+   **Cambiaría:** borrar secretos y estado transitorio al desactivar los formularios y completar el ingreso; usar navegación completa al salir para descartar el estado del usuario anterior. Agregaría un E2E de entrar, salir y comprobar campos vacíos y botón habilitado, sin recargas intermedias.
+
+2. **F2-18 · Media · «Saltar al contenido» rompe invitaciones y recuperación.**  
+   **Dónde:** [fragmentToken.ts:9](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/fragmentToken.ts:9), [InvitationFlow.tsx:43](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/InvitationFlow.tsx:43) y [RecoveryFlow.tsx:45](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/RecoveryFlow.tsx:45).  
+   **Escenario:** con una invitación válida abierta, alguien usa el enlace de teclado «Saltar al contenido». El `hashchange` vuelve a leer el fragmento y sustituye el token por `main-content`. La invitación pasa a «Falta algo en este enlace». En recuperación se verifica ese texto como token y aparece el estado vencido. Axe no detecta este fallo funcional.  
+   **Cambiaría:** distinguir tokens de anclas internas, ignorar `#main-content` y conservar el token válido. Probaría el enlace de salto en ambos recorridos.
+
+3. **F2-19 · Media · Abrir otro QR en la misma pestaña mantiene la tarjeta anterior.**  
+   **Dónde:** [CardLanding.tsx:30](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/CardLanding.tsx:30).  
+   **Escenario:** se abre `/t#A`, se limpia el fragmento y queda el formulario de A. Después se pega `/t#B` en esa misma pestaña. Es una navegación dentro del documento: el efecto no vuelve a leerlo, mantiene los datos de A y deja B en la barra. También ocurre al abrir una tarjeta válida después de una inválida.  
+   **Cambiaría:** procesar cambios de fragmento válidos, reiniciar el formulario para la nueva tarjeta y descartar respuestas anteriores. Agregaría el recorrido A → B sin recargar.
+
+El estado de los anteriores queda así:
+
+| Hallazgo | Estado |
+|---|---|
+| F2-1 y F2-2 | Cerrados por la exclusión explícita del modelo. |
+| F2-3, F2-5, F2-6 y F2-11 | Cerrados; sin regresiones identificadas. |
+| F2-4 | Corrección conservada. Sigue faltando el E2E de navegación interna y regreso con secretos. |
+| F2-7 | Corrección de ancestros conservada. Sigue faltando verificar PDF de cuatro y cinco tarjetas; el E2E actual imprime dos y comprueba visibilidad. |
+| F2-8 | Recorridos activos; resuelto también su impedimento de infraestructura en CI. |
+| F2-9 | Pendiente aceptado para T1.0, no bloqueante. |
+| F2-10 | Cerrado: arranque y selección del emisor comparten validación; rechazan drivers desconocidos. |
+| F2-12 | Cerrado en código: el job levanta Supabase con Mailpit y aplica migraciones. |
+| F2-13 | **Parcialmente abierto**, escenario abajo. |
+| F2-14 | Cerrado para el cambio de A a B: el `userId` verificado se compara antes de escribir. |
+| F2-15 | **Abierto:** todavía se sustituye el origen del enlace. |
+| F2-16 | Cerrado: devuelve el foco al disparador y el E2E lo comprueba después de cancelar. |
+
+**F2-13 — escenario restante:** `create_student` confirma y se pierde la respuesta. La fila queda `uncertain`, pero editar su usuario le asigna otro `slot` en [createFlowState.ts:59](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/createFlowState.ts:59). Confirmar crea otro estudiante para la misma persona. La propia [prueba de integración:64](/C:/Users/adrim/build101/.claude/worktrees/fase-1/tests/integration/accounts/lost-answer.test.ts:64) espera dos inscripciones después de esa secuencia. También se permite volver a los nombres cuando todas las respuestas son inciertas: se pierde el intento y la previsualización sugiere usuarios nuevos. Resolvería los intentos inciertos antes de permitir cambiar su identidad o reiniciar el flujo. El reintento sin editar sí quedó corregido.
+
+**F2-15 — escenario restante:** el correo apunta a `localhost:3000`, mientras Playwright escucha en 3100. [staff-auth.spec.ts:102](/C:/Users/adrim/build101/.claude/worktrees/fase-1/tests/e2e/staff-auth.spec.ts:102) comprueba que el origen coincide con `site_url`, pero luego navega solamente a `pathname + hash`. Sigue pasando aunque el enlace recibido no abra la aplicación probada. Alinearía ambos orígenes y navegaría a `link.href` completo.
+
+Pasaron ambos chequeos de TypeScript sin emitir archivos. Las sondas en memoria confirmaron la sustitución por `main-content`, la identidad nueva al editar una fila incierta, la lectura única del QR y la coherencia de configuración de correo. No ejecuté Playwright, pgTAP, integración ni build; la demo y la impresión no tienen validación nueva de navegador en esta ronda. No modifiqué archivos.
