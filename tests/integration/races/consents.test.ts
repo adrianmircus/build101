@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { countRows, readRows } from "../support/db";
+import { countRows, openSession, readRows } from "../support/db";
 import { heldRace, stampede, type Step } from "../support/race";
 import { describeOutcome, idOf } from "../support/session";
 import { createStudent, createWorld, teacherOf, type World } from "../support/world";
@@ -88,6 +89,43 @@ describe("race: consents of one student", () => {
       expect(outcomes.map(describeOutcome), `round ${round}`).toEqual(["ok", "ok", "ok"]);
       expect(await countRows(GRANTED, [student, "ai_adaptation"]), `round ${round}`).toBe(1);
       expect(await countRows(ALL, [student, "ai_adaptation"]), `round ${round}`).toBe(3);
+    }
+  });
+});
+
+// R-3: the expiry is checked with the clock after the locks that can block. Another connection holds
+// the student row (set_student_needs, for update); record_consent waits for its `for share` while the
+// expiry passes. Taking the clock before that wait would accept a consent that is already expired.
+describe("race: an expiry that passes while record_consent waits for a lock", () => {
+  it("is INVALID invalid_valid_until, and nothing is written", async () => {
+    const world = await createWorld();
+    const student = await createStudent(world);
+    const [holder, waiter, observer] = [await openSession(), await openSession(), await openSession()];
+    try {
+      await holder.begin(teacherOf(world));
+      await waiter.begin(teacherOf(world));
+      const held = await holder.call("set_student_needs", {
+        p_student_id: student, p_profiles: ["adhd"], p_supports: [], p_interests: [], p_op_id: randomUUID(),
+      });
+      expect(held.ok).toBe(true);
+      const validUntil = new Date(Date.now() + 1_500).toISOString();
+      const pending = waiter.call("record_consent", {
+        p_student_id: student, p_purpose: "ai_adaptation", p_text_version: "v1", p_valid_until: validUntil,
+      });
+      let blocked: string | null = null;
+      for (let attempt = 0; attempt < 100 && !blocked; attempt += 1) {
+        blocked = await waiter.waitEvent(observer);
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 15));
+      }
+      expect(blocked, "record_consent has to be waiting for the student row").not.toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, Date.parse(validUntil) - Date.now()) + 300));
+      await holder.commit();
+      const outcome = await pending;
+      expect(describeOutcome(outcome)).toContain("invalid_valid_until");
+      await waiter.rollback();
+      expect(await countRows(ALL, [student, "ai_adaptation"])).toBe(0);
+    } finally {
+      await Promise.all([holder.close(), waiter.close(), observer.close()]);
     }
   });
 });

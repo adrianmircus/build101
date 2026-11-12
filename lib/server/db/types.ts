@@ -54,7 +54,7 @@ export type Database = {
 { Args: { "p_display_name": string,"p_group_id": string,"p_op_key": string,"p_username": string }; Returns: Json
                            },
 "create_student_note":
-{ Args: { "p_body": string,"p_student_id": string }; Returns: Json
+{ Args: { "p_body": string,"p_op_key": string,"p_student_id": string }; Returns: Json
                            },
 "create_version":
 { Args: { "p_answer_mode": string,"p_assessment_id": string,"p_base_version_id"?: string,"p_config": Json }; Returns: Json
