@@ -1083,3 +1083,41 @@ No ejecuté integración: el entorno denegó el acceso a Docker. El escenario es
 ### Qué se cambió
 
 Versión 15: el DML directo del dueño sobre auth.sessions y auth.refresh_tokens queda fuera del modelo de amenazas, con la razón de que quien escribe ahí puede crear una sesión nueva para cualquier usuario sin restaurar nada. Salen revoked_sessions y los triggers de auth.sessions (F2C-81, F2C-84 a F2C-86). Se quedan session_alive con user_id = sub y el registro de estudiante con su FK, y las guardias de auth.users, que protegen nuestros datos.
+
+## Ronda 15
+
+1. **F2C-87 · Media · Bloquea el reparto de T2.2 — Falta asignar el servicio de creación de instituciones.**
+
+   **Dónde:** [T2.2](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:648), [reglas de capas](C:/Users/adrim/build101/.claude/worktrees/fase-1/eslint/rules/layers.mjs:33) y [repo existente](C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/repos/admin/identity.ts:17).
+
+   **Escenario:** el comando debe crear la institución. Ya existe `createInstitution` en el repo admin, pero `scripts/admin/institution.ts` no puede importarlo: ESLint reserva esos repos para servicios admin, jobs y tests. No hay un servicio que exponga esa operación, y T2.2 solo tiene asignados los scripts, `package.json` y su prueba. El implementador necesita un archivo fuera de alcance y, según AGENTS.md, debe responder `BLOQUEADO`.
+
+   **Cambio propuesto:** asignar a T2.2 un servicio como `lib/server/services/admin/institution.ts`, que use los repos existentes, y hacer que el comando lo invoque. No requiere cambiar RPC ni permisos.
+
+2. **F2C-88 · Media · Bloquea el reparto de T2.8 — Borrar las acciones viejas deja importadores fuera del alcance.**
+
+   **Dónde:** [archivos de T2.8](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:686), [Demo.tsx](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/demo/Demo.tsx:5), [Tour.tsx](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/demo/Tour.tsx:6) y [VoiceCommands.tsx](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/student/voice/VoiceCommands.tsx:6).
+
+   **Escenario:** T2.8 exige borrar `lib/auth/actions.ts`. Esos tres componentes todavía importan `demoViewAs` o `logout` desde allí y ninguno está asignado al ticket. Borrar el archivo rompe la compilación; conservarlo incumple el cierre previsto.
+
+   **Cambio propuesto:** incorporar esos componentes y las extracciones necesarias a T2.8. Reubicar `demoViewAs` en las acciones de demo y conectar la salida por voz con la acción correspondiente. Verificar cambio de personaje, recorrido guiado y logout real.
+
+El estado de los abiertos queda así:
+
+| Hallazgo | Estado con el modelo actual |
+|---|---|
+| **F2C-9** | **Cerrado contractualmente dentro del alcance.** El chequeo en base rechaza sesiones eliminadas; para estudiantes exige también registro y versión vigente. Comprobar `session_id` contra `auth.sessions` es el mecanismo documentado para exigir revocación antes del vencimiento del JWT. [Supabase](https://supabase.com/docs/guides/auth/sessions). |
+| **F2C-81** | **Fuera de alcance en sus escenarios denunciados:** necesitan restaurar `auth.sessions` mediante DML directo. No equivale a una protección técnica contra esa restauración. |
+| **F2C-82** | **Cerrado para el alcance vigente:** se exige correspondencia entre `sub`, titular de la sesión y estudiante registrado. La modificación directa del titular en Auth queda excluida. |
+| **F2C-83** | **Cerrado:** `not_applicable → none`; ausencia inesperada en una escuela produce P0004. |
+| **F2C-84 a F2C-86** | **No aplicables al modelo actual:** sus escenarios requieren restauración o reasignación directa en las tablas de sesiones de Auth. Además, desapareció la memoria cuya purga originaba F2C-84/85. |
+
+**Resoluble dentro de los tickets, con su revisión:** implementar en T2.5a la FK y cascada de sesiones, la exclusividad del bind frente al DML incluido y las carreras ya exigidas; en T2.5b, actualizar los stubs al contrato vigente y probar el servicio completo. Que eso todavía falte no constituye otro bloqueo contractual.
+
+Los dos hallazgos nuevos requieren ampliar explícitamente los archivos permitidos; no requieren rediseñar la autenticación. No edité archivos ni ejecuté pruebas de integración.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 16: T2.2 suma lib/server/services/admin/institution.ts (F2C-87) y T2.8 suma los componentes de la demo y la voz que importaban las acciones viejas (F2C-88). Son ampliaciones de alcance de dos tickets, sin cambio de diseño: con ellas no queda ningún hallazgo que bloquee el reparto. El contrato queda listo para repartir; lo que falta se revisa ticket por ticket y en la revisión de cierre de la fase.

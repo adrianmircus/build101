@@ -2,7 +2,7 @@
 
 Este documento fija cómo entran a Tiza los profes, los admins y los estudiantes con cuentas de verdad: las tablas y RPC nuevas, los servicios, las rutas, las pantallas y los tickets. Lo escribe el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 14 de Codex (F2C-1 a F2C-86, `docs/revisiones/fase-2-contrato-codex.md`).
+Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 15 de Codex (F2C-1 a F2C-88, `docs/revisiones/fase-2-contrato-codex.md`).
 
 Archivos del contrato (los escribe el orquestador, ningún ticket los edita):
 
@@ -650,7 +650,9 @@ Agente: backend          Tanda: 3        Depende de: T2.3
 Turno de base: no
 Objetivo: el equipo de Tiza da de alta una institución con su primer admin desde la terminal.
 Archivos: scripts/admin/institution.ts, scripts/admin/reconcile.ts (stub hasta T2.5b), package.json (scripts
-  admin:institution y admin:reconcile), tests/integration/admin/institution.test.ts.
+  admin:institution y admin:reconcile), lib/server/services/admin/institution.ts (+ test; crea la institución y la
+  invitación del primer admin con los repos admin que ya existen, porque un script no puede importar repos admin)
+  (F2C-87), tests/integration/admin/institution.test.ts.
 Criterios: crea la institución y la invitación del admin y muestra el enlace solo en la terminal; repetirlo con el
   mismo código no crea otra; pide confirmación si apunta a una URL que no es local.
 ```
@@ -686,8 +688,10 @@ Objetivo: todo lo que usaba las cuentas de demo pasa a Supabase y la demo guiada
 Archivos: proxy.ts (reglas de áreas), app/(teacher)/layout.tsx, app/estudiante/layout.tsx, app/estudiante/page.tsx,
   app/estudiante/[assessmentId]/page.tsx, app/api/tts/route.ts, app/demo/**, lib/auth/** (borrar accounts.ts,
   actions.ts, dal.ts, rateLimit.*), components/auth/LoginScreen.tsx y LoginForm.tsx (borrar), lib/demo/steps.ts,
-  tests/e2e/** que usaban las cuentas viejas.
-Criterios: el Playwright de la demo sigue en verde; la cookie de la demo solo abre la demo; /api/tts acepta una sesión
+  tests/e2e/** que usaban las cuentas viejas, components/demo/Demo.tsx, components/demo/Tour.tsx,
+  components/student/voice/VoiceCommands.tsx y app/demo/actions.ts (F2C-88: demoViewAs pasa a las acciones de la demo y
+  «salir» por voz llama a signOutAction).
+Criterios: el Playwright de la demo sigue en verde, con el cambio de personaje y el recorrido guiado; la cookie de la demo solo abre la demo; /api/tts acepta una sesión
   real o la demo (sin IA en la demo, como hoy); ningún import de lib/auth/accounts.
 ```
 
