@@ -882,3 +882,55 @@ No ejecuté integración: el acceso a Docker está denegado. Las carreras descri
 ### Qué se cambió
 
 Versión 11: el trigger de account_provisioning toma el advisory también cuando cambia el status, así marcar deleted espera a un INSERT en Auth sin confirmar (F2C-74); app.student_sessions registra las sesiones que abrió el servidor y session_alive las exige para cuentas de estudiante, así una sesión obtenida adivinando el OTP de un magic link no lee nada (F2C-75); provisionStudent recibe studentId (F2C-76); issueAccessCards autoriza con list_group_accounts antes de cualquier llamada admin (F2C-77).
+
+## Ronda 11
+
+1. **F2C-78 · Alta — El registro estudiantil puede sobrevivir al cierre de sesión y habilitar su resurrección por DML.**
+
+   **Dónde:** [garantía de revocación](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:64), [tabla `student_sessions`](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:307) y [criterio de `session_alive`](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:362).
+
+   **Escenario:** el estudiante tiene una sesión S registrada con la versión vigente. Sale: Auth elimina S de `auth.sessions`, pero el contrato no elimina su registro en `student_sessions`: no hay FK hacia Auth ni limpieza vinculada a ese DELETE. El dueño reinserta mediante DML la fila de Auth con el mismo UUID. Una copia del access token anterior, todavía sin vencer, vuelve a cumplir ambas condiciones de `session_alive`: existe S y conserva un registro con versión vigente. No necesita otro bind. Las guardias de `auth.users` no intervienen.
+
+   Esto entra en el modelo de amenazas indicado y reabre parcialmente **F2C-9**.
+
+   **Cambio propuesto:** vincular `student_sessions.session_id` con `auth.sessions(id)` mediante FK `ON DELETE CASCADE`, o una guardia equivalente que retire el registro en toda eliminación de la sesión. Incluir logout, revocación administrativa y borrado de cuenta. Probar como dueño: registrar, salir, restaurar solamente la fila de Auth y comprobar que el JWT viejo sigue rechazado.
+
+2. **F2C-79 · Media — La autorización previa permite leer cuentas sandbox, pero eso no autoriza aprovisionarlas.**
+
+   **Dónde:** [preautorización de la emisión](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:179), [permisos de las RPC](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:399) y [matriz contractual](C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/domain/permissions/matrix.ts:133).
+
+   **Escenario:** el visitante de un sandbox pide tarjetas para estudiantes de su propio grupo. `list_group_accounts` está permitido para `sandbox_anonymous`, mientras que `issue_access_cards` está expresamente prohibido. La comprobación previa puede pasar, pero el servicio empieza el aprovisionamiento antes del rechazo final. Su algoritmo solo exige detenerse ante `deleted`; no contempla `not_applicable`, que la fase 1 usa precisamente para impedir cuentas reales en sandboxes.
+
+   Además, falta definir cómo representa esa lectura las filas `not_applicable`, porque su salida solo admite `pending`, `active` y `failed`.
+
+   **Cambio propuesto:** hacer que la preautorización devuelva una decisión de emisión calculada por la base —por ejemplo, `canIssueCards`— y exigirla antes de cualquier llamada administrativa. Definir la representación del sandbox y hacer que `provisionStudent` descarte `not_applicable` antes de llamar a Auth. Agregar el caso sandbox a la prueba de **cero llamadas administrativas**. Es un cierre pendiente de **F2C-77**.
+
+3. **F2C-80 · Media — El cliente permitido no expone el método necesario para canjear el magic link.**
+
+   **Dónde:** [fábrica del cliente](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:419) y [`exchangeMagicLink`](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:431).
+
+   **Escenario:** T2.7 entrega `authAdmin()`, definido como `auth.admin`, y el contrato obliga a `auth-users.ts` a usar exclusivamente esa interfaz. T2.3 debe implementar allí `exchangeMagicLink` mediante `verifyOtp`, pero ese método pertenece a `auth`, no a `auth.admin`. El implementador debe incumplir la restricción o pedir un cambio fuera de su alcance. La [API oficial de `verifyOtp`](https://supabase.com/docs/reference/javascript/auth-verifyotp) confirma esa ubicación.
+
+   **Cambio propuesto:** asignar a T2.7 una fábrica adicional para el cliente de canje, nuevo por operación, sin cookies, con `persistSession: false`, `autoRefreshToken: false`, `debug: false` y el mismo timeout de cinco segundos. Autorizar expresamente su uso en T2.3 y probar también el timeout del canje.
+
+El estado de los abiertos queda así:
+
+| Hallazgo | Estado en v11 |
+|---|---|
+| **F2C-74** | **Cerrado para la carrera denunciada:** cambiar `status` toma el advisory; la supresión espera al INSERT y después puede borrarlo. |
+| **F2C-75** | **Cerrado para el OTP directo:** una sesión nueva sin registro no accede a las RPC. F2C-78 señala otro problema de ciclo de vida. |
+| **F2C-76** | **Cerrado:** `provisionStudent` recibe `studentId` y `provisioningId`. |
+| **F2C-77** | **Parcialmente cerrado:** rechaza estudiantes ajenos antes de las llamadas admin; falta el caso sandbox de F2C-79. |
+| **F2C-11 / F2C-27** | **Cerrados respecto del bypass estudiantil por Auth:** no hay contraseña en Auth y el OTP directo no obtiene registro. |
+| **F2C-54** | **Cerrado para el nacimiento tardío denunciado:** se mantienen la marca y la exclusión con supresión. |
+| **F2C-9** | **Reabierto parcialmente** por F2C-78 para logout seguido de restauración mediante DML. |
+
+Sobre el **refresh**: **sí, conserva el `session_id`** en el código oficial consultado. GoTrue genera el nuevo JWT pasando `&session.ID`; cambia los tokens, pero mantiene la sesión. Por tanto, el registro válido sobrevive al refresh y una sesión sin registro continúa bloqueada. No hace falta repetir el bind. Conviene exigir una integración que compruebe ambos casos y la revocación después del refresh. [Código oficial de GoTrue v2.186.0](https://github.com/supabase/auth/blob/v2.186.0/internal/tokens/service.go#L531-L535).
+
+En la pasada completa no encontré otro bloqueo contractual adicional.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 12: student_sessions con FK a auth.sessions on delete cascade (F2C-78); canIssueCards y accountStatus none en list_group_accounts, exigidos antes de cualquier llamada admin (F2C-79); otpExchangeClient en repos/admin/db.ts para el canje del magic link, a cargo de T2.3 (F2C-80).

@@ -3,6 +3,8 @@
 -- but service_role. Sessions are rows inserted into auth.sessions here (the pgTAP helper for it is in this file).
 -- Placeholder data only. The whole file is rolled back.
 begin;
+-- Links ordinary accounts to students like phase 1; the shape guard of phase 2 (T2.5a) is off here. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(51);
 
 -- Runs a statement as `p_role` with the claims of `p_user` and, if given, of that session. Returns its jsonb, or {"error": ...}.
