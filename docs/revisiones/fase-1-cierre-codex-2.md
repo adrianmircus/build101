@@ -112,3 +112,49 @@ Verificación en PostgreSQL `READ ONLY`, mediante catálogo y guardias instalada
 
 Veredicto: fase no lista
 
+
+## Ronda 8
+
+**Quedan tres caminos de severidad media; ninguna alta identificada.** Fix14 cierra el INSERT señalado en ronda 7, pero falta cubrir concurrencia y dos actores precargados.
+
+1. **Primera cuenta: carrera entre UPDATE directos del propietario.** Partiendo de S desvinculado y su aprovisionamiento con `auth_user_id = NULL`:
+
+   - T2 escribe `auth_user_id = B` y mantiene la transacción abierta.
+   - T1 escribe `S.user_id = A`. La guardia lee la versión comprometida del aprovisionamiento, todavía NULL, y permite vincular.
+   - El [trigger posterior](supabase/migrations/20261113100000_t1_fix11.sql:37) espera a T2. Cuando T2 confirma, PostgreSQL reevalúa `auth_user_id IS NULL`: actualiza **cero filas**, sin error.
+   - T1 confirma: **S está vinculado a A, pero recuerda B**. Borrar Auth A y ejecutar `internal_link_student_user(S,B)` permite cambiar de cuenta sin borrar S.
+
+   La [guardia previa](supabase/migrations/20261113110000_t1_fix12.sql:67) no bloquea el aprovisionamiento. La RPC sí lo bloquea, pero el DML directo está en alcance. Hace falta comprobar y registrar la memoria atómicamente, con regresión de dos conexiones.
+
+2. **`invitations.accepted_by`: INSERT pendiente con A → aceptación con B.** No hay guardia de INSERT ni CHECK que impida `status='pending', accepted_at=NULL, accepted_by=A`. Después, la [excepción de aceptación](supabase/migrations/20261113100000_t1_fix11.sql:62) permite sustituir A por B al fijar `accepted_at`. Ambos estados pasan los CHECK. Hay que impedir el actor anticipado y permitir su establecimiento únicamente desde NULL.
+
+3. **`consents.revoked_by`: INSERT vigente con A → revocación con B.** Análogo: `status='granted', revoked_at=NULL, revoked_by=A` es admisible; la [guardia](supabase/migrations/20261112160000_t1_fix2.sql:237) permite reemplazar A por B durante `granted → revoked`. Requiere la misma protección de nacimiento y primer establecimiento.
+
+La matriz completa del vínculo queda así:
+
+| Tabla | INSERT | UPDATE | DELETE | TRUNCATE |
+|---|---|---|---|---|
+| `students` | Solo sin cuenta, fix14; UPSERT también pasa por esta guardia. | Identidad congelada. Primer vínculo exige aprovisionamiento; A→B rechazado; A→NULL exige que desaparezca `app_users`. **Queda la carrera 1.** | Termina la vida de S; sujeto a sus FK. | Rechazado, fix13. |
+| `account_provisioning` | FK y unicidades; fix13 exige coincidencia si S ya está vinculado. Puede anticipar la cuenta mientras S está desvinculado. | Cuenta fijada inmutable; pertenencia e identidad congeladas; `student_id` solo se vacía cuando S desaparece. **NULL→cuenta participa en la carrera 1.** | Rechazado mientras existan S e institución, fix12. Permitido tras su desaparición. | Rechazado, fix13. |
+| `app_users` | Exige Auth existente; no vincula estudiantes automáticamente. | ID congelado por `touch_row`. | Vacía `students.user_id`; conserva la memoria del aprovisionamiento. Recrear A solo habilita A. | Rechazado, fix13. |
+| `auth.users` | No crea vínculo automáticamente. | Cambiar el ID referenciado falla por FK; no existe cascada de UPDATE hacia otra cuenta. | Cascada a `app_users`, luego desvinculación; conserva la memoria. | Sin CASCADE, las FK lo impiden; con CASCADE alcanza tablas `app` y lo rechaza fix13. |
+| `memberships` | Agrega acceso, sin escribir vínculo ni memoria; controla incompatibilidad estudiante/staff. | Usuario e institución inmutables; rol/revocación no alteran la memoria. | Quita acceso, sin desvincular ni borrar memoria. | Rechazado, fix13. |
+
+Los cascades tampoco ofrecen otro rodeo secuencial:
+
+- **Borrar estudiante:** el aprovisionamiento debe estar `deleted`; su FK vacía únicamente `student_id` y conserva A. Se eliminan dependientes con CASCADE; seudónimos y archivos todavía vinculados impiden el borrado hasta cumplir los pasos previos.
+- **Borrar institución:** elimina S y su aprovisionamiento. La excepción de `account_provisioning_kept` permite esa destrucción conjunta; si otra FK falla, se revierte todo.
+- **Borrar cuenta:** conserva S y A recordada, salvo que sea el propietario de un sandbox, cuya eliminación también destruye la institución.
+- **DELETE y recreación con el mismo UUID:** inicia otra vida de fila; el contrato conserva la memoria mientras S existe, sin imponer una tumba permanente después de borrarlo.
+
+En el resto del barrido:
+
+- `created_by` de grupos/prácticos/versiones, `reserved_by`, `operations.requested_by`, `import_runs.user_id`, `invited_by`, `student_notes.author_user_id` y `consents.recorded_by`: permiten A→NULL incluso directamente; bloquean A→B y NULL→B.
+- Invitaciones ya aceptadas y consentimientos ya revocados bloquean la reasignación posterior, incluso tras borrar la cuenta. Los huecos son los nacimientos anticipados descritos.
+- `student_pseudonyms.student_id`: permite desvincular con `unlinked_at`, nunca reasignar ni revincular. Su FK no desvincula automáticamente; DELETE depende de referencias y TRUNCATE está bloqueado.
+- Actores históricos y `generations.requested_by`: inmutables y sin FK que los vacíe; la redacción no permite cambiarlos. `grades.graded_by` cambia legítimamente al recalificar.
+
+Verificación exclusivamente **READ ONLY**: las **216 funciones instaladas coinciden con las migraciones** y las **45 tablas tienen el trigger correcto de TRUNCATE habilitado**. Evalué las guardias sobre registros sintéticos; la carrera se deduce del orden de lecturas y locks, sin ejecutarla con escrituras. No repetí las suites informadas. Worktree intacto.
+
+Veredicto: fase no lista
+
