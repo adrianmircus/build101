@@ -78,6 +78,11 @@ export const REASON_MESSAGES: Record<string, string> = {
   no_exercises: "Este práctico no tiene ejercicios para armar una versión. Agregá al menos uno.",
   keep_changed: "Los ejercicios de una versión no se pueden cambiar. Creá otra versión con los que quieras.",
   version_archived: "Esta versión está archivada y ya no se puede cambiar.",
+  invalid_generation: "No pudimos armar el pedido a la IA. Probá de nuevo; si sigue pasando, avisanos.",
+  invalid_target: "Ese ejercicio no es parte de esta versión.",
+  invalid_output: "La respuesta de la IA no se puede guardar así. Probá de nuevo.",
+  invalid_status: "El estado con el que se quiso cerrar la generación no es válido.",
+  invalid_error_code: "El código de error de la generación no es válido.",
   recipient_in_other_version: "Alguno de los estudiantes ya recibe otra versión de este práctico. Sacalo de esa versión primero.",
 };
 
