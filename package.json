@@ -21,7 +21,9 @@
     "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e",
     "postinstall": "node scripts/copy-mediapipe.mjs",
     "profiles:distill": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/distill-profiles.mjs",
-    "profiles:research": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/research-profiles.mjs"
+    "profiles:research": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/research-profiles.mjs",
+    "admin:institution": "tsx --conditions=react-server --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/admin/institution.ts",
+    "admin:reconcile": "tsx --conditions=react-server --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/admin/reconcile.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
