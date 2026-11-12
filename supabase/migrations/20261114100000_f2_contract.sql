@@ -1,4 +1,4 @@
--- Contract, phase 2 (docs/contratos/fase-2.md, version 5): closed tables and columns, their guards, and the stubs of the
+-- Contract, phase 2 (docs/contratos/fase-2.md, version 6): closed tables and columns, their guards, and the stubs of the
 -- new RPCs.
 --
 -- Tables born closed as in phase 1: RLS enabled and forced, no policies, no grants, app.no_truncate.
@@ -345,6 +345,40 @@ end
 $$;
 create trigger account_provisioning_lease before update on app.account_provisioning
   for each row execute function app.account_provisioning_lease();
+
+-- deleted is final: a provisioning row of an erased student never goes to another state. Against the owner too.
+create function app.account_provisioning_deleted_final() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if old.status = 'deleted' and new.status is distinct from old.status then
+    raise exception 'app.account_provisioning_deleted_final: deleted never changes state' using errcode = 'P0004';
+  end if;
+  return new;
+end
+$$;
+create trigger account_provisioning_deleted_final before update on app.account_provisioning
+  for each row execute function app.account_provisioning_deleted_final();
+
+-- A student does not change his credentials in Auth: PUT /auth/v1/user with his own session writes encrypted_password or
+-- email, and this refuses it unless the account holds a live lease (the minutes of a card issue). Staff accounts are not in
+-- account_provisioning and pass. SECURITY DEFINER: the role of Auth (supabase_auth_admin) has no access to app.
+create function app.student_credentials_guard() returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from app.account_provisioning ap where ap.auth_user_id = old.id)
+     and not exists (select 1 from app.account_provisioning ap where ap.auth_user_id = old.id and ap.lease_until > clock_timestamp()) then
+    raise exception 'app.student_credentials_guard: the credentials of a student change only under a live lease' using errcode = 'P0004';
+  end if;
+  return new;
+end
+$$;
+create trigger student_credentials_guard before update of encrypted_password, email on auth.users
+  for each row execute function app.student_credentials_guard();
 
 -- Session (T2.7).
 create function api.internal_revoke_user_sessions(p_user_id uuid)

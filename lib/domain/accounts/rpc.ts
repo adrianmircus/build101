@@ -110,10 +110,11 @@ export const ACCOUNT_RPCS = {
     args: z.object({ p_group_id: Id, p_cards: z.array(Issued).min(1).max(60), p_op_key: Id }).strict(),
     result: z
       .object({
-        issueId: Id,
+        issueId: Id.nullable(),
         institutionCode: InstitutionCode,
         institutionName: z.string(),
-        items: z.array(z.object({ studentId: Id, displayName: DisplayName, username: Username }).strict()),
+        items: z.array(z.object({ studentId: Id, provisioningId: Id, displayName: DisplayName, username: Username }).strict()),
+        busy: z.array(z.object({ studentId: Id, retryAt: Timestamp }).strict()),
       })
       .strict(),
   },

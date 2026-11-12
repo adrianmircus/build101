@@ -340,7 +340,10 @@ select is(pg_temp.as_service(format('select api.internal_link_student_user(%L, %
 select is(pg_temp.link('sl2', 'ghost') ->> 'error', 'P0001 NOT_FOUND not_found', 'an account with no app user is NOT_FOUND');
 update app.account_provisioning set status = 'deleted' where student_id = pg_temp.id('sl2');
 select is(pg_temp.link('sl2', 'stu_l2') ->> 'error', 'P0001 NOT_FOUND not_found', 'an account marked deleted is never brought back');
+-- deleted is final (phase 2, F2C-48): to test what a later link does with a failed row, the guard is off for this one statement.
+alter table app.account_provisioning disable trigger account_provisioning_deleted_final;
 update app.account_provisioning set status = 'failed', error_code = 'auth_unavailable' where student_id = pg_temp.id('sl2');
+alter table app.account_provisioning enable trigger account_provisioning_deleted_final;
 select is(pg_temp.link('sl2', 'stu_l2') ->> 'id', pg_temp.id('sl2')::text, 'a failed provisioning is completed by a later link');
 select is((select ap.status || ':' || coalesce(ap.error_code, 'none') from app.account_provisioning ap where ap.student_id = pg_temp.id('sl2')), 'active:none',
   'and its error is cleared');

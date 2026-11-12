@@ -1,10 +1,10 @@
--- Contract of phase 2 (docs/contratos/fase-2.md, version 5; supabase/migrations/20261114100000_f2_contract.sql): the closed
+-- Contract of phase 2 (docs/contratos/fase-2.md, version 6; supabase/migrations/20261114100000_f2_contract.sql): the closed
 -- tables access_card_issues, access_cards and invitation_tokens, the new columns of invitations and account_provisioning, their
 -- guards, and the stubs of the 27 new RPCs.
 -- Guards are tested as the table owner and must fail with P0004 (as authenticated the UPDATE fails earlier with 42501
 -- and would pass even without the guard). Placeholder data only. The whole file is rolled back.
 begin;
-select plan(141);
+select plan(154);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -398,6 +398,26 @@ select is(pg_temp.st(format('update app.account_provisioning set lease_holder = 
 
 select is(pg_temp.st(format('delete from app.institutions where id = %s', pg_temp.i('i_b'))), 'ok', 'control: with the institution, everything of it goes by the cascade');
 select is((select count(*) from app.invitation_tokens where institution_id = pg_temp.id('i_b')), 0::bigint, 'including its registered hashes');
+
+-- 8. deleted is final, and a student does not change his credentials in Auth without a live lease.
+select is(pg_temp.st(format('update app.account_provisioning set status = ''deleted'', revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'ok', 'control: a row is marked deleted (the erasure)');
+select is(pg_temp.st(format('update app.account_provisioning set status = ''failed'', revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'P0004', 'a deleted provisioning row never changes state');
+select is(pg_temp.st(format('update app.account_provisioning set status = ''pending'', revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'P0004', 'not even back to pending');
+select is(pg_temp.st(format('update app.account_provisioning set attempts = attempts + 1, revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'ok', 'control: what is not its state still changes');
+insert into ids (k, id) select k, gen_random_uuid() from unnest(array['acct_s1', 'acct_s2']) as k;
+insert into auth.users (id, email) select id, k || '@f2-credentials.invalid' from ids where k in ('acct_s1', 'acct_s2');
+update app.account_provisioning set auth_user_id = pg_temp.id('acct_s1') where student_id = pg_temp.id('s1');
+update app.account_provisioning set auth_user_id = pg_temp.id('acct_s2') where student_id = pg_temp.id('s2');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'a student account without a live lease keeps its password');
+select is(pg_temp.st(format('update auth.users set email = ''otro@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'and its email');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''otro@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'both at once too');
+select is(pg_temp.st(format('update auth.users set last_sign_in_at = now() where id = %s', pg_temp.i('acct_s2'))), 'ok', 'control: what is not a credential is not guarded');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'' where id = %s', pg_temp.i('acct_s1'))), 'ok', 'with a live lease (the minutes of a card issue) it changes');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''nuevo@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s1'))), 'ok', 'and so does its email');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''staff@f2-credentials.invalid'' where id = %s', pg_temp.i('teachb'))), 'ok', 'a staff account always changes');
+select is((select p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres' and coalesce('search_path=""' = any (p.proconfig), false)
+             from pg_proc p where p.oid = 'app.student_credentials_guard'::regproc), true, 'the guard is security definer, owned by postgres, with search_path pinned');
+select is((select count(*) from pg_trigger t where t.tgrelid = 'auth.users'::regclass and t.tgname = 'student_credentials_guard' and t.tgenabled <> 'D'), 1::bigint, 'and it is a trigger of auth.users');
 
 select * from finish();select * from finish();
 rollback;
