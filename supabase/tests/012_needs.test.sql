@@ -2,6 +2,8 @@
 -- set_student_needs, get_student_needs, get_group_needs and list_student_need_events. Every section
 -- builds its own institution through the internal RPCs and the whole file is rolled back.
 begin;
+-- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(139);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb

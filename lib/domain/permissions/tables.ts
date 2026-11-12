@@ -19,6 +19,7 @@ export const APP_TABLES = [
   "access_card_issues",
   "access_cards",
   "student_credentials",
+  "student_sessions",
   "invitation_tokens",
   "student_needs",
   "student_need_events",

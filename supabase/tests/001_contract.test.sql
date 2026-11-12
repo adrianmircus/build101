@@ -30,12 +30,12 @@ $$, 'anon, authenticated and service_role have no privilege on any app table');
 -- Identity columns.
 select is_empty($$
   select c.relname::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-   where n.nspname = 'app' and c.relkind = 'r' and c.relname <> 'subjects'
+   where n.nspname = 'app' and c.relkind = 'r' and c.relname not in ('subjects', 'student_sessions')
      and not exists (
        select 1 from pg_constraint k join pg_attribute a on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
         where k.conrelid = c.oid and k.contype = 'p' and cardinality(k.conkey) = 1
           and a.attname = 'id' and a.atttypid = 'uuid'::regtype)
-$$, 'every app table but subjects has a uuid primary key named id');
+$$, 'every app table but subjects and student_sessions (its key is the session id of Auth) has a uuid primary key named id');
 
 select is_empty($$
   select c.relname::text from pg_class c join pg_namespace n on n.oid = c.relnamespace

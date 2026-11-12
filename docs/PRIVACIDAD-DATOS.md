@@ -196,6 +196,16 @@ La contraseña de un estudiante: un hash scrypt, nunca la contraseña ni nada en
 | `password_hash`, `version`, `student_id`, `institution_id`, `issue_id` | borra | no queda | Dicen de quién es la credencial y la verifican. La clave foránea es `ON DELETE CASCADE`: se va con el estudiante, y solo así (una guardia impide borrarla a mano). |
 | `id`, `created_at`, `updated_at` | borra | no queda | Identificadores y fechas de la fila, sin dato propio. |
 
+### `student_sessions`
+
+Regla: `delete`.
+
+Las sesiones de un estudiante que nuestro servidor registró al abrirlas: el id de la sesión de Auth y la versión de su credencial. Nada en la fila cambia: se inserta al entrar, se borra al emitir una tarjeta nueva o con el estudiante.
+
+| Campo | Qué pasa | Después | Por qué |
+|---|---|---|---|
+| `session_id`, `student_id`, `institution_id`, `version`, `created_at` | borra | no queda | Dicen que una sesión es de ese estudiante y cuándo entró. La clave foránea es `ON DELETE CASCADE`: se va con el estudiante. |
+
 ### `student_needs`
 
 Regla: `delete`.

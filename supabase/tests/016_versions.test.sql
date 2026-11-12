@@ -5,6 +5,8 @@
 -- are tried as the owner of the table, expecting P0004: as authenticated the UPDATE would fail first on
 -- privileges (42501) and the test would pass without the guard. The whole file is rolled back.
 begin;
+-- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(223);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb

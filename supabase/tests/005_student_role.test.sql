@@ -2,6 +2,8 @@
 -- anyone's needs: every api.student_* runs as tiza_student, and Postgres denies what the role is
 -- not granted, whatever path the SQL takes. Runs as postgres; everything is rolled back.
 begin;
+-- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(28);
 
 -- The role itself.

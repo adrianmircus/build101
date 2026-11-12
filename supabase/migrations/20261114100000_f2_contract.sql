@@ -1,4 +1,4 @@
--- Contract, phase 2 (docs/contratos/fase-2.md, version 9): closed tables and columns, their guards, and the stubs of the
+-- Contract, phase 2 (docs/contratos/fase-2.md, version 11): closed tables and columns, their guards, and the stubs of the
 -- new RPCs.
 --
 -- Tables born closed as in phase 1: RLS enabled and forced, no policies, no grants, app.no_truncate.
@@ -21,7 +21,9 @@ create table app.access_card_issues (
   created_at timestamptz not null default now(),
   unique (institution_id, id),
   unique (institution_id, op_key),
-  foreign key (institution_id, group_id) references app.groups (institution_id, id) on delete cascade
+  -- No cascade (F2C-73): a group with issues is not deleted, it is archived. NO ACTION and not RESTRICT, so that deleting the whole
+  -- institution, which takes everything in the same statement, still works.
+  foreign key (institution_id, group_id) references app.groups (institution_id, id)
 );
 
 -- An access card: the QR that fills in the school and the username. One active per student.
@@ -58,6 +60,17 @@ create table app.student_credentials (
   foreign key (institution_id, issue_id) references app.access_card_issues (institution_id, id) on delete cascade
 );
 
+-- The sessions of the students that our server registered at the bind (F2C-75). Nothing in it changes: it is inserted (the bind)
+-- or deleted (a new card, or the cascade of the student).
+create table app.student_sessions (
+  session_id uuid primary key,
+  institution_id uuid not null references app.institutions (id) on delete cascade,
+  student_id uuid not null,
+  version integer not null check (version >= 1),
+  created_at timestamptz not null default now(),
+  foreign key (institution_id, student_id) references app.students (institution_id, id) on delete cascade
+);
+
 -- Register of every invitation hash that ever existed. A hash enters once, through the unique index, and is not deleted
 -- while its institution exists: so it is never born again, neither step by step nor with two connections.
 create table app.invitation_tokens (
@@ -83,6 +96,8 @@ alter table app.invitation_tokens enable row level security;
 alter table app.invitation_tokens force row level security;
 alter table app.student_credentials enable row level security;
 alter table app.student_credentials force row level security;
+alter table app.student_sessions enable row level security;
+alter table app.student_sessions force row level security;
 
 create trigger access_card_issues_no_truncate before truncate on app.access_card_issues
   for each statement execute function app.no_truncate();
@@ -92,6 +107,19 @@ create trigger invitation_tokens_no_truncate before truncate on app.invitation_t
   for each statement execute function app.no_truncate();
 create trigger student_credentials_no_truncate before truncate on app.student_credentials
   for each statement execute function app.no_truncate();
+create trigger student_sessions_no_truncate before truncate on app.student_sessions
+  for each statement execute function app.no_truncate();
+
+create function app.student_sessions_frozen() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'app.student_sessions_frozen: a registered session never changes' using errcode = 'P0004';
+end
+$$;
+create trigger student_sessions_frozen before update on app.student_sessions
+  for each row execute function app.student_sessions_frozen();
 create trigger student_credentials_touch before update on app.student_credentials
   for each row execute function app.touch_row();
 
@@ -203,9 +231,8 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if exists (select 1 from app.groups g where g.id = old.group_id)
-     and exists (select 1 from app.institutions n where n.id = old.institution_id) then
-    raise exception 'app.access_card_issues_kept: an issue goes only with its group' using errcode = 'P0004';
+  if exists (select 1 from app.institutions n where n.id = old.institution_id) then
+    raise exception 'app.access_card_issues_kept: an issue goes only with its institution' using errcode = 'P0004';
   end if;
   return old;
 end
@@ -382,19 +409,26 @@ $$;
 -- password, its id never changes, and its email and password never change in value (values, not columns: GoTrue may rewrite
 -- the whole row on a login). Staff accounts are not touched. SECURITY DEFINER because supabase_auth_admin has no access to app.
 -- Both ends of the relation take the same advisory lock on the id first (app.student_auth_lock), and refuse (40001) outside READ COMMITTED, where the next query would not see what the other one committed.
-create function app.student_auth_lock(p_id uuid) returns void
+-- Order of the locks (F2C-70): always the row of account_provisioning first and the advisory lock after. On the side of
+-- account_provisioning the row is already locked by the INSERT or UPDATE itself when its trigger runs.
+create function app.student_auth_lock(p_a uuid, p_b uuid default null) returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
 begin
-  perform pg_advisory_xact_lock(hashtextextended('student_auth:' || p_id::text, 0));
+  perform pg_advisory_xact_lock(hashtextextended('student_auth:' || least(p_a, coalesce(p_b, p_a))::text, 0));
+  if p_b is not null and p_b <> p_a then
+    perform pg_advisory_xact_lock(hashtextextended('student_auth:' || greatest(p_a, p_b)::text, 0));
+  end if;
   if current_setting('transaction_isolation') <> 'read committed' then
     raise exception 'app.student_auth_lock: needs READ COMMITTED to see what the other end committed' using errcode = '40001';
   end if;
 end
 $$;
 
+-- The only trigger on auth.users (it absorbs the old birth guard). In this order: FOR SHARE of the provisioning rows with the old and
+-- the new id (if they exist), the advisory lock of those ids in order, and then every check.
 create function app.student_auth_guard() returns trigger
 language plpgsql
 security definer
@@ -405,8 +439,16 @@ declare
   v_remembered boolean;
   v_old_remembered boolean := false;
 begin
-  perform app.student_auth_lock(new.id);
+  perform 1 from app.account_provisioning ap
+   where ap.auth_user_id = new.id or (tg_op = 'UPDATE' and ap.auth_user_id = old.id)
+   order by ap.id for share;
+  perform app.student_auth_lock(new.id, case when tg_op = 'UPDATE' then old.id end);
   v_remembered := exists (select 1 from app.account_provisioning ap where ap.auth_user_id = new.id);
+  -- Suppress wins: an account whose id is remembered in a deleted row is not born, nor armed by an UPDATE of the id.
+  if (tg_op = 'INSERT' or new.id is distinct from old.id)
+     and exists (select 1 from app.account_provisioning ap where ap.auth_user_id = new.id and ap.status = 'deleted') then
+    raise exception 'app.student_auth_guard: the account of an erased student is not born again' using errcode = 'P0004';
+  end if;
   if v_remembered and lower(coalesce(new.email, '')) is distinct from new.id::text || v_domain then
     raise exception 'app.student_auth_guard: the email of the account of a student is exactly its id at the synthetic domain' using errcode = 'P0004';
   end if;
@@ -416,6 +458,7 @@ begin
     raise exception 'app.student_auth_guard: a synthetic email is exactly <id> of a remembered account' using errcode = 'P0004';
   end if;
   if tg_op = 'INSERT' then
+    -- createUser without a password still makes a random one, which nobody knows: it is erased before it is stored.
     if v_remembered then
       new.encrypted_password := null;
     end if;
@@ -439,32 +482,34 @@ $$;
 create trigger student_auth_guard before insert or update on auth.users
   for each row execute function app.student_auth_guard();
 
--- The other end (BLOQUEADO, see the notes of the ticket): the contract asks for a BEFORE INSERT OR UPDATE OF auth_user_id trigger in
--- account_provisioning that refuses to remember an id whose row in auth.users does not have the fixed shape (canonical email, no
--- password), taking app.student_auth_lock first. It is not here: students_record_account remembers the account of every
--- internal_link_student_user, and phase 1 links ordinary accounts (any email) in more than twenty pgTAP files and in the integration
--- factories, so the trigger fails all of them. T2.5a writes it together with the change of those tests.
-
--- An account whose id is remembered in a deleted provisioning row is not born (not by a late createUser, not by an INSERT of the
--- owner, not by an UPDATE that gives that id to another row). FOR SHARE waits for an erasure in progress, which locks that row
--- FOR UPDATE, and then reads the committed state.
-create function app.student_auth_birth_guard() returns trigger
+-- The other end: an id is remembered only if the row of Auth with that id, when there already is one, has the fixed shape. The row
+-- of account_provisioning is already locked by the INSERT or UPDATE itself, so the advisory lock comes second, as in the guard above.
+create function app.student_auth_link_guard() returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_status text;
+  v_new uuid := new.auth_user_id;
+  v_old uuid := case when tg_op = 'UPDATE' then old.auth_user_id end;
 begin
-  select ap.status into v_status from app.account_provisioning ap where ap.auth_user_id = new.id for share;
-  if v_status = 'deleted' then
-    raise exception 'app.student_auth_birth_guard: the account of an erased student is not born again' using errcode = 'P0004';
+  if v_new is null and v_old is null then
+    return new;
+  end if;
+  -- Also when the status changes (an erasure marks the row deleted): the advisory lock of the remembered id, old and new in order.
+  perform app.student_auth_lock(coalesce(v_new, v_old), v_old);
+  if v_new is not null and (tg_op = 'INSERT' or v_new is distinct from v_old)
+     and exists (select 1 from auth.users u
+                  where u.id = v_new
+                    and (lower(coalesce(u.email, '')) is distinct from u.id::text || '@estudiantes.usetiza.app'
+                         or coalesce(u.encrypted_password, '') <> '')) then
+    raise exception 'app.student_auth_link_guard: the account of Auth with that id does not have the fixed shape' using errcode = 'P0004';
   end if;
   return new;
 end
 $$;
-create trigger student_auth_birth_guard before insert or update of id on auth.users
-  for each row execute function app.student_auth_birth_guard();
+create trigger student_auth_link_guard before insert or update of auth_user_id, status on app.account_provisioning
+  for each row execute function app.student_auth_link_guard();
 
 -- Session (T2.7).
 create function api.internal_revoke_user_sessions(p_user_id uuid)
@@ -559,6 +604,7 @@ create function api.internal_fail_student_account(p_provisioning_id uuid, p_erro
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
+-- Also lists the active rows whose authUserId is no longer in auth.users (an account somebody deleted by hand).
 create function api.internal_list_unfinished_accounts(p_limit integer)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;

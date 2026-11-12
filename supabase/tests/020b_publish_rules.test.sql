@@ -4,6 +4,8 @@
 -- first with 42501 and the test would pass with no guard at all. The checks and the idempotency are in 020a; the
 -- races and the lock order in tests/integration/races/publish*.test.ts. Placeholder text only. Rolled back.
 begin;
+-- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(49);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb

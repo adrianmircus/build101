@@ -2,6 +2,8 @@
 -- Everything is created here with its own institutions (through the internal RPCs, the same way the
 -- factories will) and rolled back, so the file depends on no other test and clobbers none.
 begin;
+-- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(168);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched

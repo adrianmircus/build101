@@ -2,6 +2,8 @@
 -- type and validated as a whole: an option whose text is an object (or whose id is not a letter) blocks the publication
 -- (CONFLICT invalid_option) without creating anything. Rows are seeded as the table owner. Placeholder text only. Rolled back.
 begin;
+-- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(24);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb

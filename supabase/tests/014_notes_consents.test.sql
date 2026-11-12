@@ -2,6 +2,8 @@
 -- list_student_notes, create_student_note, update_student_note, archive_student_note,
 -- list_student_consents, record_consent and revoke_consent. The whole file is rolled back.
 begin;
+-- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
+alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(196);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
