@@ -3,6 +3,8 @@
 const mocks = vi.hoisted(() => ({ getActor: vi.fn(), getClaims: vi.fn(), signOut: vi.fn() }));
 vi.mock("./actor", () => ({ getActor: mocks.getActor }));
 vi.mock("../repos/auth-session", () => ({ getClaims: mocks.getClaims, signOut: mocks.signOut }));
+// connection() only works inside a request: here it is a no-op.
+vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
     throw new Error(`REDIRECT ${to}`);
