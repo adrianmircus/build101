@@ -3,8 +3,6 @@
 -- authenticated it would fail earlier with 42501 and pass even without the guard) and has to fail with P0004.
 -- Placeholder data only. The whole file is rolled back.
 begin;
--- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
-alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(84);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
@@ -58,6 +56,19 @@ begin
   for k in select ids.k from ids loop
     perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k));
   end loop;
+end
+$$;
+
+-- The accounts of the students have the canonical shape of phase 2 (docs/contratos/fase-2.md, «Cómo entra un estudiante»), like the
+-- provisioning of T2.5a leaves them: the id is remembered in the provisioning row of the student first, then the row of Auth is born
+-- with the email <id>@estudiantes.usetiza.app (no password), with its app_users row. The link of the student comes afterwards, through the
+-- RPC, or not at all. So student_auth_link_guard stays on; only the staff (teach, other) are ordinary accounts.
+create function pg_temp.student_account(p_student uuid, p_user uuid, p_name text) returns void language plpgsql as $$
+begin
+  perform pg_temp.as_service(format('select api.internal_remember_student_account(%L, %L)',
+    (select ap.id from app.account_provisioning ap where ap.student_id = p_student), p_user));
+  insert into auth.users (id, email) values (p_user, p_user::text || '@estudiantes.usetiza.app');
+  perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', p_user, p_name));
 end
 $$;
 
@@ -140,9 +151,11 @@ select is(pg_temp.st('update app.invitations set accepted_at = now() - interval 
 -- linked to another account. The first link is remembered in account_provisioning.auth_user_id.
 insert into ids (k, id) values
   ('s2', (pg_temp.as_user('teach', format('select api.create_student(%L, ''Estudiante 2'', ''est.2'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'id')::uuid);
-select is(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s2'), pg_temp.id('other'))) ->> 'error', null,
+insert into ids (k, id) values ('acct2', gen_random_uuid());
+select pg_temp.student_account(pg_temp.id('s2'), pg_temp.id('acct2'), 'Persona acct2');
+select is(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s2'), pg_temp.id('acct2'))) ->> 'error', null,
   'control: a student is linked to an account');
-select is((select ap.auth_user_id from app.account_provisioning ap where ap.student_id = pg_temp.id('s2')), pg_temp.id('other'),
+select is((select ap.auth_user_id from app.account_provisioning ap where ap.student_id = pg_temp.id('s2')), pg_temp.id('acct2'),
   'and the link is remembered in its provisioning row');
 select is(pg_temp.st(format('update app.students set user_id = null where id = %s', pg_temp.i('s2'))), 'P0004',
   'students: user_id does not go to NULL while its account exists');
@@ -151,10 +164,9 @@ select is(pg_temp.st(format('update app.students set user_id = %s where id = %s'
 select is(pg_temp.st(format('update app.students set user_id = %s where id = %s', pg_temp.i('other'), pg_temp.i('s1'))), 'P0004',
   'students: a student whose provisioning remembers another account is not linked to a new one');
 insert into ids (k, id) values ('gone', gen_random_uuid());
-insert into auth.users (id, email) values (pg_temp.id('gone'), 'gone@t1-f11.invalid');
-select pg_temp.as_service(format('select api.internal_upsert_app_user(%L, ''Persona gone'')', pg_temp.id('gone')));
 insert into ids (k, id) values
   ('s3', (pg_temp.as_user('teach', format('select api.create_student(%L, ''Estudiante 3'', ''est.3'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'id')::uuid);
+select pg_temp.student_account(pg_temp.id('s3'), pg_temp.id('gone'), 'Persona gone');
 select pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s3'), pg_temp.id('gone')));
 select is(pg_temp.st(format('delete from app.app_users where id = %s', pg_temp.i('gone'))), 'ok',
   'control: deleting the account empties the link through its foreign key');
@@ -165,8 +177,11 @@ select is((select ap.auth_user_id from app.account_provisioning ap where ap.stud
 -- 3d. That memory lives as long as the student (T1.F12, round 5): it is not detached nor deleted, and a student without
 -- it is never linked. The path of the review, through the RPC: detach the row, delete Auth A, link to B.
 insert into ids (k, id) values ('b2', gen_random_uuid());
-insert into auth.users (id, email) values (pg_temp.id('b2'), 'b2@t1-f12.invalid');
-select pg_temp.as_service(format('select api.internal_upsert_app_user(%L, ''Persona b2'')', pg_temp.id('b2')));
+-- B is the canonical account of another student (sb2: its id remembered, its row of Auth born, not linked), so that what refuses
+-- the link of s3 is the memory of its own account and not the shape of B.
+insert into ids (k, id) values
+  ('sb2', (pg_temp.as_user('teach', format('select api.create_student(%L, ''Estudiante B2'', ''est.b2'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'id')::uuid);
+select pg_temp.student_account(pg_temp.id('sb2'), pg_temp.id('b2'), 'Persona b2');
 select is(pg_temp.st(format('update app.account_provisioning set status = ''deleted'', student_id = null where student_id = %s', pg_temp.i('s3'))), 'P0004',
   'account_provisioning: student_id does not go to NULL while the student exists');
 select is(pg_temp.st(format('delete from app.account_provisioning where student_id = %s', pg_temp.i('s3'))), 'P0004',

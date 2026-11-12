@@ -23,6 +23,21 @@ export async function pendingStudent(world: World): Promise<PendingStudent> {
 /** The email of the account of Auth of a student: its id at the synthetic domain. */
 export const canonicalEmail = (authUserId: string) => `${authUserId}@estudiantes.usetiza.app`;
 
+/**
+ * The canonical account of a student, not linked yet: his id is remembered in his provisioning row (also in a sandbox one, which
+ * stays not_applicable), then the row of Auth is born with the email <id>@estudiantes.usetiza.app (the trigger leaves it without a
+ * password), then its app_users row. It is the order the provisioning of T2.5b follows, and the only one student_auth_link_guard and
+ * the trigger of auth.users let through. The tests that link a student call this first and then link; none links an ordinary account.
+ */
+export async function studentAccount(studentId: string): Promise<string> {
+  const authUserId = randomUUID();
+  const remembered = await readRows<{ id: string }>("update app.account_provisioning set auth_user_id = $2 where student_id = $1 returning id", [studentId, authUserId]);
+  if (remembered.length !== 1) throw new Error("Falta la fila de aprovisionamiento del estudiante de prueba.");
+  await readRows("insert into auth.users (id, email) values ($1, $2)", [authUserId, canonicalEmail(authUserId)]);
+  idOf(await runRpc(SERVICE, "internal_upsert_app_user", { p_user_id: authUserId, p_display_name: "Cuenta de estudiante" }));
+  return authUserId;
+}
+
 export async function activeStudent(world: World): Promise<ActiveStudent> {
   const pending = await pendingStudent(world);
   const authUserId = randomUUID();

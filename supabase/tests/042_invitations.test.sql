@@ -3,9 +3,7 @@
 -- revision, a repeated op_key and the audit rows. The accounts of the staff are plain accounts (any email, with a password
 -- in Auth in real life; here a row of auth.users). Placeholder data only. The whole file is rolled back.
 begin;
--- Links ordinary accounts to students like phase 1; the shape guard of phase 2 (T2.5a) is off here. 040_f2_contract covers it.
-alter table app.account_provisioning disable trigger student_auth_link_guard;
-select plan(207);
+select plan(208);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched with SET LOCAL ROLE.
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
@@ -84,14 +82,27 @@ create function pg_temp.audits(p_action text) returns bigint language sql as $$
 
 -- People. Auth rows first (the real ones are made by Auth: here confirmed, with a plain email), app_users through the RPC.
 insert into ids (k, id) select k, gen_random_uuid() from unnest(array[
-  'adm', 'adm2', 'teach', 'incl', 'stud', 'vis', 'guest', 'guest2', 'guest3', 'guest4', 'guest5', 'guest6', 'newbie', 'late', 'ghost', 'unconfirmed'
+  'adm', 'adm2', 'teach', 'incl', 'stud', 'vis', 'guest', 'guest2', 'guest3', 'guest4', 'guest5', 'guest6', 'newbie', 'late', 'ghost', 'unconfirmed', 'enrolled'
 ]) as k;
-insert into auth.users (id, email, email_confirmed_at) select id, k || '@t2-3.invalid', now() from ids where k <> 'ghost';
+insert into auth.users (id, email, email_confirmed_at) select id, k || '@t2-3.invalid', now() from ids where k <> 'ghost' and k <> 'stud';
 update auth.users set email_confirmed_at = null where id = pg_temp.id('unconfirmed');
 update auth.users set last_sign_in_at = now() where id = pg_temp.id('adm');
 update auth.users set raw_user_meta_data = '{"display_name": "Invitada Uno"}' where id = pg_temp.id('guest');
 select pg_temp.s(format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k))
-  from (values ('adm'), ('adm2'), ('teach'), ('incl'), ('stud'), ('vis')) as p(k);
+  from (values ('adm'), ('adm2'), ('teach'), ('incl'), ('vis'), ('enrolled')) as p(k);
+
+-- The account of the student has the canonical shape of phase 2 (docs/contratos/fase-2.md, «Cómo entra un estudiante»), like the provisioning of
+-- T2.5a leaves it: its id is remembered first, then the row of Auth is born with the email <id>@estudiantes.usetiza.app, then the student is
+-- linked. So student_auth_link_guard stays on; only the staff are ordinary accounts.
+create function pg_temp.link_student(p_student uuid, p_user uuid) returns void language plpgsql as $$
+begin
+  perform pg_temp.s(format('select api.internal_remember_student_account(%L, %L)',
+    (select ap.id from app.account_provisioning ap where ap.student_id = p_student), p_user));
+  insert into auth.users (id, email, email_confirmed_at) values (p_user, p_user::text || '@estudiantes.usetiza.app', now());
+  perform pg_temp.s(format('select api.internal_upsert_app_user(%L, %L)', p_user, 'Persona stud'));
+  perform pg_temp.s(format('select api.internal_link_student_user(%L, %L)', p_student, p_user));
+end
+$$;
 
 -- Institution A (school), B (another school) and a sandbox.
 insert into ids (k, id) select 'a', (pg_temp.s($$ select api.internal_create_institution('Liceo A', 't2-3-a', 'school') $$) ->> 'id')::uuid;
@@ -102,7 +113,7 @@ select pg_temp.s(format('select api.internal_add_membership(%L, %L, %L)', pg_tem
   from (values ('a', 'adm', 'admin'), ('a', 'teach', 'teacher'), ('a', 'incl', 'inclusion'), ('b', 'adm2', 'admin'), ('sb', 'vis', 'teacher')) as m(inst, who, role);
 insert into ids (k, id) select 'g', (pg_temp.u('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026, gen_random_uuid())', pg_temp.id('a'))) ->> 'id')::uuid;
 insert into ids (k, id) select 's1', (pg_temp.u('teach', format('select api.create_student(%L, ''Estudiante 1'', ''est.1'', gen_random_uuid())', pg_temp.id('g'))) ->> 'id')::uuid;
-select pg_temp.s(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s1'), pg_temp.id('stud')));
+select pg_temp.link_student(pg_temp.id('s1'), pg_temp.id('stud'));
 
 -- ---------------------------------------------------------------------------------------------
 -- create_invitation: the happy path
@@ -423,9 +434,15 @@ select pg_temp.mk('i16', 'guest5@t2-3.invalid', 'teacher', 'i16');
 update app.invitations set status = 'expired' where id = pg_temp.id('i16');
 select is(pg_temp.err(pg_temp.accept('guest5', 'i16')), 'INVALID invitation_expired', 'one stored as expired too');
 select is(pg_temp.err(pg_temp.accept('adm', 'i11')), 'FORBIDDEN invitation_email_mismatch', 'accepted by somebody else, seen by a third one: the email decides first');
--- A student cannot be staff in the same institution (the trigger of phase 1).
+-- A student cannot be staff in the same institution (the trigger of phase 1). The account of a student has the canonical email of phase 2, which
+-- never matches the email of an invitation (the synthetic domain is refused when it is created), so for the student the rejection is now the
+-- email check, which comes first (FORBIDDEN invitation_email_mismatch); the role conflict is still checked with an ordinary account that
+-- holds a student membership.
 select pg_temp.mk('i17', 'stud@t2-3.invalid', 'teacher', 'i17');
-select is(pg_temp.err(pg_temp.accept('stud', 'i17')), 'CONFLICT role_conflict', 'a student is CONFLICT role_conflict');
+select is(pg_temp.err(pg_temp.accept('stud', 'i17')), 'FORBIDDEN invitation_email_mismatch', 'a student (canonical account) is refused by the email check, before the role');
+select pg_temp.s(format('select api.internal_add_membership(%L, %L, %L)', pg_temp.id('a'), pg_temp.id('enrolled'), 'student'));
+select pg_temp.mk('i17b', 'enrolled@t2-3.invalid', 'teacher', 'i17b');
+select is(pg_temp.err(pg_temp.accept('enrolled', 'i17b')), 'CONFLICT role_conflict', 'a person with a student membership is CONFLICT role_conflict');
 select is(pg_temp.row_of('i17'), 'pending:1:false', 'and the invitation stays pending');
 -- Two acceptances in a row (the second waits for the first one in a real race): one membership.
 select pg_temp.mk('i18', 'guest6@t2-3.invalid', 'admin', 'i18');

@@ -3,8 +3,6 @@
 -- but service_role. Sessions are rows inserted into auth.sessions here (the pgTAP helper for it is in this file).
 -- Placeholder data only. The whole file is rolled back.
 begin;
--- Links ordinary accounts to students like phase 1; the shape guard of phase 2 (T2.5a) is off here. 040_f2_contract covers it.
-alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(51);
 
 -- Runs a statement as `p_role` with the claims of `p_user` and, if given, of that session. Returns its jsonb, or {"error": ...}.
@@ -54,14 +52,21 @@ create function pg_temp.hit(p_keys text[], p_limits integer[], p_window integer 
 create temp table ids (k text primary key, id uuid not null);
 create function pg_temp.id(p_key text) returns uuid language sql as $$ select id from ids where k = p_key $$;
 insert into ids (k, id) select k, gen_random_uuid() from unnest(array['teach', 'other', 'stu']) as k;
-insert into auth.users (id, email) select id, k || '@t2-7.invalid' from ids;
-select pg_temp.rpc(null, 'service_role', null, format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k)) from (values ('teach'), ('other'), ('stu')) as u(k);
+insert into auth.users (id, email) select id, k || '@t2-7.invalid' from ids where k <> 'stu';
+select pg_temp.rpc(null, 'service_role', null, format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k)) from (values ('teach'), ('other')) as u(k);
 insert into ids (k, id) select 'inst', (pg_temp.rpc(null, 'service_role', null, $$ select api.internal_create_institution('Liceo T27', 't2-7', 'school') $$) ->> 'id')::uuid;
 select pg_temp.rpc(null, 'service_role', null, format('select api.internal_add_membership(%L, %L, ''teacher'')', pg_temp.id('inst'), pg_temp.id('teach')));
 insert into ids (k, id) select 'grp', (pg_temp.rpc(pg_temp.id('teach'), 'authenticated', null,
   format('select api.create_group(%L, ''3.º A'', ''math'', 2026, gen_random_uuid())', pg_temp.id('inst'))) ->> 'id')::uuid;
 insert into ids (k, id) select 'student', (pg_temp.rpc(pg_temp.id('teach'), 'authenticated', null,
   format('select api.create_student(%L, ''Estudiante 1'', ''est.1'', gen_random_uuid())', pg_temp.id('grp'))) ->> 'id')::uuid;
+-- The account of the student has the canonical shape of phase 2 (docs/contratos/fase-2.md, «Cómo entra un estudiante»), like the provisioning of T2.5a
+-- leaves it: its id is remembered first, then the row of Auth is born with the email <id>@estudiantes.usetiza.app, then the student is linked.
+-- So student_auth_link_guard stays on; only the staff are ordinary accounts.
+select pg_temp.rpc(null, 'service_role', null, format('select api.internal_remember_student_account(%L, %L)',
+  (select ap.id from app.account_provisioning ap where ap.student_id = pg_temp.id('student')), pg_temp.id('stu')));
+insert into auth.users (id, email) values (pg_temp.id('stu'), pg_temp.id('stu')::text || '@estudiantes.usetiza.app');
+select pg_temp.rpc(null, 'service_role', null, format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id('stu'), 'Persona stu'));
 select pg_temp.rpc(null, 'service_role', null, format('select api.internal_link_student_user(%L, %L)', pg_temp.id('student'), pg_temp.id('stu')));
 insert into ids (k, id) values ('s_teach', pg_temp.new_session(pg_temp.id('teach'))), ('s_stu', pg_temp.new_session(pg_temp.id('stu')));
 -- The student is registered like the login does (T2.5a): a credential and the bind of his session.

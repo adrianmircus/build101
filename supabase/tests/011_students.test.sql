@@ -3,8 +3,6 @@
 -- the way the factories will) and the whole file is rolled back, so it depends on no other test and
 -- clobbers none.
 begin;
--- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
-alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(227);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched
@@ -58,14 +56,27 @@ insert into ids (k, id) select k, gen_random_uuid() from unnest(array[
   'admin', 'teach', 'other', 'incl', 'userb', 'visitor', 'nobody', 'ghost',
   'stu_c', 'stu_u', 'stu_e', 'stu_l', 'stu_l2', 'stu_p', 'stu_r1', 'stu_r2', 'stu_r3', 'stu_r4'
 ]) as k;
-insert into auth.users (id, email) select id, k || '@t1-2b.invalid' from ids where k <> 'ghost';
+-- The accounts of the students (stu_*) are not here: they have the canonical shape of phase 2 and are born with their student (pg_temp.account).
+insert into auth.users (id, email) select id, k || '@t1-2b.invalid' from ids where k <> 'ghost' and k not like 'stu\_%';
 do $$
 declare
   k text;
 begin
-  for k in select ids.k from ids where ids.k <> 'ghost' loop
+  for k in select ids.k from ids where ids.k <> 'ghost' and ids.k not like 'stu\_%' loop
     perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k));
   end loop;
+end
+$$;
+
+-- The account of a student has the canonical shape of phase 2 (docs/contratos/fase-2.md, «Cómo entra un estudiante»), like the provisioning
+-- of T2.5a leaves it: the id is remembered in the provisioning row of the student first (also in a sandbox one, which stays not_applicable),
+-- then the row of Auth is born with the email <id>@estudiantes.usetiza.app (no password), with its app_users row. The link of the student
+-- to it is what each section tests afterwards. So student_auth_link_guard stays on.
+create function pg_temp.account(p_user text, p_student text) returns void language plpgsql as $$
+begin
+  update app.account_provisioning set auth_user_id = pg_temp.id(p_user) where student_id = pg_temp.id(p_student);
+  insert into auth.users (id, email) values (pg_temp.id(p_user), pg_temp.id(p_user)::text || '@estudiantes.usetiza.app');
+  perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(p_user), 'Persona ' || p_user));
 end
 $$;
 
@@ -101,9 +112,10 @@ select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''t
 -- create_student
 -- ---------------------------------------------------------------------------------------------
 select pg_temp.mk('c');
-select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_c'), pg_temp.id('stu_c')));
 insert into ids (k, id) values ('op1', gen_random_uuid());
 insert into ids (k, id) select 'sc1', (pg_temp.new_student('teach', 'g_c', '  Ana Pérez ', ' Ana.Perez ', pg_temp.id('op1')) ->> 'id')::uuid;
+select pg_temp.account('stu_c', 'sc1');
+select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_c'), pg_temp.id('stu_c')));
 
 select is(pg_temp.keys(pg_temp.new_student('teach', 'g_c', 'Bruno', 'bruno.c')), 'id,provisioningId,revision',
   'create_student answers exactly id, revision and provisioningId');
@@ -180,8 +192,9 @@ select is(pg_temp.new_student('visitor', 'g_s', 'Demo Tres', 'demo.tres') ->> 'e
 -- update_student / archive_student / restore_student
 -- ---------------------------------------------------------------------------------------------
 select pg_temp.mk('u');
-select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_u'), pg_temp.id('stu_u')));
 insert into ids (k, id) select 'su1', (pg_temp.new_student('teach', 'g_u', 'Elena', 'elena.u') ->> 'id')::uuid;
+select pg_temp.account('stu_u', 'su1');
+select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_u'), pg_temp.id('stu_u')));
 insert into ids (k, id) select 'su2', (pg_temp.new_student('teach', 'g_u', 'Fede', 'fede.u') ->> 'id')::uuid;
 create function pg_temp.upd(p_user text, p_rev integer, p_name text default 'Elena G.', p_username text default 'elena.u', p_student text default 'su1') returns jsonb language sql as $$
   select pg_temp.as_user(p_user, format('select api.update_student(%L, %s, %L, %L)', pg_temp.id(p_student), p_rev, p_name, p_username))
@@ -244,9 +257,10 @@ select is(pg_temp.upd('admin', 1, 'Fede F.', 'fede.u', 'su2') ->> 'revision', '2
 -- enroll_student / unenroll_student
 -- ---------------------------------------------------------------------------------------------
 select pg_temp.mk('e');
-select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_e'), pg_temp.id('stu_e')));
 insert into ids (k, id) select 'se1', (pg_temp.new_student('teach', 'g_e', 'Gina', 'gina.e') ->> 'id')::uuid;
 insert into ids (k, id) select 'se2', (pg_temp.new_student('teach', 'g_e', 'Hugo', 'hugo.e') ->> 'id')::uuid;
+select pg_temp.account('stu_e', 'se2');
+select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_e'), pg_temp.id('stu_e')));
 create function pg_temp.enr(p_user text, p_group text, p_student text, p_fn text default 'enroll_student') returns jsonb language sql as $$
   select pg_temp.as_user(p_user, format('select api.%I(%L, %L)', p_fn, pg_temp.id(p_group), pg_temp.id(p_student)))
 $$;
@@ -318,6 +332,11 @@ select is(
 select pg_temp.mk('l');
 insert into ids (k, id) select 'sl1', (pg_temp.new_student('teach', 'g_l', 'Iris', 'iris.l') ->> 'id')::uuid;
 insert into ids (k, id) select 'sl2', (pg_temp.new_student('teach', 'g_l', 'Juan', 'juan.l') ->> 'id')::uuid;
+select pg_temp.account('stu_l', 'sl1');
+select pg_temp.account('stu_l2', 'sl2');
+-- sl3 is born unlinked and with no account remembered: the refusals of an account that cannot be its own (staff, without an app user) are
+-- about a student that never had one; sl2 remembers stu_l2, and a student that remembers an account is never linked to another (P0004).
+insert into ids (k, id) select 'sl3', (pg_temp.new_student('teach', 'g_l', 'Lucia', 'lucia.l') ->> 'id')::uuid;
 create function pg_temp.link(p_student text, p_user text) returns jsonb language sql as $$
   select pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id(p_student), pg_temp.id(p_user)))
 $$;
@@ -335,11 +354,11 @@ select is((select count(*) from app.memberships where institution_id = pg_temp.i
 select is((select revision from app.account_provisioning where student_id = pg_temp.id('sl1')), 2, 'nor touch the provisioning');
 select is(pg_temp.link('sl1', 'stu_l2') ->> 'error', 'P0001 CONFLICT op_key_reused', 'another account for the same student is CONFLICT op_key_reused');
 select is(pg_temp.link('sl2', 'stu_l') ->> 'error', 'P0001 CONFLICT op_key_reused', 'the account of another student is CONFLICT op_key_reused');
-select is(pg_temp.link('sl2', 'teach') ->> 'error', 'P0001 CONFLICT role_conflict', 'an account that is staff in the institution is CONFLICT role_conflict');
-select is((select s.user_id from app.students s where s.id = pg_temp.id('sl2')), null, 'and the student stays unlinked');
+select is(pg_temp.link('sl3', 'teach') ->> 'error', 'P0001 CONFLICT role_conflict', 'an account that is staff in the institution is CONFLICT role_conflict');
+select is((select s.user_id from app.students s where s.id = pg_temp.id('sl3')), null, 'and the student stays unlinked');
 select is(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', gen_random_uuid(), pg_temp.id('stu_l2'))) ->> 'error', 'P0001 NOT_FOUND not_found',
   'an unknown student is NOT_FOUND');
-select is(pg_temp.link('sl2', 'ghost') ->> 'error', 'P0001 NOT_FOUND not_found', 'an account with no app user is NOT_FOUND');
+select is(pg_temp.link('sl3', 'ghost') ->> 'error', 'P0001 NOT_FOUND not_found', 'an account with no app user is NOT_FOUND');
 update app.account_provisioning set status = 'deleted' where student_id = pg_temp.id('sl2');
 select is(pg_temp.link('sl2', 'stu_l2') ->> 'error', 'P0001 NOT_FOUND not_found', 'an account marked deleted is never brought back');
 -- deleted is final (phase 2, F2C-48): to test what a later link does with a failed row, the guard is off for this one statement.
@@ -377,8 +396,9 @@ select is(
 -- Projections: list_my_groups, get_group, list_group_students
 -- ---------------------------------------------------------------------------------------------
 select pg_temp.mk('p');
-select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_p'), pg_temp.id('stu_p')));
 insert into ids (k, id) select 'sp1', (pg_temp.new_student('teach', 'g_p', 'Kira', 'kira.p') ->> 'id')::uuid;
+select pg_temp.account('stu_p', 'sp1');
+select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_p'), pg_temp.id('stu_p')));
 insert into ids (k, id) select 'sp2', (pg_temp.new_student('teach', 'g_p', 'Abel', 'abel.p') ->> 'id')::uuid;
 insert into ids (k, id) select 'sp3', (pg_temp.new_student('teach', 'g_p', 'Zoe', 'zoe.p') ->> 'id')::uuid;
 insert into ids (k, id) select 'sp4', (pg_temp.new_student('other', 'go_p', 'Otto', 'otto.p') ->> 'id')::uuid;
@@ -495,11 +515,13 @@ select is(position('adhd' in (pg_temp.roster('teach')::text || pg_temp.grp('teac
 -- T1.2b-fix (docs/revisiones/fase-1-t1-2b-codex.md)
 -- ---------------------------------------------------------------------------------------------
 select pg_temp.mk('f');
-select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_f'), pg_temp.id(u)))
-  from unnest(array['stu_r1', 'stu_r2']) as u;
 insert into ids (k, id) select 'sf1', (pg_temp.new_student('teach', 'g_f', 'Lola', 'lola.f') ->> 'id')::uuid;
 insert into ids (k, id) select 'sf2', (pg_temp.new_student('other', 'go_f', 'Mati', 'mati.f') ->> 'id')::uuid;
 insert into ids (k, id) select 'sf3', (pg_temp.new_student('teach', 'g_f', 'Nico', 'nico.f') ->> 'id')::uuid;
+select pg_temp.account('stu_r1', 'sf1');
+select pg_temp.account('stu_r2', 'sf2');
+select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_f'), pg_temp.id(u)))
+  from unnest(array['stu_r1', 'stu_r2']) as u;
 do $$ begin
   perform pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('sf1'), pg_temp.id('stu_r1')));
   perform pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('sf2'), pg_temp.id('stu_r2')));
@@ -550,6 +572,7 @@ select is(pg_temp.new_student('visitor', 'g_s', 'Otro', 'demo.otro', pg_temp.id(
   'the same op_key with another username in a sandbox is CONFLICT op_key_reused');
 select is((select count(*) from app.students where institution_id = pg_temp.id('i_s') and username in ('demo.cuatro', 'demo.otro')), 1::bigint,
   'and no second student is created');
+select pg_temp.account('stu_r3', 'ss3');
 select is(pg_temp.link('ss3', 'stu_r3') ->> 'id', pg_temp.id('ss3')::text, 'a sandbox student can be linked to an account');
 select is((select ap.status || ':' || coalesce(ap.auth_user_id::text, 'none') from app.account_provisioning ap where ap.student_id = pg_temp.id('ss3')),
   'not_applicable:' || pg_temp.id('stu_r3')::text, 'and its row stays not_applicable, remembering the account it was linked to (T1.F11)');
@@ -609,6 +632,8 @@ select ok(not pg_temp.holds('tiza.create_student:' || pg_temp.id('i_f')::text ||
 select is(pg_temp.new_student('teach', 'g_f', 'Quique', 'quique.f', pg_temp.id('opl')) ->> 'error', null, 'create_student creates');
 select ok(pg_temp.holds('tiza.create_student:' || pg_temp.id('i_f')::text || ':' || pg_temp.id('opl')::text),
   'and takes the (institution, op_key) lock, before looking the key up');
+-- The account of sf3 is born only now: until here sf3 never had one remembered (the refusals above are about a student without one).
+select pg_temp.account('stu_r4', 'sf3');
 select ok(not pg_temp.holds('tiza.student_account:' || pg_temp.id('stu_r4')::text), 'nothing holds the lock of an account nobody linked');
 select is(pg_temp.link('sf3', 'stu_r4') ->> 'id', pg_temp.id('sf3')::text, 'internal_link_student_user links it');
 select ok(pg_temp.holds('tiza.student_account:' || pg_temp.id('stu_r4')::text),

@@ -2,8 +2,6 @@
 -- anyone's needs: every api.student_* runs as tiza_student, and Postgres denies what the role is
 -- not granted, whatever path the SQL takes. Runs as postgres; everything is rolled back.
 begin;
--- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
-alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(32);
 
 -- The role itself.
@@ -127,17 +125,21 @@ rollback to savepoint definer_trigger_probe;
 insert into app.institutions (id, name, code, kind) values ('00000000-0000-0000-0000-0000000005a1', 'Liceo', 'liceo-s', 'school');
 insert into app.groups (id, institution_id, subject_id, name, school_year) values
   ('00000000-0000-0000-0000-000000000521', '00000000-0000-0000-0000-0000000005a1', 'math', '6.º', 2026);
-insert into auth.users (id, email) values
-  ('00000000-0000-0000-0000-000000000511', 'student-a@test.invalid'),
-  ('00000000-0000-0000-0000-000000000512', 'student-b@test.invalid');
-insert into app.app_users (id) values ('00000000-0000-0000-0000-000000000511'), ('00000000-0000-0000-0000-000000000512');
--- Born unlinked, with the provisioning row, and linked afterwards, as create_student and the link RPC do (T1.F14).
+-- Born unlinked, with the provisioning row, and linked afterwards, as create_student and the link RPC do (T1.F14). The accounts of
+-- the students have the canonical shape of phase 2 (docs/contratos/fase-2.md, «Cómo entra un estudiante»): the id is remembered in the
+-- provisioning row first, then the row of Auth is born with the email <id>@estudiantes.usetiza.app, and then the link.
 insert into app.students (id, institution_id, display_name, username, interface) values
   ('00000000-0000-0000-0000-000000000531', '00000000-0000-0000-0000-0000000005a1', 'Estudiante A', 'est.a', 'standard'),
   ('00000000-0000-0000-0000-000000000532', '00000000-0000-0000-0000-0000000005a1', 'Estudiante B', 'est.b', 'gaze');
 insert into app.account_provisioning (institution_id, student_id, op_key) values
   ('00000000-0000-0000-0000-0000000005a1', '00000000-0000-0000-0000-000000000531', gen_random_uuid()),
   ('00000000-0000-0000-0000-0000000005a1', '00000000-0000-0000-0000-000000000532', gen_random_uuid());
+update app.account_provisioning set auth_user_id = ('00000000-0000-0000-0000-00000000051' || right(student_id::text, 1))::uuid
+ where student_id in ('00000000-0000-0000-0000-000000000531', '00000000-0000-0000-0000-000000000532');
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000000511', '00000000-0000-0000-0000-000000000511@estudiantes.usetiza.app'),
+  ('00000000-0000-0000-0000-000000000512', '00000000-0000-0000-0000-000000000512@estudiantes.usetiza.app');
+insert into app.app_users (id) values ('00000000-0000-0000-0000-000000000511'), ('00000000-0000-0000-0000-000000000512');
 update app.students set user_id = ('00000000-0000-0000-0000-00000000051' || right(id::text, 1))::uuid
  where id in ('00000000-0000-0000-0000-000000000531', '00000000-0000-0000-0000-000000000532');
 insert into app.assessments (id, institution_id, group_id, subject_id, kind) values

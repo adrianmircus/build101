@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { countRows, readRows } from "../support/db";
 import { heldRace, stampede, type Step } from "../support/race";
 import { describeOutcome, idOf } from "../support/session";
+import { studentAccount } from "../support/accounts";
 import { addMembership, createPerson, createStudent, createWorld, SERVICE } from "../support/world";
 
-// W1-6 (a) and W1-3 (b): the person who is staff and student at once, and add against revoke.
+// W1-6 (a) and W1-3 (b): the person who is staff and student at once, and add against revoke. The account of the student is the
+// canonical one of phase 2 (remembered in his provisioning row), the only kind that can be linked to a student.
 
 const ROLE_CONFLICT = "P0001 CONFLICT role_conflict";
 const ACTIVE_STAFF =
@@ -25,7 +27,8 @@ async function staffAndStudentRows(institutionId: string, userId: string): Promi
 describe("race: a person is never staff and student in the same institution", () => {
   it.each(["staff first", "link first"] as const)("one wins and the other is CONFLICT role_conflict (%s)", async (order) => {
     const world = await createWorld();
-    const [person, student] = [await createPerson(), await createStudent(world)];
+    const student = await createStudent(world);
+    const person = await studentAccount(student);
     const staff = addStaff(world.institutionId, person);
     const tie = link(student, person);
     const held = order === "staff first" ? await heldRace(staff, tie) : await heldRace(tie, staff);
@@ -39,8 +42,8 @@ describe("race: a person is never staff and student in the same institution", ()
 
   it("holds when both run at once, 20 times", async () => {
     const world = await createWorld();
-    const people = await Promise.all(Array.from({ length: 20 }, () => createPerson()));
-    const students = await Promise.all(people.map(() => createStudent(world)));
+    const students = await Promise.all(Array.from({ length: 20 }, () => createStudent(world)));
+    const people = await Promise.all(students.map((student) => studentAccount(student)));
     for (const [index, person] of people.entries()) {
       const outcomes = await stampede([addStaff(world.institutionId, person), link(students[index] ?? "", person)]);
       const failed = outcomes.filter((outcome) => !outcome.ok).map(describeOutcome);

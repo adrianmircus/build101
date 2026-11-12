@@ -2,8 +2,6 @@
 -- list_student_notes, create_student_note, update_student_note, archive_student_note,
 -- list_student_consents, record_consent and revoke_consent. The whole file is rolled back.
 begin;
--- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
-alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(196);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
@@ -38,14 +36,28 @@ create function pg_temp.keys(p_obj jsonb) returns text language sql
 insert into ids (k, id) select k, gen_random_uuid() from unnest(array[
   'admin', 'teach', 'other', 'incl', 'userb', 'visitor', 'nobody', 'ghost', 'adm2', 'co', 'tmp', 'stu_a', 'stu_b'
 ]) as k;
-insert into auth.users (id, email) select id, k || '@t1-3b.invalid' from ids where k <> 'ghost';
+insert into auth.users (id, email) select id, k || '@t1-3b.invalid' from ids where k <> 'ghost' and k not like 'stu\_%';
 do $$
 declare
   k text;
 begin
-  for k in select ids.k from ids where ids.k <> 'ghost' loop
+  for k in select ids.k from ids where ids.k <> 'ghost' and ids.k not like 'stu\_%' loop
     perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k));
   end loop;
+end
+$$;
+
+-- The student accounts have the canonical shape of phase 2 (docs/contratos/fase-2.md, «Cómo entra un estudiante»), like the provisioning
+-- of T2.5a leaves them: the id is remembered in account_provisioning first, then the row of Auth is born with the email
+-- <id>@estudiantes.usetiza.app (the trigger leaves it without a password), then the student is linked. So student_auth_link_guard
+-- stays on. The keys stu_* are not in the first insert: only the staff are ordinary accounts, and a student's is born here.
+create function pg_temp.link_student(p_student uuid, p_user uuid) returns void language plpgsql as $$
+begin
+  perform pg_temp.as_service(format('select api.internal_remember_student_account(%L, %L)',
+    (select ap.id from app.account_provisioning ap where ap.student_id = p_student), p_user));
+  insert into auth.users (id, email) values (p_user, p_user::text || '@estudiantes.usetiza.app');
+  perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', p_user, 'Persona ' || (select k from ids where id = p_user)));
+  perform pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', p_student, p_user));
 end
 $$;
 
@@ -143,8 +155,8 @@ select pg_temp.new_student('sn4', 'teach', 'g_n');
 select pg_temp.new_student('sn5', 'teach', 'g_n');
 select pg_temp.new_student('sn6', 'teach', 'g_n');
 select pg_temp.new_student('sn3', 'other', 'go_n');
-select pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('sn1'), pg_temp.id('stu_a')));
-select pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('sn3'), pg_temp.id('stu_b')));
+select pg_temp.link_student(pg_temp.id('sn1'), pg_temp.id('stu_a'));
+select pg_temp.link_student(pg_temp.id('sn3'), pg_temp.id('stu_b'));
 select pg_temp.as_user('teach', format('select api.add_group_staff(%L, %L, ''co_teacher'')', pg_temp.id('g_n'), pg_temp.id('co')));
 select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''admin'')', pg_temp.id('i_n'), pg_temp.id('adm2')));
 select pg_temp.as_user('other', format('select api.add_group_staff(%L, %L, ''co_teacher'')', pg_temp.id('go_n'), pg_temp.id('adm2')));

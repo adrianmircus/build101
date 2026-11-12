@@ -2,8 +2,6 @@
 -- Everything is created here with its own institutions (through the internal RPCs, the same way the
 -- factories will) and rolled back, so the file depends on no other test and clobbers none.
 begin;
--- Phase 1 links ordinary accounts (any email) to students; the shape guard of phase 2 (T2.5a) is off in this file. 040_f2_contract covers it.
-alter table app.account_provisioning disable trigger student_auth_link_guard;
 select plan(168);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched
@@ -50,14 +48,15 @@ create function pg_temp.as_service(p_sql text) returns jsonb language sql
 
 -- Users. Auth rows come first (the real ones are made by Auth); app_users through the RPC.
 insert into ids (k, id) select k, gen_random_uuid() from unnest(array[
-  'admin', 'owner', 'co', 'other', 'incl', 'stud', 'userb', 'visitor', 'nobody', 'ghost', 'late'
+  'admin', 'owner', 'co', 'other', 'incl', 'stud', 'userb', 'visitor', 'nobody', 'ghost', 'late', 'stub'
 ]) as k;
-insert into auth.users (id, email) select id, k || '@t1-2a.invalid' from ids where k <> 'ghost';
+-- The students (stud, and stub further down) are not here: their accounts have the canonical shape of phase 2 and are born with their student.
+insert into auth.users (id, email) select id, k || '@t1-2a.invalid' from ids where k <> 'ghost' and k not in ('stud', 'stub');
 do $$
 declare
   k text;
 begin
-  foreach k in array array['admin', 'owner', 'co', 'other', 'incl', 'stud', 'userb', 'visitor', 'nobody', 'late'] loop
+  foreach k in array array['admin', 'owner', 'co', 'other', 'incl', 'userb', 'visitor', 'nobody', 'late'] loop
     perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k));
   end loop;
 end
@@ -105,6 +104,25 @@ select is(pg_temp.as_service(format($$ select api.internal_upsert_app_user(%L, '
 -- ---------------------------------------------------------------------------------------------
 -- internal_add_membership
 -- ---------------------------------------------------------------------------------------------
+-- The accounts of the students have the canonical shape of phase 2 (docs/contratos/fase-2.md, «Cómo entra un estudiante»), like the
+-- provisioning of T2.5a leaves them: the id is remembered in the provisioning row of the student first, then the row of Auth is born
+-- with the email <id>@estudiantes.usetiza.app (no password), with its app_users row. The link of the student comes afterwards. So
+-- student_auth_link_guard stays on; only the staff are ordinary accounts.
+create function pg_temp.student_account(p_student uuid, p_user uuid, p_name text) returns void language plpgsql as $$
+begin
+  perform pg_temp.as_service(format('select api.internal_remember_student_account(%L, %L)',
+    (select ap.id from app.account_provisioning ap where ap.student_id = p_student), p_user));
+  insert into auth.users (id, email) values (p_user, p_user::text || '@estudiantes.usetiza.app');
+  perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', p_user, p_name));
+end
+$$;
+-- The student of the account stud, born unlinked with its provisioning row, as create_student does (T1.F14). It is linked, and
+-- enrolled in the group, further down.
+insert into app.students (id, institution_id, display_name, username)
+  values (gen_random_uuid(), pg_temp.id('instA'), 'Estudiante', 'est.a.t1');
+insert into app.account_provisioning (institution_id, student_id, op_key)
+  select s.institution_id, s.id, gen_random_uuid() from app.students s where s.username = 'est.a.t1' and s.institution_id = pg_temp.id('instA');
+select pg_temp.student_account((select s.id from app.students s where s.username = 'est.a.t1' and s.institution_id = pg_temp.id('instA')), pg_temp.id('stud'), 'Persona stud');
 create function pg_temp.add_member(p_inst text, p_user text, p_role text) returns uuid language sql as $$
   select (pg_temp.as_service(format('select api.internal_add_membership(%L, %L, %L)',
     pg_temp.id(p_inst), pg_temp.id(p_user), p_role)) ->> 'id')::uuid
@@ -150,8 +168,9 @@ insert into app.account_provisioning (institution_id, student_id, op_key)
 select is(pg_temp.err(format($$ update app.students set user_id = %L where username = 'est.b.t1' and institution_id = %L $$,
     pg_temp.id('userb'), pg_temp.id('instB'))),
   'P0001 CONFLICT role_conflict', 'a student row cannot be tied to an account that is staff in that institution');
-update app.students set user_id = pg_temp.id('nobody') where username = 'est.b.t1' and institution_id = pg_temp.id('instB');
-select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'teacher') $$, pg_temp.id('instB'), pg_temp.id('nobody'))) ->> 'error',
+select pg_temp.student_account((select s.id from app.students s where s.username = 'est.b.t1' and s.institution_id = pg_temp.id('instB')), pg_temp.id('stub'), 'Persona stub');
+update app.students set user_id = pg_temp.id('stub') where username = 'est.b.t1' and institution_id = pg_temp.id('instB');
+select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'teacher') $$, pg_temp.id('instB'), pg_temp.id('stub'))) ->> 'error',
   'P0001 CONFLICT role_conflict', 'an account tied to a student row cannot become staff of that institution');
 
 -- ---------------------------------------------------------------------------------------------
@@ -360,11 +379,7 @@ select throws_ok(format('update app.groups set op_key = null, op_identity = null
 do $$ begin
   perform pg_temp.as_user('owner', format($q$ select api.add_group_staff(%L, %L, 'co_teacher') $q$, pg_temp.id('g'), pg_temp.id('co')));
 end $$;
--- Born unlinked, with the provisioning row, and linked afterwards, as create_student and the link RPC do (T1.F14).
-insert into app.students (id, institution_id, display_name, username)
-  values (gen_random_uuid(), pg_temp.id('instA'), 'Estudiante', 'est.a.t1');
-insert into app.account_provisioning (institution_id, student_id, op_key)
-  select s.institution_id, s.id, gen_random_uuid() from app.students s where s.username = 'est.a.t1' and s.institution_id = pg_temp.id('instA');
+-- Linked now (its student was born unlinked above, with the account that is remembered in its provisioning row).
 update app.students set user_id = pg_temp.id('stud') where username = 'est.a.t1' and institution_id = pg_temp.id('instA');
 insert into app.enrollments (institution_id, group_id, student_id)
   select pg_temp.id('instA'), pg_temp.id('g'), s.id from app.students s where s.username = 'est.a.t1' and s.institution_id = pg_temp.id('instA');

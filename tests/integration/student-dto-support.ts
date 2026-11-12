@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { original, type Original } from "./support/assessments";
 import { readRows, runRpc } from "./support/db";
 import { describeOutcome, idOf, type Actor } from "./support/session";
-import { createStudent, createPerson, SERVICE, teacherOf } from "./support/world";
+import { studentAccount } from "./support/accounts";
+import { createStudent, SERVICE, teacherOf } from "./support/world";
 import { attemptOf, attemptRows } from "./races/publish-support";
 import { at, OPTIONS } from "./races/version-ops-support";
 
@@ -23,7 +24,7 @@ export async function must(actor: Actor, rpc: string, args: Record<string, strin
 
 export async function withAccount(o: Original): Promise<{ studentId: string; userId: string }> {
   const studentId = await createStudent(o.world);
-  const userId = await createPerson();
+  const userId = await studentAccount(studentId);
   await must(SERVICE, "internal_link_student_user", { p_student_id: studentId, p_user_id: userId });
   return { studentId, userId };
 }
