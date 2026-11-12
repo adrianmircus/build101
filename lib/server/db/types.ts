@@ -75,7 +75,7 @@ export type Database = {
 { Args: { "p_group_id": string,"p_student_id": string }; Returns: Json
                            },
 "finish_access_cards":
-{ Args: { "p_done": (string)[],"p_issue_id": string }; Returns: Json
+{ Args: { "p_done": (string)[],"p_issue_id": string,"p_uncertain": (string)[] }; Returns: Json
                            },
 "get_answer_key":
 { Args: { "p_version_id": string }; Returns: Json
@@ -111,7 +111,7 @@ export type Database = {
 { Args: { "p_issue_id": string,"p_student_id": string }; Returns: Json
                            },
 "internal_claim_provisioning":
-{ Args: { "p_provisioning_id": string }; Returns: Json
+{ Args: { "p_holder"?: string,"p_provisioning_id": string }; Returns: Json
                            },
 "internal_create_generation":
 { Args: { "p_inputs": Json,"p_kind": string,"p_op_key": string,"p_profiles_hash": string,"p_profiles_revision": string,"p_prompt_version": string,"p_requested_by"?: string,"p_required_jobs": number,"p_target_exercise_id"?: string,"p_version_id": string }; Returns: Json
@@ -122,8 +122,14 @@ export type Database = {
 "internal_create_invitation":
 { Args: { "p_email": string,"p_institution_id": string,"p_role": string,"p_token_hash": string }; Returns: Json
                            },
+"internal_extend_card_issue":
+{ Args: { "p_issue_id": string }; Returns: Json
+                           },
+"internal_extend_provisioning":
+{ Args: { "p_holder": string,"p_provisioning_id": string }; Returns: Json
+                           },
 "internal_fail_student_account":
-{ Args: { "p_error_code": string,"p_provisioning_id": string }; Returns: Json
+{ Args: { "p_error_code": string,"p_holder": string,"p_provisioning_id": string }; Returns: Json
                            },
 "internal_find_institution":
 { Args: { "p_code": string }; Returns: Json
@@ -159,7 +165,7 @@ export type Database = {
 { Args: { "p_generation_id": string,"p_kind": string,"p_output": Json,"p_version_exercise_id"?: string }; Returns: Json
                            },
 "internal_remember_student_account":
-{ Args: { "p_auth_user_id": string,"p_provisioning_id": string }; Returns: Json
+{ Args: { "p_auth_user_id": string,"p_holder": string,"p_provisioning_id": string }; Returns: Json
                            },
 "internal_resolve_access_card":
 { Args: { "p_token_hash": string }; Returns: Json

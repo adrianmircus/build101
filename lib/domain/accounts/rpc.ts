@@ -118,9 +118,9 @@ export const ACCOUNT_RPCS = {
       })
       .strict(),
   },
-  /** The same actor that began closes the issue: the cards of those that went well become active. */
+  /** The same actor that began closes the issue: p_done become active, p_uncertain stay pending until the lease expires. */
   finish_access_cards: {
-    args: z.object({ p_issue_id: Id, p_done: z.array(Id).max(60) }).strict(),
+    args: z.object({ p_issue_id: Id, p_done: z.array(Id).max(60), p_uncertain: z.array(Id).max(60) }).strict(),
     result: z.object({ activated: z.array(Id) }).strict(),
   },
   /** service_role: confirms under lock that the card is pending and the issue runs within its lease; extends the lease. */
@@ -131,30 +131,41 @@ export const ACCOUNT_RPCS = {
       .strict(),
   },
   /** service_role: up to 60 students, to know whose account to create or whose password to set. */
-  /** service_role: takes the lease of the provisioning row under lock; ok false (with retryAt) when someone else holds it or the row is deleted. */
+  /** service_role: takes the lease of an issue to 15 minutes from now, never shorter (after an uncertain Auth result). */
+  internal_extend_card_issue: { args: z.object({ p_issue_id: Id }).strict(), result: z.object({ leaseUntil: Timestamp }).strict() },
+  /**
+   * service_role: without p_holder takes the lease (a new holder), with the own holder confirms it and extends it to 5
+   * minutes; ok false (with retryAt) when someone else holds it or the row is deleted.
+   */
   internal_claim_provisioning: {
-    args: z.object({ p_provisioning_id: Id }).strict(),
+    args: z.object({ p_provisioning_id: Id, p_holder: Id.optional() }).strict(),
     result: z
       .object({
         ok: z.boolean(),
         retryAt: Timestamp.nullable(),
         status: ProvisioningStatus.nullable(),
         authUserId: Id.nullable(),
+        holder: Id.nullable(),
         leaseUntil: Timestamp.nullable(),
       })
       .strict(),
+  },
+  /** service_role: takes the lease of the holder to 15 minutes from now (after an uncertain Auth result). */
+  internal_extend_provisioning: {
+    args: z.object({ p_provisioning_id: Id, p_holder: Id }).strict(),
+    result: z.object({ ok: z.boolean(), leaseUntil: Timestamp.nullable() }).strict(),
   },
   internal_get_student_accounts: {
     args: z.object({ p_student_ids: z.array(Id).min(1).max(60) }).strict(),
     result: z.object({ items: z.array(ProvisionedAccount) }).strict(),
   },
   internal_remember_student_account: {
-    args: z.object({ p_provisioning_id: Id, p_auth_user_id: Id }).strict(),
+    args: z.object({ p_provisioning_id: Id, p_holder: Id, p_auth_user_id: Id }).strict(),
     result: z.object({ authUserId: Id }).strict(),
   },
   /** Stores a code (ReasonCode), never a message. */
   internal_fail_student_account: {
-    args: z.object({ p_provisioning_id: Id, p_error_code: ReasonCode }).strict(),
+    args: z.object({ p_provisioning_id: Id, p_holder: Id, p_error_code: ReasonCode }).strict(),
     result: z.object({ status: ProvisioningStatus, attempts: z.int().min(0) }).strict(),
   },
   internal_list_unfinished_accounts: {

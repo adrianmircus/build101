@@ -12,11 +12,12 @@ export type StaffInstitution = z.infer<typeof StaffInstitution>;
 
 /**
  * Who makes the request, read from the Supabase session (never from the demo cookie, never from the browser).
- * A staff actor has its institutions and roles; a student has the one institution it belongs to.
+ * A staff actor has its institutions and roles; a student has the one institution it belongs to, and no student id: the
+ * student_* RPCs take it from the session.
  */
 export const Actor = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("staff"), userId: Id, institutions: z.array(StaffInstitution) }).strict(),
-  z.object({ kind: z.literal("student"), userId: Id, studentId: Id, institutionId: Id }).strict(),
+  z.object({ kind: z.literal("student"), userId: Id, institutionId: Id }).strict(),
 ]);
 export type Actor = z.infer<typeof Actor>;
 export type StaffActor = Extract<Actor, { kind: "staff" }>;

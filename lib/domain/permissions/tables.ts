@@ -18,7 +18,7 @@ export const APP_TABLES = [
   "account_provisioning",
   "access_card_issues",
   "access_cards",
-  "invitation_spent_tokens",
+  "invitation_tokens",
   "student_needs",
   "student_need_events",
   "student_notes",

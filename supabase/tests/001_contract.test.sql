@@ -30,18 +30,18 @@ $$, 'anon, authenticated and service_role have no privilege on any app table');
 -- Identity columns.
 select is_empty($$
   select c.relname::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-   where n.nspname = 'app' and c.relkind = 'r' and c.relname not in ('subjects', 'invitation_spent_tokens')
+   where n.nspname = 'app' and c.relkind = 'r' and c.relname <> 'subjects'
      and not exists (
        select 1 from pg_constraint k join pg_attribute a on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
         where k.conrelid = c.oid and k.contype = 'p' and cardinality(k.conkey) = 1
           and a.attname = 'id' and a.atttypid = 'uuid'::regtype)
-$$, 'every app table but subjects and invitation_spent_tokens (its key is the spent hash) has a uuid primary key named id');
+$$, 'every app table but subjects has a uuid primary key named id');
 
 select is_empty($$
   select c.relname::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-   where n.nspname = 'app' and c.relkind = 'r' and c.relname <> 'invitation_spent_tokens'
+   where n.nspname = 'app' and c.relkind = 'r'
      and not exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'created_at' and a.attnotnull)
-$$, 'every app table but invitation_spent_tokens (it has spent_at) has created_at');
+$$, 'every app table has created_at');
 
 select is_empty($$
   select c.relname::text from pg_class c join pg_namespace n on n.oid = c.relnamespace

@@ -1,4 +1,4 @@
--- Contract, phase 2 (docs/contratos/fase-2.md, version 3): closed tables and columns, their guards, and the stubs of the
+-- Contract, phase 2 (docs/contratos/fase-2.md, version 4): closed tables and columns, their guards, and the stubs of the
 -- new RPCs.
 --
 -- Tables born closed as in phase 1: RLS enabled and forced, no policies, no grants, app.no_truncate.
@@ -48,12 +48,14 @@ create table app.access_cards (
 create unique index access_cards_active_key on app.access_cards (student_id) where status = 'active';
 create unique index access_cards_pending_key on app.access_cards (student_id) where status = 'pending';
 
--- The invitation hashes that no longer serve (rotated, accepted, revoked): they are never born current again.
-create table app.invitation_spent_tokens (
-  token_hash bytea primary key check (octet_length(token_hash) = 32),
+-- Register of every invitation hash that ever existed. A hash enters once, through the unique index, and is not deleted
+-- while its institution exists: so it is never born again, neither step by step nor with two connections.
+create table app.invitation_tokens (
+  id uuid primary key default gen_random_uuid(),
+  token_hash bytea not null unique check (octet_length(token_hash) = 32),
   institution_id uuid not null references app.institutions (id) on delete cascade,
   invitation_id uuid not null,
-  spent_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
   foreign key (institution_id, invitation_id) references app.invitations (institution_id, id) on delete cascade
 );
 
@@ -63,21 +65,23 @@ alter table app.invitations add column op_identity text;
 alter table app.invitations add column sent_at timestamptz;
 create unique index invitations_op_key on app.invitations (institution_id, op_key) where op_key is not null;
 
--- The lease of whoever is creating the Auth account of a student. Only the provisioning RPCs change it.
+-- The lease of whoever is creating the Auth account of a student, and its holder. Only the provisioning RPCs set them, and
+-- the guard below makes them grow only.
 alter table app.account_provisioning add column lease_until timestamptz;
+alter table app.account_provisioning add column lease_holder uuid;
 
 alter table app.access_card_issues enable row level security;
 alter table app.access_card_issues force row level security;
 alter table app.access_cards enable row level security;
 alter table app.access_cards force row level security;
-alter table app.invitation_spent_tokens enable row level security;
-alter table app.invitation_spent_tokens force row level security;
+alter table app.invitation_tokens enable row level security;
+alter table app.invitation_tokens force row level security;
 
 create trigger access_card_issues_no_truncate before truncate on app.access_card_issues
   for each statement execute function app.no_truncate();
 create trigger access_cards_no_truncate before truncate on app.access_cards
   for each statement execute function app.no_truncate();
-create trigger invitation_spent_tokens_no_truncate before truncate on app.invitation_spent_tokens
+create trigger invitation_tokens_no_truncate before truncate on app.invitation_tokens
   for each statement execute function app.no_truncate();
 
 -- Born in the first state.
@@ -209,20 +213,20 @@ $$;
 create trigger access_card_issues_kept before delete on app.access_card_issues
   for each row execute function app.access_card_issues_kept();
 
--- Spent tokens are born and die with the invitation and never change.
-create function app.invitation_spent_tokens_frozen() returns trigger
+-- Registered hashes are born with the invitation and never change.
+create function app.invitation_tokens_frozen() returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
-  raise exception 'app.invitation_spent_tokens_frozen: a spent hash never changes' using errcode = 'P0004';
+  raise exception 'app.invitation_tokens_frozen: a registered hash never changes' using errcode = 'P0004';
 end
 $$;
-create trigger invitation_spent_tokens_frozen before update on app.invitation_spent_tokens
-  for each row execute function app.invitation_spent_tokens_frozen();
+create trigger invitation_tokens_frozen before update on app.invitation_tokens
+  for each row execute function app.invitation_tokens_frozen();
 
--- Memory: while the institution exists, neither an invitation nor a spent hash is deleted (the cascade of the institution
--- runs after it is gone). A spent hash never comes back as a current one by DELETE and INSERT.
+-- Memory: while the institution exists, neither an invitation nor a registered hash is deleted (the cascade of the
+-- institution runs after it is gone). A hash never comes back by DELETE and INSERT.
 create function app.invitations_kept() returns trigger
 language plpgsql
 set search_path = ''
@@ -236,10 +240,10 @@ end
 $$;
 create trigger invitations_kept before delete on app.invitations
   for each row execute function app.invitations_kept();
-create trigger invitation_spent_tokens_kept before delete on app.invitation_spent_tokens
+create trigger invitation_tokens_kept before delete on app.invitation_tokens
   for each row execute function app.invitations_kept();
 
--- Invitations. Born pending (and, as in phase 1, without whoever accepts), with a hash that was never spent.
+-- Invitations. Born pending (and, as in phase 1, without whoever accepts).
 create or replace function app.invitations_born() returns trigger
 language plpgsql
 set search_path = ''
@@ -251,16 +255,13 @@ begin
   if new.status <> 'pending' then
     raise exception 'app.invitations_born: an invitation is born pending' using errcode = 'P0004';
   end if;
-  if exists (select 1 from app.invitation_spent_tokens t where t.token_hash = new.token_hash) then
-    raise exception 'app.invitations_born: a spent hash is never current again' using errcode = 'P0004';
-  end if;
   return new;
 end
 $$;
 
 -- The current guard (20261113140000_t1_fix15.sql) plus: op_key and op_identity never change; accepted and revoked are
--- final; token_hash changes only in the step to pending (pending or expired to pending), and the hash that goes away is
--- spent in the same statement, as is the current one when the invitation ends accepted or revoked.
+-- final; token_hash changes only in the step to pending (pending or expired to pending). The registry of hashes is kept by
+-- the AFTER trigger below.
 create or replace function app.invitations_frozen() returns trigger
 language plpgsql
 set search_path = ''
@@ -298,16 +299,66 @@ begin
     if not (old.status in ('pending', 'expired') and new.status = 'pending') then
       raise exception 'app.invitations_frozen: token_hash changes only in the step to pending' using errcode = 'P0004';
     end if;
-    if exists (select 1 from app.invitation_spent_tokens t where t.token_hash = new.token_hash) then
-      raise exception 'app.invitations_frozen: a spent hash is never current again' using errcode = 'P0004';
-    end if;
-    insert into app.invitation_spent_tokens (token_hash, institution_id, invitation_id) values (old.token_hash, old.institution_id, old.id);
-  elsif new.status in ('accepted', 'revoked') and old.status is distinct from new.status then
-    insert into app.invitation_spent_tokens (token_hash, institution_id, invitation_id) values (old.token_hash, old.institution_id, old.id);
   end if;
   return new;
 end
 $$;
+
+-- Every hash that is born or arrives at an invitation goes into the registry in the same statement, with a plain insert: if it
+-- was ever there, the unique index refuses it (and waits for a concurrent transaction inserting it, at any isolation
+-- level). The unique_violation becomes P0004. There is no "current" or "spent": the current one is the one the invitation
+-- has, and every other is history.
+create function app.invitations_register_hash() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'UPDATE' and new.token_hash is not distinct from old.token_hash then
+    return null;
+  end if;
+  begin
+    insert into app.invitation_tokens (token_hash, institution_id, invitation_id) values (new.token_hash, new.institution_id, new.id);
+  exception when unique_violation then
+    raise exception 'app.invitations_register_hash: a hash that existed is never used again' using errcode = 'P0004';
+  end;
+  return null;
+end
+$$;
+create trigger invitations_register_hash after insert or update of token_hash on app.invitations
+  for each row execute function app.invitations_register_hash();
+
+-- The leases only grow: lease_until never goes down or back to NULL once set, and lease_holder changes only when the
+-- previous lease has expired (or there was none). Against the owner too.
+create function app.account_provisioning_lease() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if old.lease_until is not null and (new.lease_until is null or new.lease_until < old.lease_until) then
+    raise exception 'app.account_provisioning_lease: lease_until only grows' using errcode = 'P0004';
+  end if;
+  if new.lease_holder is distinct from old.lease_holder and old.lease_until is not null and old.lease_until > clock_timestamp() then
+    raise exception 'app.account_provisioning_lease: lease_holder changes only after the lease expired' using errcode = 'P0004';
+  end if;
+  return new;
+end
+$$;
+create trigger account_provisioning_lease before update on app.account_provisioning
+  for each row execute function app.account_provisioning_lease();
+
+create function app.access_card_issues_lease() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.lease_until < old.lease_until then
+    raise exception 'app.access_card_issues_lease: lease_until only grows' using errcode = 'P0004';
+  end if;
+  return new;
+end
+$$;
+create trigger access_card_issues_lease before update on app.access_card_issues
+  for each row execute function app.access_card_issues_lease();
 
 -- Session (T2.7).
 create function api.internal_revoke_user_sessions(p_user_id uuid)
@@ -385,7 +436,7 @@ create function api.begin_access_cards(p_group_id uuid, p_cards jsonb, p_op_key 
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
-create function api.finish_access_cards(p_issue_id uuid, p_done uuid[])
+create function api.finish_access_cards(p_issue_id uuid, p_done uuid[], p_uncertain uuid[])
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
@@ -393,7 +444,15 @@ create function api.internal_claim_card_password(p_issue_id uuid, p_student_id u
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
-create function api.internal_claim_provisioning(p_provisioning_id uuid)
+create function api.internal_extend_card_issue(p_issue_id uuid)
+returns jsonb language plpgsql security definer set search_path = ''
+as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
+
+create function api.internal_extend_provisioning(p_provisioning_id uuid, p_holder uuid)
+returns jsonb language plpgsql security definer set search_path = ''
+as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
+
+create function api.internal_claim_provisioning(p_provisioning_id uuid, p_holder uuid default null)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
@@ -401,11 +460,11 @@ create function api.internal_get_student_accounts(p_student_ids uuid[])
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
-create function api.internal_remember_student_account(p_provisioning_id uuid, p_auth_user_id uuid)
+create function api.internal_remember_student_account(p_provisioning_id uuid, p_holder uuid, p_auth_user_id uuid)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
-create function api.internal_fail_student_account(p_provisioning_id uuid, p_error_code text)
+create function api.internal_fail_student_account(p_provisioning_id uuid, p_holder uuid, p_error_code text)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 

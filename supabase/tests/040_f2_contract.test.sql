@@ -1,10 +1,10 @@
--- Contract of phase 2 (docs/contratos/fase-2.md, version 3; supabase/migrations/20261114100000_f2_contract.sql): the closed
--- tables access_card_issues, access_cards and invitation_spent_tokens, the new columns of invitations and account_provisioning, their
--- guards, and the stubs of the 28 new RPCs.
+-- Contract of phase 2 (docs/contratos/fase-2.md, version 4; supabase/migrations/20261114100000_f2_contract.sql): the closed
+-- tables access_card_issues, access_cards and invitation_tokens, the new columns of invitations and account_provisioning, their
+-- guards, and the stubs of the 30 new RPCs.
 -- Guards are tested as the table owner and must fail with P0004 (as authenticated the UPDATE fails earlier with 42501
 -- and would pass even without the guard). Placeholder data only. The whole file is rolled back.
 begin;
-select plan(132);
+select plan(144);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -54,33 +54,34 @@ select col_type_is('app', 'access_cards', 'token_hash', 'bytea', 'the token is s
 select is((select count(*) from pg_attribute a where a.attrelid = 'app.access_card_issues'::regclass and a.attname = 'student_ids' and not a.attisdropped), 0::bigint,
   'an issue keeps no student ids: nothing of a student to erase from it');
 select col_type_is('app', 'access_card_issues', 'op_identity', 'text', 'its identity is a hash');
-select has_table('app', 'invitation_spent_tokens', 'invitation_spent_tokens exists');
-select columns_are('app', 'invitation_spent_tokens', array['token_hash', 'institution_id', 'invitation_id', 'spent_at'], 'with exactly the columns of the contract');
+select has_table('app', 'invitation_tokens', 'invitation_tokens exists');
+select columns_are('app', 'invitation_tokens', array['id', 'token_hash', 'institution_id', 'invitation_id', 'created_at'], 'with exactly the columns of the contract');
 select col_type_is('app', 'account_provisioning', 'lease_until', 'timestamp with time zone', 'account_provisioning has its lease');
+select col_type_is('app', 'account_provisioning', 'lease_holder', 'uuid', 'and its holder');
 select ok(exists (select 1 from pg_indexes where schemaname = 'app' and tablename = 'access_cards' and indexname = 'access_cards_active_key'
                     and indexdef ilike '%unique%(student_id)%status = ''active''%'),
   'one active card per student');
 select ok(exists (select 1 from pg_indexes where schemaname = 'app' and tablename = 'access_cards' and indexname = 'access_cards_pending_key'
                     and indexdef ilike '%unique%(student_id)%status = ''pending''%'),
   'one pending card per student');
-select is((select count(*) from pg_class c where c.oid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_spent_tokens'::regclass)
+select is((select count(*) from pg_class c where c.oid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)
             and c.relrowsecurity and c.relforcerowsecurity), 3::bigint, 'all three have RLS enabled and forced');
-select is((select count(*) from pg_policy where polrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_spent_tokens'::regclass)),
+select is((select count(*) from pg_policy where polrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)),
   0::bigint, 'and no policies');
-select is((select count(*) from pg_attribute a where a.attrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_spent_tokens'::regclass)
+select is((select count(*) from pg_attribute a where a.attrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)
             and a.attname in ('updated_at', 'revision') and not a.attisdropped),
   0::bigint, 'nobody edits a card or an issue as a document: no updated_at, no revision');
 
 select is_empty($$
   select t.tbl || ' ' || r.role_name || ' ' || p.priv
-    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_spent_tokens')) as t(tbl)
+    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_tokens')) as t(tbl)
    cross join (values ('anon'), ('authenticated'), ('service_role'), ('tiza_student')) as r(role_name)
    cross join (values ('select'), ('insert'), ('update'), ('delete'), ('truncate'), ('references'), ('trigger')) as p(priv)
    where has_table_privilege(r.role_name, t.tbl, p.priv)
 $$, 'anon, authenticated, service_role and tiza_student have no privilege on any of them');
 select is_empty($$
   select t.tbl || ' ' || r.role_name || ' ' || a.attname
-    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_spent_tokens')) as t(tbl)
+    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_tokens')) as t(tbl)
    cross join (values ('anon'), ('authenticated'), ('service_role'), ('tiza_student')) as r(role_name)
    cross join pg_attribute a
    where a.attrelid = t.tbl::regclass and a.attnum > 0 and not a.attisdropped
@@ -93,11 +94,11 @@ select is_empty($$
       or has_column_privilege(r.role_name, 'app.invitations', a.attname, 'update')
 $$, 'nor on the new columns of invitations');
 
-select is((select count(*) from pg_trigger t where t.tgrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_spent_tokens'::regclass)
+select is((select count(*) from pg_trigger t where t.tgrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)
             and t.tgfoid = 'app.no_truncate'::regproc and not t.tgisinternal and t.tgenabled <> 'D'),
   3::bigint, 'all three refuse TRUNCATE (app.no_truncate)');
 select is_empty($$
-  select f.name from (values ('access_card_issues_born'), ('access_card_issues_frozen'), ('access_card_issues_kept')) as f(name)
+  select f.name from (values ('access_card_issues_born'), ('access_card_issues_frozen'), ('access_card_issues_kept'), ('access_card_issues_lease')) as f(name)
    where not exists (select 1 from pg_trigger t where t.tgrelid = 'app.access_card_issues'::regclass and t.tgname = f.name and t.tgenabled <> 'D')
 $$, 'access_card_issues has its born, frozen and kept guards');
 select is_empty($$
@@ -106,13 +107,17 @@ select is_empty($$
 $$, 'access_cards has its born, frozen and kept guards');
 
 select is_empty($$
-  select f.name from (values ('invitation_spent_tokens_frozen'), ('invitation_spent_tokens_kept')) as f(name)
-   where not exists (select 1 from pg_trigger t where t.tgrelid = 'app.invitation_spent_tokens'::regclass and t.tgname = f.name and t.tgenabled <> 'D')
-$$, 'invitation_spent_tokens has its frozen and kept guards');
+  select f.name from (values ('invitation_tokens_frozen'), ('invitation_tokens_kept')) as f(name)
+   where not exists (select 1 from pg_trigger t where t.tgrelid = 'app.invitation_tokens'::regclass and t.tgname = f.name and t.tgenabled <> 'D')
+$$, 'invitation_tokens has its frozen and kept guards');
 select is_empty($$
-  select f.name from (values ('invitations_born'), ('invitations_frozen'), ('invitations_kept')) as f(name)
+  select f.name from (values ('invitations_born'), ('invitations_frozen'), ('invitations_kept'), ('invitations_register_hash')) as f(name)
    where not exists (select 1 from pg_trigger t where t.tgrelid = 'app.invitations'::regclass and t.tgname = f.name and t.tgenabled <> 'D')
 $$, 'and invitations has its born, frozen and kept guards');
+
+select is(
+  (select count(*) from pg_trigger t where t.tgrelid = 'app.account_provisioning'::regclass and t.tgname = 'account_provisioning_lease' and t.tgenabled <> 'D'),
+  1::bigint, 'account_provisioning has its lease guard');
 
 -- 2. The new columns of invitations.
 select col_type_is('app', 'invitations', 'op_key', 'uuid', 'invitations.op_key is a uuid');
@@ -143,23 +148,27 @@ insert into stubs (proname, args) values
   ('list_taken_usernames', 'p_institution_id uuid, p_bases text[]'),
   ('list_group_accounts', 'p_group_id uuid'),
   ('begin_access_cards', 'p_group_id uuid, p_cards jsonb, p_op_key uuid'),
-  ('finish_access_cards', 'p_issue_id uuid, p_done uuid[]'),
+  ('finish_access_cards', 'p_issue_id uuid, p_done uuid[], p_uncertain uuid[]'),
   ('internal_claim_card_password', 'p_issue_id uuid, p_student_id uuid'),
-  ('internal_claim_provisioning', 'p_provisioning_id uuid'),
+  ('internal_extend_card_issue', 'p_issue_id uuid'),
+  ('internal_claim_provisioning', 'p_provisioning_id uuid, p_holder uuid'),
+  ('internal_extend_provisioning', 'p_provisioning_id uuid, p_holder uuid'),
   ('internal_get_student_accounts', 'p_student_ids uuid[]'),
-  ('internal_remember_student_account', 'p_provisioning_id uuid, p_auth_user_id uuid'),
-  ('internal_fail_student_account', 'p_provisioning_id uuid, p_error_code text'),
+  ('internal_remember_student_account', 'p_provisioning_id uuid, p_holder uuid, p_auth_user_id uuid'),
+  ('internal_fail_student_account', 'p_provisioning_id uuid, p_holder uuid, p_error_code text'),
   ('internal_list_unfinished_accounts', 'p_limit integer'),
   ('internal_find_institution', 'p_code text'),
   ('internal_resolve_student_login', 'p_code text, p_username text'),
   ('internal_resolve_access_card', 'p_token_hash bytea');
 
-select is((select count(*) from stubs), 28::bigint, 'the contract lists 28 new RPCs');
+select is((select count(*) from stubs), 30::bigint, 'the contract lists 30 new RPCs');
 select is_empty($$ select p.oid::regprocedure::text from pg_proc p where p.pronamespace = 'api'::regnamespace
                     and p.proname in ('issue_access_cards', 'internal_rate_limit_status', 'internal_find_auth_user') $$,
   'the RPCs of the earlier drafts are gone');
-select is_empty($$ select p.oid::regprocedure::text from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname = 'mark_invitation_sent' and pg_get_function_identity_arguments(p.oid) = 'p_invitation_id uuid' $$,
-  'and mark_invitation_sent has only its signature with the revision');
+select is_empty($$ select p.oid::regprocedure::text from pg_proc p where p.pronamespace = 'api'::regnamespace and ((p.proname = 'mark_invitation_sent' and pg_get_function_identity_arguments(p.oid) = 'p_invitation_id uuid')
+         or (p.proname = 'finish_access_cards' and pg_get_function_identity_arguments(p.oid) = 'p_issue_id uuid, p_done uuid[]')
+         or (p.proname = 'internal_claim_provisioning' and pg_get_function_identity_arguments(p.oid) = 'p_provisioning_id uuid')) $$,
+  'and the old signatures of mark_invitation_sent, finish_access_cards and internal_claim_provisioning are gone');
 
 select is_empty($$
   select s.proname from stubs s
@@ -308,7 +317,7 @@ select is(pg_temp.st(format('delete from app.access_cards where token_hash = %s'
 select is(pg_temp.st('truncate app.access_cards'), 'P0004', 'access_cards is never truncated');
 -- access_cards references access_card_issues, so Postgres refuses this one before any trigger (the trigger is checked above).
 select is(pg_temp.st('truncate app.access_card_issues'), '0A000', 'nor access_card_issues');
--- invitation_spent_tokens references invitations, so Postgres refuses this one first too (its own trigger is checked above).
+-- invitation_tokens references invitations, so Postgres refuses this one first too (its own trigger is checked above).
 select is(pg_temp.st('truncate app.invitations'), '0A000', 'nor invitations');
 
 -- 4c. States of the issue: running advances to done or abandoned and no further.
@@ -368,20 +377,34 @@ select is(pg_temp.st('update app.invitations set status = ''pending'', accepted_
 select is(pg_temp.st('update app.invitations set status = ''revoked'', accepted_at = null ' || pg_temp.inv_where('e')), 'P0004', 'it is not revoked afterwards');
 select is(pg_temp.st('update app.invitations set token_hash = ' || pg_temp.hash('e2') || ' ' || pg_temp.inv_where('e')), 'P0004', 'nor does its hash change');
 
--- 6. Spent tokens: the hash that goes away (rotation) or ends (accepted, revoked) is spent in the same statement and never returns.
-select is((select count(*) from app.invitation_spent_tokens where institution_id = pg_temp.id('i_b')), 4::bigint,
-  'the rotations and the endings above spent the hashes that went away (a, a2, a3 and e)'::text || '');
-select is(pg_temp.st(pg_temp.inv('f')), 'ok', 'control: a new invitation');
-select is(pg_temp.st('update app.invitations set token_hash = ' || pg_temp.hash('a') || ' ' || pg_temp.inv_where('f')), 'P0004', 'a spent hash is not taken back by another invitation');
-select is(pg_temp.st(pg_temp.inv('g')), 'ok', 'control: and another');
-select is(pg_temp.st(replace(pg_temp.inv('h'), pg_temp.hash('h'), pg_temp.hash('a2'))), 'P0004', 'nor is it born with a spent hash');
+-- 6. The registry of hashes: every hash that is born or arrives at an invitation goes in, once; none comes back.
+select is((select count(*) from app.invitation_tokens where institution_id = pg_temp.id('i_b')), 4::bigint,
+  'every hash an invitation of i_b ever had is registered (a, a2, a3 and e)');
+select is(pg_temp.st(pg_temp.inv('f')), 'ok', 'control: a new invitation registers its hash');
+select is(pg_temp.st('update app.invitations set token_hash = ' || pg_temp.hash('a') || ' ' || pg_temp.inv_where('f')), 'P0004', 'a hash that existed is not taken by another invitation');
+select is(pg_temp.st(replace(pg_temp.inv('h'), pg_temp.hash('h'), pg_temp.hash('a2'))), 'P0004', 'nor is an invitation born with it');
+select is(pg_temp.st('update app.invitations set sent_at = now(), token_hash = token_hash ' || pg_temp.inv_where('f')), 'ok', 'updating a hash to itself is no new hash');
 select is(pg_temp.st('delete from app.invitations ' || pg_temp.inv_where('a')), 'P0004', 'an invitation is not deleted while its institution exists');
-select is(pg_temp.st('delete from app.invitation_spent_tokens'), 'P0004', 'nor a spent hash');
-select is(pg_temp.st('update app.invitation_spent_tokens set spent_at = now()'), 'P0004', 'a spent hash never changes');
-select is(pg_temp.st(format('insert into app.invitation_spent_tokens (token_hash, institution_id, invitation_id) select token_hash, institution_id, invitation_id from app.invitation_spent_tokens limit 1')), '23505', 'a hash is spent once');
-select is(pg_temp.st('truncate app.invitation_spent_tokens'), 'P0004', 'and never truncated');
-select is(pg_temp.st(format('delete from app.institutions where id = %s', pg_temp.i('i_b'))), 'ok', 'control: with the institution, everything of it goes by the cascade');
-select is((select count(*) from app.invitation_spent_tokens where institution_id = pg_temp.id('i_b')), 0::bigint, 'including its spent hashes');
+select is(pg_temp.st('delete from app.invitation_tokens'), 'P0004', 'nor a registered hash');
+select is(pg_temp.st('update app.invitation_tokens set created_at = now()'), 'P0004', 'a registered hash never changes');
+select is(pg_temp.st('insert into app.invitation_tokens (token_hash, institution_id, invitation_id) select token_hash, institution_id, invitation_id from app.invitation_tokens limit 1'), '23505', 'a hash is registered once');
 
-select * from finish();
+-- 7. Leases only grow. A provisioning row of a student (it is pending, with no lease) and an issue (it has one).
+select is(pg_temp.st(format('update app.account_provisioning set lease_until = now() + interval ''5 minutes'', lease_holder = %s where student_id = %s', pg_temp.i('userx'), pg_temp.i('s1'))), 'ok',
+  'control: the first claim sets the lease and its holder');
+select is(pg_temp.st(format('update app.account_provisioning set lease_until = now() + interval ''1 minute'' where student_id = %s', pg_temp.i('s1'))), 'P0004', 'the lease does not go down');
+select is(pg_temp.st(format('update app.account_provisioning set lease_until = null where student_id = %s', pg_temp.i('s1'))), 'P0004', 'nor back to NULL');
+select is(pg_temp.st(format('update app.account_provisioning set lease_holder = %s where student_id = %s', pg_temp.i('teachb'), pg_temp.i('s1'))), 'P0004', 'the holder does not change while the lease is in force');
+select is(pg_temp.st(format('update app.account_provisioning set lease_holder = null where student_id = %s', pg_temp.i('s1'))), 'P0004', 'nor go to NULL');
+select is(pg_temp.st(format('update app.account_provisioning set lease_until = now() + interval ''15 minutes'' where student_id = %s', pg_temp.i('s1'))), 'ok', 'control: the lease grows (an uncertain result extends it)');
+select is(pg_temp.st(format('update app.account_provisioning set status = ''failed'', attempts = attempts + 1, revision = revision + 1 where student_id = %s', pg_temp.i('s1'))), 'ok', 'control: other columns change without touching the lease');
+select is(pg_temp.st(format('update app.account_provisioning set lease_until = clock_timestamp() - interval ''1 minute'' where student_id = %s', pg_temp.i('s2'))), 'ok', 'control: a row with no lease takes one in the past');
+select is(pg_temp.st(format('update app.account_provisioning set lease_holder = %s where student_id = %s', pg_temp.i('teachb'), pg_temp.i('s2'))), 'ok', 'the holder changes once the lease expired');
+select is(pg_temp.st(format('update app.access_card_issues set lease_until = lease_until - interval ''1 minute'' where id = %s', pg_temp.i('issue_a'))), 'P0004', 'the lease of an issue does not go down');
+select is(pg_temp.st(format('update app.access_card_issues set lease_until = lease_until + interval ''10 minutes'' where id = %s', pg_temp.i('issue_a'))), 'ok', 'control: it grows');
+
+select is(pg_temp.st(format('delete from app.institutions where id = %s', pg_temp.i('i_b'))), 'ok', 'control: with the institution, everything of it goes by the cascade');
+select is((select count(*) from app.invitation_tokens where institution_id = pg_temp.id('i_b')), 0::bigint, 'including its registered hashes');
+
+select * from finish();select * from finish();
 rollback;

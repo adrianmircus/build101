@@ -135,6 +135,8 @@ const ACCOUNTS: Operation[] = [
   op({ rpc: "finish_access_cards", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group"], note: "Solo el mismo actor que empezó la emisión; otra persona recibe NOT_FOUND." }),
   op({ rpc: "internal_claim_card_password", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_claim_provisioning", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_extend_provisioning", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_extend_card_issue", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_get_student_accounts", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_remember_student_account", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_fail_student_account", ticket: "T2.5a", since: 2 }),
