@@ -137,3 +137,18 @@ begin
   return true;
 end
 $$;
+
+-- The first statement of every api function. It refuses to run while erasure mode is set in any
+-- form (even a forged or stale value): no normal operation ever executes with the history open.
+-- Then it resets the lock markers. 001_contract fails if an api function does not call it.
+create function app.rpc_begin() returns void
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if coalesce(current_setting('tiza.erasure', true), '') <> '' then
+    raise exception 'app.rpc_begin: no RPC runs inside erasure mode' using errcode = 'P0004';
+  end if;
+  perform app.lock_begin();
+end
+$$;

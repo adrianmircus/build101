@@ -56,7 +56,8 @@ begin
   end if;
   -- Inside an erasure only inputs may change (redacting a student's free text); the rest never.
   if new.version_id <> old.version_id or new.kind <> old.kind or new.op_key <> old.op_key
-     or (new.inputs <> old.inputs and not app.in_erasure())
+     or (new.inputs <> old.inputs
+         and not app.redaction_allowed('generations', new.institution_id, to_jsonb(old), to_jsonb(new)))
      or new.target_exercise_id is distinct from old.target_exercise_id then
     raise exception 'app.generations_guard: what a generation was asked never changes' using errcode = 'P0004';
   end if;
@@ -245,6 +246,37 @@ begin
     perform app.raise_error('CONFLICT', 'op_key_reused');
   end if;
   return v_event;
+end
+$$;
+
+-- A version's status is never set by hand: every RPC that changes a version's content or its
+-- generations calls this after writing, under the version lock. Same answer whether the content
+-- came from the AI or from manual edits, so a version completed by hand reaches 'ready' too:
+--   generating  a version or exercise generation is running;
+--   error       some adapted exercise is in error;
+--   ready       it has exercises and every one is ready with text;
+--   empty       anything else (nothing yet, or partly written).
+create function app.refresh_version_status(p_version_id uuid) returns text
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_status text;
+begin
+  select case
+    when exists (select 1 from app.generations g
+                  where g.version_id = p_version_id and g.status = 'running' and g.kind in ('version', 'exercise'))
+      then 'generating'
+    when exists (select 1 from app.version_exercises ve where ve.version_id = p_version_id and ve.status = 'error')
+      then 'error'
+    when exists (select 1 from app.version_exercises ve where ve.version_id = p_version_id)
+     and not exists (select 1 from app.version_exercises ve
+                      where ve.version_id = p_version_id and (ve.status <> 'ready' or btrim(ve.body) = ''))
+      then 'ready'
+    else 'empty'
+  end into v_status;
+  update app.versions v set status = v_status where v.id = p_version_id and v.status is distinct from v_status;
+  return v_status;
 end
 $$;
 

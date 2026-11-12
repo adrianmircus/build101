@@ -179,25 +179,64 @@ end
 $$;
 
 -- Erasure mode: the only way to rewrite a historical row. Erasing one student must also take them
--- out of rows that belong to other students too (a shared version's events, outputs, key revisions
--- or publication), and those rows reject UPDATE. app.begin_erasure(id) opens a transaction-local
--- window, valid only for an erasure already marked (status 'marked', so the mark always comes
--- first); app.append_only, app.publications_guard (content only) and app.generations_guard
--- (inputs only) let redactions through while it is open. It closes with the transaction, and the
--- erasure row moving to 'done' closes it for good. Only the internal erasure RPC (T9.5, service_role)
--- calls begin_erasure: no user can set the setting, and nothing grants EXECUTE on app functions.
-create function app.in_erasure() returns boolean
+-- out of rows that belong to other students too (a shared version's events, outputs, key revisions,
+-- publication, generation inputs), and those rows reject UPDATE. The exception is narrow:
+--   - app.begin_erasure(id) opens it only for an erasure already marked (the mark comes first), and
+--     binds it to that erasure, its institution and the current transaction id. A setting copied
+--     into another transaction, or set by hand, does not match txid_current() and opens nothing;
+--   - only one field per table can change, and only on rows of that institution:
+--     version_events.data, generation_outputs.output, answer_key_revisions.content,
+--     publications.content, generations.inputs. audit_log never;
+--   - while it is open no RPC runs: every api function starts with app.rpc_begin(), which refuses
+--     (20261111130900_lock_order.sql). The internal erasure RPC (T9.5) calls rpc_begin first and
+--     opens the mode after it;
+--   - it closes with the transaction, and moving the erasure to 'done' closes it at once.
+
+create function app.erasure_in_force() returns uuid
 language plpgsql
 stable
 set search_path = ''
 as $$
 declare
-  v_setting text := coalesce(current_setting('tiza.erasure', true), '');
+  v_parts text[] := string_to_array(coalesce(current_setting('tiza.erasure', true), ''), '/');
 begin
-  if v_setting !~ '^[0-9a-f-]{36}$' then
+  if cardinality(v_parts) <> 3 or v_parts[3] <> txid_current()::text
+     or v_parts[1] !~ '^[0-9a-f-]{36}$' or v_parts[2] !~ '^[0-9a-f-]{36}$' then
+    return null;
+  end if;
+  if not exists (
+    select 1 from app.erasures e
+     where e.id = v_parts[1]::uuid and e.institution_id = v_parts[2]::uuid and e.status = 'marked'
+  ) then
+    return null;
+  end if;
+  return v_parts[2]::uuid;
+end
+$$;
+
+-- True only when the erasure in force belongs to p_institution_id and the update changes nothing
+-- but the one redactable field of p_table.
+create function app.redaction_allowed(p_table text, p_institution_id uuid, p_old jsonb, p_new jsonb) returns boolean
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_field text := case p_table
+    when 'version_events' then 'data'
+    when 'generation_outputs' then 'output'
+    when 'answer_key_revisions' then 'content'
+    when 'publications' then 'content'
+    when 'generations' then 'inputs'
+  end;
+begin
+  if v_field is null or p_institution_id is null then
     return false;
   end if;
-  return exists (select 1 from app.erasures e where e.id = v_setting::uuid and e.status = 'marked');
+  if app.erasure_in_force() is distinct from p_institution_id then
+    return false;
+  end if;
+  return (p_old - v_field - 'updated_at') = (p_new - v_field - 'updated_at');
 end
 $$;
 
@@ -205,10 +244,13 @@ create function app.begin_erasure(p_erasure_id uuid) returns void
 language plpgsql
 set search_path = ''
 as $$
+declare
+  v_institution_id uuid;
 begin
-  if not exists (select 1 from app.erasures e where e.id = p_erasure_id and e.status = 'marked') then
+  select e.institution_id into v_institution_id from app.erasures e where e.id = p_erasure_id and e.status = 'marked';
+  if not found then
     raise exception 'app.begin_erasure: only a marked erasure opens erasure mode' using errcode = 'P0004';
   end if;
-  perform set_config('tiza.erasure', p_erasure_id::text, true);
+  perform set_config('tiza.erasure', p_erasure_id::text || '/' || v_institution_id::text || '/' || txid_current()::text, true);
 end
 $$;

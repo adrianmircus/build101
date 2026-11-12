@@ -2,7 +2,7 @@
 
 Este documento fija la base de datos de la fase 1: dónde viven las tablas, cómo se escriben las RPC, cómo se toman los locks y cómo se reparten los tickets. Lo escribió el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora las dos rondas de revisión de Codex del contrato (C1 a C17).
+Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora las tres rondas de revisión de Codex del contrato (C1 a C22).
 
 Archivos del contrato:
 
@@ -325,7 +325,7 @@ assessments -> assessment_exercises (por id) -> versions (por id) -> generations
 
 Lo hacen cumplir las funciones de `20261111130900_lock_order.sql`:
 
-- `app.lock_begin()` se llama una vez al empezar la RPC.
+- `app.rpc_begin()` es la primera línea de toda RPC de `api` (C18; `001_contract` falla si falta). Rechaza correr si el modo supresión está puesto, en cualquier forma, y después llama a `app.lock_begin()`, que reinicia los marcadores de locks.
 - `app.lock_version_tree(versión, generación, ejercicios)` toma la versión, después la generación y después los ejercicios ordenados por id. Si ya bloqueó ejercicios, no deja bloquear una generación. Solo un árbol de versión por RPC.
 - `app.lock_versions(ids)` bloquea varias versiones por id («Aprobar todas», publicar), y después no deja bloquear el árbol de ninguna.
 - `app.lock_assignments(ids)` va después de cualquier versión.
@@ -335,6 +335,7 @@ Lo hacen cumplir las funciones de `20261111130900_lock_order.sql`:
 Edición con revisión (CAS), por ejemplo de un ejercicio adaptado. La idempotencia por `op_id` se comprueba bajo el lock (C5): dos copias del mismo pedido se ordenan en el lock y la segunda encuentra el evento de la primera.
 
 ```sql
+perform app.rpc_begin();  -- primera línea de toda RPC: rechaza el modo supresión y reinicia los locks
 -- Autorizar primero con una lectura sin lock: no se bloquea lo que el actor no puede ver.
 select ve.version_id, a.group_id, a.institution_id into v_version_id, v_group_id, v_institution_id
   from app.version_exercises ve
@@ -344,7 +345,6 @@ if not found or not app.is_group_staff(v_group_id) then
   perform app.raise_error('NOT_FOUND', 'not_found');
 end if;
 
-perform app.lock_begin();
 perform app.lock_version_tree(v_version_id, null, array[p_version_exercise_id]);
 
 -- Bajo el lock: ¿este op_id ya se aplicó? La identidad es la RPC y su destino concreto (esta
@@ -359,10 +359,15 @@ select ve.revision into v_revision from app.version_exercises ve where ve.id = p
 perform app.assert_revision(p_revision, v_revision);  -- CONFLICT revision_mismatch
 
 -- Una edición manual deja written_by_generation_id en nulo: ninguna salida pendiente la pisa.
-update app.version_exercises set body = p_body, revision = revision + 1, written_by_generation_id = null
+-- Con texto el ejercicio queda ready; vacío vuelve a pending.
+update app.version_exercises
+   set body = p_body, revision = revision + 1, written_by_generation_id = null,
+       status = case when btrim(p_body) <> '' then 'ready' else 'pending' end, error_code = null
  where id = p_version_exercise_id returning revision into v_revision;
 -- Todo cambio de contenido sube la revisión de la versión: la aprobación anterior deja de valer.
 update app.versions set revision = revision + 1 where id = v_version_id returning revision into v_version_revision;
+-- El estado de la versión se recalcula siempre igual, venga el contenido de la IA o del profe (C19).
+perform app.refresh_version_status(v_version_id);
 update app.answer_keys set stale = true where version_id = v_version_id;
 begin
   v_result := jsonb_build_object('id', p_version_exercise_id, 'revision', v_revision, 'versionRevision', v_version_revision);
@@ -389,8 +394,8 @@ Una generación escribe en etapas: el texto del ejercicio, sus preguntas de mira
 - Un reintento del mismo trabajo encuentra la salida única por generación, tipo y ejercicio y devuelve el resultado ya guardado, sin aplicarlo dos veces.
 
 ```sql
+perform app.rpc_begin();  -- primera línea de toda RPC: rechaza el modo supresión y reinicia los locks
 select g.version_id into v_version_id from app.generations g where g.id = p_generation_id;  -- sin lock
-perform app.lock_begin();
 perform app.lock_version_tree(v_version_id, p_generation_id, array_remove(array[p_version_exercise_id], null));
 -- Reintento: la salida ya está, se devuelve lo que se decidió entonces.
 select o.id, o.outcome into v_existing from app.generation_outputs o
@@ -412,6 +417,8 @@ if v_outcome = 'applied' then
   update app.versions set revision = revision + 1 where id = v_version_id;
 end if;
 ```
+
+El estado de la versión (C19) nunca se pone a mano: toda RPC que cambia el contenido de una versión o sus generaciones llama, bajo el lock, a `app.refresh_version_status(versión)`. Da `generating` si corre una generación de versión o de ejercicio, `error` si algún ejercicio está en error, `ready` si tiene ejercicios y todos están `ready` con texto, y `empty` en otro caso. Así una versión escrita a mano, sin ninguna generación, llega a `ready` y se puede aprobar.
 
 Crear una generación nueva bloquea la versión, pasa a `superseded` las generaciones `running` que reemplaza (las filas de `generations`, antes que cualquier ejercicio) y recién después bloquea los ejercicios. Guarda en `inputs` las revisiones de arranque de cada ejercicio, pregunta e instrucciones. Cerrar una generación (`internal_finish_generation`) toma versión y generación, no hace nada si ya no está `running` y, si termina `done` y sigue vigente, pasa la versión a `ready` y escribe el único evento `generated` con `op_id` igual al id de la generación.
 
@@ -443,13 +450,13 @@ Guardar (`save_draft`): exige `started` y que la tabla deje guardar; valida que 
 Entregar (`submit_attempt`), lo que pide R3-4:
 
 ```sql
+perform app.rpc_begin();  -- primera línea de toda RPC: rechaza el modo supresión y reinicia los locks
 -- Autorizar sin lock: el intento es del estudiante que llama.
 select t.assignment_id into v_assignment_id from app.assignment_attempts t
   join app.assignments a on a.id = t.assignment_id
  where t.id = p_attempt_id and app.is_student_self(a.student_id);
 if not found then perform app.raise_error('NOT_FOUND', 'not_found'); end if;
 
-perform app.lock_begin();
 perform app.lock_attempt_tree(p_attempt_id);  -- asignación -> intento -> borrador
 
 select ... into t from app.assignment_attempts where id = p_attempt_id;  -- releer bajo lock
@@ -500,11 +507,12 @@ Qué pasa con cada tabla (C9): `lib/domain/permissions/erasure.ts` da una regla 
 
 Cómo se redacta lo inmutable (C9). Las filas de una versión compartida (eventos, salidas de la IA, revisiones de la clave, la publicación y las entradas de la generación) rechazan `UPDATE`. La supresión no las esquiva: abre un modo propio.
 
-- `app.begin_erasure(<supresión>)` abre, solo para la transacción, el modo supresión. Exige que la fila de `erasures` exista en `marked`: la marca va siempre primero.
-- Con el modo abierto, `app.append_only` deja pasar la redacción, `app.publications_guard` deja cambiar solo `content` y `app.generations_guard` deja cambiar solo `inputs`. Nada más se relaja: una generación terminada sigue sin reabrirse.
+- `app.begin_erasure(<supresión>)` abre, solo para la transacción, el modo supresión. Exige que la fila de `erasures` exista en `marked`: la marca va siempre primero. Lo ata a esa supresión, a su institución y al id de la transacción (`txid_current()`): una marca copiada a otra transacción, o puesta a mano, no abre nada (C18).
+- Con el modo abierto, `app.redaction_allowed` deja cambiar un solo campo por tabla, y solo en filas de la institución de la supresión: `version_events.data`, `generation_outputs.output`, `answer_key_revisions.content`, `publications.content` y `generations.inputs`. `audit_log` nunca. Cualquier otro cambio sigue rechazado: una generación terminada no se reabre y un evento no cambia de tipo.
+- Mientras el modo está abierto no corre ninguna RPC: `app.rpc_begin()` las rechaza. La RPC interna de supresión llama a `rpc_begin` primero y abre el modo después.
 - El modo se cierra con la transacción, y pasar la supresión a `done` lo cierra aunque la transacción siga.
 - Solo lo llama la RPC interna de supresión (T9.5, `service_role`). Ningún usuario puede fijar la marca de la transacción, y nadie tiene `EXECUTE` sobre las funciones de `app`.
-- `004_contract_redaction` lo prueba: fuera del modo no se reescribe nada; dentro, el evento compartido pierde al estudiante borrado y conserva al otro; una publicación solo cambia su contenido; con la supresión terminada se vuelve a cerrar.
+- `004_contract_redaction` lo prueba: fuera del modo no se reescribe nada; dentro, el evento compartido pierde al estudiante borrado y conserva al otro; una publicación solo cambia su contenido; un evento no cambia de tipo; `audit_log` no se toca; otra institución queda afuera; una RPC llamada como `authenticated` se niega a correr; `authenticated` no puede abrir el modo; una marca falsificada no abre nada; con la supresión terminada se vuelve a cerrar.
 
 Lo que no garantiza:
 
@@ -520,10 +528,10 @@ Lo que no garantiza:
   - una clave fuera de la lista, o una clave que no es un id dentro de `answers` o `choices`;
   - un id prohibido (otro estudiante, un seudónimo, una versión) como valor, como clave o metido en cualquier texto («Referencia: <id>»), también en lo que escribió el estudiante (C10);
   - una palabra prohibida (los nombres de los perfiles, `PROFILE_WORDS`, sin importar mayúsculas ni tildes) dentro de cualquier texto que escribió el servidor. Lo que escribió el estudiante (`ownContent`: sus respuestas) queda exento solo de esta búsqueda;
-  - un secreto fuera de los lugares donde su valor es legítimamente visible. La opción correcta «A» también es una opción visible y quizás la elección del propio estudiante: puede aparecer en `questions.*.options.*.id` y `draft.choices.*`, y en ningún otro lado. Lo mismo para la respuesta esperada de un ejercicio, permitida solo en las respuestas del estudiante.
+  - un secreto (una opción correcta, una respuesta esperada) revelado en texto libre que escribió el servidor: una palabra que anuncia la solución (correcta, respuesta, solución, clave, pista), un separador («:», «=», «es», «era») y el valor, como en «Respuesta correcta: A» o «Solución: x = 1» (C10). Solo se miran los campos `revealable` de cada DTO (títulos, instrucciones, enunciados de ejercicios y preguntas). Nunca etiquetas, textos de opciones ni respuestas del estudiante, donde el mismo valor («1», «A») es legítimo. Un secreto en un campo de más ya es una clave fuera de la lista. La devolución de una nota no es `revealable`: después de corregir, hablar de la respuesta es legítimo.
 - `checkStudentDto(nombre, valor, opciones)` valida además la estructura completa con el esquema estricto del DTO, así un campo que falta o sobra también falla.
 
-La prueba de T1.5d usa `checkStudentDto` sobre los cuatro DTO, con dos estudiantes de perfiles distintos en el mismo grupo: los ids del otro estudiante, los seudónimos y los ids de versión como `forbiddenIds`; `PROFILE_WORDS` como palabras; y como `secrets` cada opción correcta (permitida en las opciones y en las elecciones propias) y cada respuesta esperada (permitida en las respuestas propias).
+La prueba de T1.5d usa `checkStudentDto` sobre los cuatro DTO, con dos estudiantes de perfiles distintos en el mismo grupo: los ids del otro estudiante, los seudónimos y los ids de versión como `forbiddenIds`; `PROFILE_WORDS` como palabras; y como `secrets` cada opción correcta y cada respuesta esperada.
 
 ## Matriz de permisos
 
@@ -560,7 +568,7 @@ Tandas. Cada tanda tiene a lo sumo un ticket con migraciones (turno de base). Lo
 Reglas comunes a los tickets de base, además de las de `AGENTS.md`:
 
 - Una migración nueva con el nombre de su ticket, que reemplaza los stubs de `api` con `CREATE OR REPLACE FUNCTION`, misma firma, y concede `EXECUTE` como dice «Nombres». Se aplica con `supabase migration up`, nunca con `db reset`.
-- Toda RPC sigue «Errores», «Quién llama» y «Orden de locks y revisión». La idempotencia por `op_id` u `op_key` se comprueba bajo el lock, con su identidad.
+- Toda RPC empieza con `perform app.rpc_begin();` y sigue «Errores», «Quién llama» y «Orden de locks y revisión». La idempotencia por `op_id` u `op_key` se comprueba bajo el lock, con su identidad.
 - Toda RPC auditada llama a `app.audit_disclosure` una vez por pedido, con el conjunto de estudiantes que muestra.
 - pgTAP por RPC: el caso feliz; cada rol de la matriz que la niega; un usuario de otra institución; la revisión vieja (`CONFLICT`); el `op_key` o `op_id` repetido sobre el mismo recurso (devuelve lo mismo) y sobre otro (`CONFLICT op_key_reused`); y la fila de `audit_log` donde corresponde. Los usuarios se simulan con `set_config('request.jwt.claims', ...)` y `set local role authenticated` para probar el privilegio.
 - `npm run db:types` regenera `lib/server/db/types.ts` si el ticket cambió algo que se vea ahí (no debería: las firmas no cambian).
@@ -630,7 +638,8 @@ Criterios de aceptación:
 Pruebas obligatorias: 012_needs.test.sql con las reglas comunes. 013_reconstruction.test.sql: como profe del
   grupo, llama a todas las RPC no auditadas que existan y comprueba que ninguna respuesta contiene un perfil, un
   apoyo, un interés, la configuración de una versión ni sus destinatarios. Cada ticket posterior que agrega una
-  lectura no auditada suma su llamada a esta prueba.
+  lectura no auditada para el staff suma su llamada a esta prueba. Las lecturas del estudiante (student_*) no
+  van acá: un profe no puede llamarlas, y las cubren 023_student_dto y la prueba de fugas (C22).
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: consentimiento store_profile (T9.3), vista del registro (T9.4).
 Dependencias nuevas: ninguna.
@@ -718,7 +727,8 @@ Criterios de aceptación:
     (correct_option_removed).
   - claim_version_op con la RPC y el destino concreto (la pregunta, el ejercicio o la versión); el evento guarda
     operation, target_id y el resultado, que se devuelve tal cual en una repetición.
-  - Una edición manual con texto pasa el ejercicio a ready.
+  - Una edición manual con texto pasa el ejercicio a ready (vacía, a pending), y toda edición termina con
+    app.refresh_version_status.
   - approve_version exige p_revision = revision y el contenido completo (content_incomplete), y deja
     approved_revision; cualquier cambio posterior la deja atrás. reject_version escribe rejected con sus motivos.
   - get_version devuelve keys (QuestionKey con su revisión).
@@ -727,7 +737,8 @@ Pruebas obligatorias: 017_version_content.test.sql con las reglas comunes; aprob
   versión sin aprobar. En integración, con dos clientes a la vez: dos copias de la misma edición aplican una vez
   y la segunda devuelve el mismo resultado; el mismo op_id sobre dos ejercicios distintos, sobre dos preguntas
   del mismo ejercicio o sobre una pregunta y su ejercicio da CONFLICT en uno. En pgTAP: opciones repetidas y una
-  opción correcta inexistente se rechazan; aprobar una versión con un ejercicio pending es content_incomplete.
+  opción correcta inexistente se rechazan; aprobar una versión con un ejercicio pending es content_incomplete;
+  una versión typed sin ninguna generación, completada a mano ejercicio por ejercicio, queda ready y se aprueba.
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: regenerar un ejercicio (T7.4), checklist (T7.5).
 Dependencias nuevas: ninguna.
@@ -857,9 +868,11 @@ Criterios de aceptación: interface, answer_mode y aids calculados en el servido
   consentimiento de dictado, voice pasa a typed en cada lectura; student_grades solo intentos corregidos.
 Pruebas obligatorias: en integración, un estudiante con perfil motor y otro con dislexia en el mismo grupo:
   checkStudentDto sobre cada DTO, con las opciones de «Prueba de fugas» (forbiddenIds, PROFILE_WORDS y las
-  opciones correctas y respuestas esperadas como secrets con sus lugares permitidos), devuelve vacío; y dos
-  casos negativos plantados fallan: una versión cuyo texto nombra el perfil y un título que incluye el id del
-  otro estudiante.
+  opciones correctas y respuestas esperadas como secrets), devuelve vacío; y tres casos negativos plantados
+  fallan: una versión cuyo texto nombra el perfil, un título que incluye el id del otro estudiante y un
+  enunciado que dice «Respuesta correcta: A». 023_student_dto.test.sql prueba en SQL que un profe y otro
+  estudiante no pueden llamar a estas lecturas. No toca 013_reconstruction.test.sql: las lecturas del
+  estudiante están exentas de ella (ver T1.3a).
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: el payload RSC (T4.8).
 Dependencias nuevas: ninguna.

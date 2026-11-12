@@ -1,6 +1,6 @@
 -- The shape every contract table and RPC must keep, whatever later tickets add.
 begin;
-select plan(19);
+select plan(20);
 
 -- Tables: born closed.
 select is_empty($$
@@ -142,6 +142,11 @@ select is_empty($$
    where p.pronamespace = 'api'::regnamespace and starts_with(p.proname, 'internal_')
      and has_function_privilege('authenticated', p.oid, 'execute')
 $$, 'no internal_* RPC is executable by authenticated');
+
+select is_empty($$
+  select p.oid::regprocedure::text from pg_proc p
+   where p.pronamespace = 'api'::regnamespace and position('app.rpc_begin()' in p.prosrc) = 0
+$$, 'every RPC starts with app.rpc_begin(): none runs inside erasure mode');
 
 select * from finish();
 rollback;

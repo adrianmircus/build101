@@ -37,7 +37,7 @@ set search_path = ''
 as $$
 begin
   -- Inside an erasure the content of a shared publication may be redacted; nothing else changes.
-  if app.in_erasure() and (to_jsonb(new) - 'content') = (to_jsonb(old) - 'content') then
+  if app.redaction_allowed('publications', new.institution_id, to_jsonb(old), to_jsonb(new)) then
     return new;
   end if;
   if (to_jsonb(new) - 'withdrawn_at') <> (to_jsonb(old) - 'withdrawn_at') or old.withdrawn_at is not null then

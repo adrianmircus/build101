@@ -6,19 +6,22 @@ import { STUDENT_DTO_ALLOWLISTS, STUDENT_DTO_SCHEMAS, type DtoAllowlist, type St
 //   embedded in any text, the student's own writing included ("Referencia: <id>");
 // - a profile word inside any text the server produced (titles, instructions, bodies, options,
 //   feedback). The student's own writing (ownContent) is exempt from this check only;
-// - a secret outside the places where its value is legitimately visible. A correct option "A" is
-//   also a visible option id and maybe the student's own choice: it may appear exactly there and
-//   nowhere else. The same for an expected answer, allowed only in the student's own answers.
+// - a secret given away in free text the server wrote: a correct option or an expected answer
+//   right after a reveal word («Respuesta correcta: A», «Solución: x = 1»). Only the allowlist's
+//   revealable fields are looked at, never labels, option texts or the student's own answers,
+//   where the same value («1», «A») is legitimate. A secret in an extra field is already a key
+//   outside the allowlist.
 // Pure, so the leak test of the RPCs (T1.5d) and of the RSC payload (T4.8) share it.
-
-/** allowedAt: path patterns where the value may appear; * matches one segment ("questions.*.options.*.id"). */
-export type Secret = { value: string; allowedAt: readonly string[] };
 
 export type LeakOptions = {
   forbiddenIds?: ReadonlySet<string>;
   forbiddenWords?: readonly string[];
-  secrets?: readonly Secret[];
+  /** Correct options and expected answers of the task. */
+  secrets?: readonly string[];
 };
+
+/** Words that introduce a solution, then a separator («:», «=», «es», «era»), then the value. */
+const REVEAL = String.raw`(correct[ao]?|respuesta|solucion|clave|answer|pista)\s*(:|=|\bes\b|\bera\b|\bis\b)\s*`;
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -46,14 +49,16 @@ function hasForbiddenId(text: string, ids: ReadonlySet<string>): boolean {
   return [...ids].some((id) => lower.includes(id.toLowerCase()));
 }
 
-export function matchesPath(path: string, pattern: string): boolean {
-  const parts = path.split(".");
-  const wanted = pattern.split(".");
-  return parts.length === wanted.length && wanted.every((segment, index) => segment === "*" || segment === parts[index]);
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function secretLeaks(secrets: readonly Secret[], value: string, path: string): boolean {
-  return secrets.some((secret) => secret.value === value && !secret.allowedAt.some((pattern) => matchesPath(path, pattern)));
+/** True when the text reveals one of the secrets: a reveal word, a separator, then the value. */
+export function revealsSecret(text: string, secrets: readonly string[]): boolean {
+  const normalized = normalizeText(text);
+  return secrets.some((secret) =>
+    new RegExp(`${REVEAL}${escapeRegExp(normalizeText(secret))}(?![a-z0-9])`).test(normalized),
+  );
 }
 
 function keyLeaks(walk: Walk, key: string, place: Place): boolean {
@@ -66,7 +71,7 @@ function stringLeaks(walk: Walk, value: string, place: Place): boolean {
   const { forbiddenIds, forbiddenWords, secrets } = walk.options;
   if (hasForbiddenId(value, forbiddenIds)) return true;
   if (!place.own && hasWord(value, forbiddenWords)) return true;
-  return secretLeaks(secrets, value, place.path);
+  return place.parentKey !== undefined && walk.allowlist.revealable.has(place.parentKey) && revealsSecret(value, secrets);
 }
 
 function visit(walk: Walk, value: unknown, place: Place): void {
