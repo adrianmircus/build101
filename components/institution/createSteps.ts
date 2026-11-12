@@ -75,8 +75,14 @@ export function partialText(created: number, left: number): string {
  * the accounts. Every key is in the state before its request leaves, which is what makes a retry safe.
  */
 export async function confirmCreate(ctx: Context, state: CreateState, dispatch: (action: CreateAction) => void): Promise<Done<CreatedAccountRow[]>> {
+  // Rows and «volver a los nombres» are frozen from here, before waiting for the group: the identity of the request (opKey and slots) is the one of this moment.
+  dispatch({ type: "confirm", begin: true });
   const group = await groupFor(ctx, state, dispatch);
-  if (!group.ok) return group;
+  if (!group.ok) {
+    // No row went out. The group's own key is already saved, so the retry does not make a second one.
+    dispatch({ type: "confirm", begin: false });
+    return group;
+  }
   const attempt = nextAttempt(state, group.value);
   dispatch({ type: "started", groupId: group.value, attempt });
   const made = await createRows(ctx, { groupId: group.value, rows: state.rows, attempt });

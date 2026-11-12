@@ -16,7 +16,8 @@ vi.mock("./useSchoolLookup", () => ({ useSchoolLookup: () => ({ state: { kind: "
 vi.mock("./login-flow", () => ({ runLogin: (values: { code: string; username: string; password: string }) => runLogin(values) }));
 
 const { useStudentLogin } = await import("./useStudentLogin");
-const { supersedeLogins } = await import("./login-guard");
+const { supersedeLogins, hasUnclosed, markClosed } = await import("./login-guard");
+const { closePreviousSession } = await import("./login-attempt");
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -38,6 +39,7 @@ beforeEach(() => {
   signOut.mockReset();
   signOut.mockResolvedValue({ ok: true, data: { next: "/ingresar/estudiante" } });
   runLogin.mockReset();
+  markClosed();
 });
 
 describe("el login de la tarjeta (F2-21)", () => {
@@ -73,6 +75,24 @@ describe("el login de la tarjeta (F2-21)", () => {
     expect(order).toEqual(["signOut", "nueva tarjeta"]);
     expect(push).not.toHaveBeenCalled();
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("F2-23: si cerrar la sesión vieja falla, la tarjeta nueva no se habilita hasta que un reintento lo confirma", async () => {
+    runLogin.mockResolvedValue({ kind: "in", next: "/estudiante" });
+    signOut.mockResolvedValue({ ok: false, error: { code: "UNAVAILABLE", message: "No pudimos conectarnos." } });
+    const hook = screen();
+    const submitting = hook.current.submit({ preventDefault: vi.fn() } as never);
+    await Promise.resolve();
+    const newCardMayShow = supersedeLogins();
+    await Promise.all([submitting, newCardMayShow]);
+    expect(push).not.toHaveBeenCalled();
+    expect(hasUnclosed()).toBe(true);
+    // The retry that fails keeps it blocked; the one that is confirmed lets the card show.
+    expect(await closePreviousSession()).toBe(false);
+    expect(hasUnclosed()).toBe(true);
+    signOut.mockResolvedValue({ ok: true, data: { next: "/ingresar/estudiante" } });
+    expect(await closePreviousSession()).toBe(true);
+    expect(hasUnclosed()).toBe(false);
   });
 
   it("si el login viejo termina mal, se descarta: no navega ni cierra nada", async () => {

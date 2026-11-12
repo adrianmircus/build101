@@ -13,6 +13,24 @@ type Entry = { ticket: LoginTicket & { stale: boolean }; over: Promise<void> };
 
 const inFlight = new Set<Entry>();
 
+// A login that did sign in but whose session could not be confirmed closed (the signOut failed). While there is one, the new card does not show.
+let unclosed = 0;
+
+/** A good login of an old card could not be closed yet: the session of that student is still usable. */
+export function markUnclosed(): void {
+  unclosed += 1;
+}
+
+/** The signOut was confirmed: no old session is left. */
+export function markClosed(): void {
+  unclosed = 0;
+}
+
+/** True while a session of an old card is not confirmed closed. */
+export function hasUnclosed(): boolean {
+  return unclosed > 0;
+}
+
 /** A login is about to go out. */
 export function beginLogin(): LoginTicket {
   let finish!: () => void;
