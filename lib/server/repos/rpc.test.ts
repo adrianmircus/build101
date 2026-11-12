@@ -74,6 +74,44 @@ describe("callRpc", () => {
   });
 });
 
+// A client built with throwOnError(), or a network failure, throws instead of returning `error`.
+function throwingDb(thrown: unknown, how: "sync" | "rejected"): RpcDb {
+  return {
+    rpc() {
+      if (how === "sync") throw thrown;
+      const builder: RpcBuilder = {
+        then: (onFulfilled, onRejected) => Promise.reject(thrown).then(onFulfilled, onRejected),
+        setHeader: () => builder,
+      };
+      return builder;
+    },
+  };
+}
+
+describe("callRpc with a client that throws", () => {
+  const leaky = { code: "23505", message: 'duplicate key value: "Ana Pérez"', details: "Key (username)=(anap) exists." };
+
+  it.each(["sync", "rejected"] as const)("never lets a thrown database error escape (%s)", async (how) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const failure = await callRpc(throwingDb(leaky, how), "create_group", ARGS).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(UnexpectedRpcError);
+    expect(JSON.stringify(failure)).not.toContain("Ana");
+    expect(String(failure)).not.toContain("Ana");
+  });
+
+  it("still translates a thrown expected error", async () => {
+    const thrown = { code: "P0001", message: "FORBIDDEN", details: "no_session" };
+    await expect(callRpc(throwingDb(thrown, "rejected"), "create_group", ARGS)).rejects.toBeInstanceOf(AppError);
+  });
+
+  it("treats a thrown value without a code as unexpected", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(callRpc(throwingDb(new TypeError("fetch failed"), "rejected"), "create_group", ARGS)).rejects.toBeInstanceOf(
+      UnexpectedRpcError,
+    );
+  });
+});
+
 describe("withRequestId", () => {
   it("sends the request id as x-request-id", async () => {
     const { db, calls } = fakeDb({ data: { items: [] }, error: null });

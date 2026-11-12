@@ -38,6 +38,33 @@ function errorCodeOf(error: RpcErrorLike): string {
 }
 
 /**
+ * A client built with throwOnError(), or a network failure, throws instead of returning `error`. A
+ * thrown PostgrestError still has a code we can read, so it goes through the same translation; the
+ * original object never escapes, since its message and details can carry row values.
+ */
+async function invoke(name: RpcName, call: () => PromiseLike<RpcResponse>): Promise<RpcResponse> {
+  try {
+    return await call();
+  } catch (thrown) {
+    const error = thrownError(thrown);
+    if (error) return { data: null, error };
+    throw unexpected(name, "thrown");
+  }
+}
+
+const textField = (value: object, key: string): string | null => {
+  const field: unknown = Reflect.get(value, key);
+  return typeof field === "string" ? field : null;
+};
+
+/** Code, message and details of a thrown PostgrestError-like object; null for anything else. */
+function thrownError(thrown: unknown): RpcErrorLike | null {
+  if (typeof thrown !== "object" || thrown === null) return null;
+  const code = textField(thrown, "code");
+  return code === null ? null : { code, message: textField(thrown, "message"), details: textField(thrown, "details") };
+}
+
+/**
  * Calls one RPC of the registry. Throws AppError for the errors the RPC raises on purpose, and
  * UnexpectedRpcError for everything else (including an answer that does not match its schema).
  */
@@ -48,7 +75,7 @@ export async function callRpc(db: RpcDb, name: RpcName, args: unknown): Promise<
   const parsedArgs = spec.args.safeParse(args);
   if (!parsedArgs.success) throw unexpected(name, "invalid_args");
 
-  const { data, error } = await db.rpc(name, parsedArgs.data);
+  const { data, error } = await invoke(name, () => db.rpc(name, parsedArgs.data));
   if (error) {
     const expected = parseRpcError(error);
     if (expected) throw new AppError(expected.code, expected.message);
