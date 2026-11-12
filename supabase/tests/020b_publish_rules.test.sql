@@ -184,7 +184,7 @@ select is((select count(distinct institution_id) from app.publications where op_
 create function pg_temp.pubid(p_ver text) returns uuid language sql as $$ select p.id from app.publications p where p.version_id = pg_temp.id(p_ver) order by p.published_at desc limit 1 $$;
 select is(pg_temp.owner_err(format('update app.publications set content = ''{}'' where id = %L', pg_temp.pubid('vm'))), 'P0004', 'a publication''s content cannot be changed');
 select is(pg_temp.owner_err(format('update app.publications set answer_mode = ''gaze'' where id = %L', pg_temp.pubid('vm'))), 'P0004', 'nor its mode');
-select is(pg_temp.owner_err(format('update app.publications set aids = ''{"readAloud": true}'' where id = %L', pg_temp.pubid('vm'))), 'P0004', 'nor its aids');
+select is(pg_temp.owner_err(format('update app.publications set aids = ''{"readAloud": false}'' where id = %L', pg_temp.pubid('vm'))), 'P0004', 'nor its aids');
 select is(pg_temp.owner_err(format('update app.publications set op_attempts = 9 where id = %L', pg_temp.pubid('vm'))), 'P0004', 'nor the attempts it answers on a replay');
 select is(pg_temp.owner_err(format('update app.publications set op_key = gen_random_uuid() where id = %L', pg_temp.pubid('vm'))), 'P0004', 'nor its op_key');
 select is(pg_temp.owner_err(format('update app.publications set op_identity = repeat(''a'', 64) where id = %L', pg_temp.pubid('vm'))), 'P0004', 'nor its op_identity');
