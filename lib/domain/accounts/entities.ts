@@ -72,7 +72,7 @@ export const StaffRow = z
   .strict();
 export type StaffRow = z.infer<typeof StaffRow>;
 
-export const ACCOUNT_STATUSES = ["pending", "active", "failed"] as const;
+export const ACCOUNT_STATUSES = ["pending", "active", "failed", "none"] as const;
 export const AccountStatus = z.enum(ACCOUNT_STATUSES);
 export type AccountStatus = z.infer<typeof AccountStatus>;
 

@@ -106,7 +106,9 @@ export const ACCOUNT_RPCS = {
   },
   list_group_accounts: {
     args: z.object({ p_group_id: Id }).strict(),
-    result: z.object({ groupName: z.string(), institutionCode: InstitutionCode, items: z.array(AccountRow) }).strict(),
+    result: z
+      .object({ groupName: z.string(), institutionCode: InstitutionCode, canIssueCards: z.boolean(), items: z.array(AccountRow) })
+      .strict(),
   },
   /**
    * One transaction (see «Emitir tarjetas»): per student it revokes the current card, inserts the new one active, stores the
