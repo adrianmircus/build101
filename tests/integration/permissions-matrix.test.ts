@@ -9,8 +9,9 @@ import { cellsOf, checkOperation } from "./matrix/run";
 // T1.8: the permissions matrix (lib/domain/permissions/matrix.ts) against the real RPCs. A scene per
 // kind of institution, one logged-in user per role, and every row of the matrix as every role.
 
-// The rows of phase 1 and, as each ticket of phase 2 implements its RPCs, the ones of that ticket (T2.3: invitations and the panel).
-const IMPLEMENTED_IN_PHASE_2 = ["T2.3"];
+// The rows of phase 1 and, as each ticket of phase 2 implements its RPCs, the ones of that ticket (T2.3: invitations and the panel;
+// T2.5a: the accounts of the students).
+const IMPLEMENTED_IN_PHASE_2 = ["T2.3", "T2.5a"];
 const OPERATIONS = [
   ...operationsFor(1),
   ...operationsFor(2).filter((operation) => operation.since === 2 && IMPLEMENTED_IN_PHASE_2.includes(operation.ticket)),

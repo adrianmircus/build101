@@ -11,7 +11,8 @@ import {
   createSchool,
   type TestUser,
 } from "../../factories";
-import { createLoggedInStudent, createStudent } from "../../factories/students";
+import { sessionIdOfToken } from "../../factories/clients";
+import { bindStudentSession, createLoggedInStudent, createStudent } from "../../factories/students";
 import { readRows } from "../support/db";
 
 // The cookies of the "browser": what the proxy and Supabase leave in the request. getActor reads them through
@@ -52,7 +53,12 @@ async function verifyMagicLink(client: ReturnType<typeof createServerClient>, em
   const link = await createAdminClient().auth.admin.generateLink({ type: "magiclink", email });
   const tokenHash = link.data.properties?.hashed_token;
   if (link.error || tokenHash === undefined) throw new Error("No se pudo crear el enlace de prueba.");
-  return client.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
+  const opened = await client.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
+  // The login of a student registers the session it opens (the bind); one that is not registered reads nothing (F2C-75).
+  if (opened.data.session && opened.data.user) {
+    await bindStudentSession(createAdminClient(), opened.data.user.id, sessionIdOfToken(opened.data.session.access_token));
+  }
+  return opened;
 }
 
 beforeEach(() => {

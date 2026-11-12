@@ -51,7 +51,7 @@ export const ERASURE_RULES = {
   },
   access_cards: { rule: "delete", why: "Sus tarjetas de acceso (su id y el hash del token); se van en cascada al borrar al estudiante." },
   student_credentials: { rule: "delete", why: "Credencial del estudiante: el hash scrypt de su contraseña. Se va en cascada al borrar al estudiante." },
-  student_sessions: { rule: "delete", why: "Las sesiones registradas del estudiante (su id de sesión y la versión de su credencial); se van en cascada al borrar al estudiante." },
+  student_sessions: { rule: "delete", why: "Las sesiones registradas del estudiante (su id de sesión y la versión de su credencial); se van en cascada al borrar al estudiante y con la sesión de Auth." },
   student_needs: { rule: "delete", why: "Dato de salud." },
   student_need_events: { rule: "delete", why: "Historial de un dato de salud." },
   student_notes: { rule: "delete", why: "Notas privadas sobre el estudiante." },

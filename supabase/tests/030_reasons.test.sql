@@ -11,10 +11,10 @@ create temp table expected (reason text primary key);
 -- BEGIN REASONS
 insert into expected (reason) values
   ('already_member'), ('already_revoked'), ('already_submitted'), ('archived'), ('assessment_archived'),
-  ('attempt_closed'), ('attempt_not_started'), ('content_incomplete'), ('correct_option_removed'),
+  ('attempt_closed'), ('attempt_not_started'), ('card_issue_done'), ('content_incomplete'), ('correct_option_removed'),
   ('draft_outdated'), ('exercises_mismatch'), ('forbidden'), ('invalid_answer_key'),
   ('invalid_answer_mode'), ('invalid_answers'), ('invalid_base_version'), ('invalid_body'),
-  ('invalid_choices'), ('invalid_code'), ('invalid_config'), ('invalid_email'), ('invalid_error_code'),
+  ('invalid_cards'), ('invalid_choices'), ('invalid_code'), ('invalid_config'), ('invalid_email'), ('invalid_error_code'),
   ('invalid_feedback'), ('invalid_file'), ('invalid_generation'), ('invalid_institution_kind'),
   ('invalid_institution_shape'), ('invalid_instructions'), ('invalid_interests'), ('invalid_interface'),
   ('invalid_keep'), ('invalid_kind'), ('invalid_label'), ('invalid_name'),
@@ -28,7 +28,6 @@ insert into expected (reason) values
   ('missing_consent'), ('missing_questions'), ('no_answer_key'), ('no_exercises'),
   ('no_session'), ('not_a_member'), ('not_a_student'), ('not_approved'),
   ('not_author'), ('not_enrolled'), ('not_found'), ('not_published'),
-  ('not_implemented'), -- temporary: phase 2 stubs; the last ticket to replace one removes it here and in reasons.ts
   ('not_submitted'), ('op_key_reused'), ('options_repeated'), ('recipient_in_other_version'),
   ('revision_mismatch'), ('revision_required'), ('role_conflict'), ('sandbox_restricted'),
   ('stale_answer_key'), ('too_many_exercises'), ('unknown_choice'), ('unknown_exercise'),

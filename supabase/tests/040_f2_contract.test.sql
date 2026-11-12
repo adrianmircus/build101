@@ -4,7 +4,7 @@
 -- Guards are tested as the table owner and must fail with P0004 (as authenticated the UPDATE fails earlier with 42501
 -- and would pass even without the guard). Placeholder data only. The whole file is rolled back.
 begin;
-select plan(197);
+select plan(198);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -358,17 +358,21 @@ select is(pg_temp.st('truncate app.invitations'), '0A000', 'nor invitations');
 
 -- 4d. Deleting an account, a student, a group: what goes with them.
 select is(pg_temp.st(format('delete from auth.users where id = %s', pg_temp.i('teach'))), 'ok', 'control: the account of the issuer is deleted');
-select is((select count(*) from app.access_card_issues where issued_by is not null), 0::bigint, 'the issues it made stay with no issuer');
+select is((select count(*) from app.access_card_issues where issued_by is not null and institution_id in (pg_temp.id('i_a'), pg_temp.id('i_b'))), 0::bigint, 'the issues it made stay with no issuer');
 select is(pg_temp.st(format('insert into app.access_card_issues (id, institution_id, group_id, op_key, op_identity) values (%s, %s, %s, gen_random_uuid(), %L)',
   pg_temp.i('issue_b'), pg_temp.i('i_b'), pg_temp.i('g_b'), pg_temp.ident('d'))), 'ok', 'control: an issue of the other institution');
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
   pg_temp.i('i_b'), pg_temp.i('s3'), pg_temp.i('issue_b'), pg_temp.hash('c3'))), 'ok', 'and its card');
 select is(pg_temp.st(format('insert into app.student_credentials (institution_id, student_id, password_hash, issue_id) values (%s, %s, %L, %s)',
   pg_temp.i('i_b'), pg_temp.i('s3'), pg_temp.scrypt('p3'), pg_temp.i('issue_b'))), 'ok', 'and its credential');
-select is(pg_temp.st(format('insert into app.student_sessions (session_id, institution_id, student_id, version) values (gen_random_uuid(), %s, %s, 1)', pg_temp.i('i_b'), pg_temp.i('s3'))), 'ok', 'control: a session is registered');
+-- The registry follows auth.sessions (T2.5a): the row of a session that exists, with the current version of the credential.
+insert into ids (k, id) values ('sess_b', gen_random_uuid());
+insert into auth.sessions (id, user_id, created_at, updated_at) values (pg_temp.id('sess_b'), pg_temp.id('teachb'), now(), now());
+select is(pg_temp.st(format('insert into app.student_sessions (session_id, institution_id, student_id, version) values (gen_random_uuid(), %s, %s, 1)', pg_temp.i('i_b'), pg_temp.i('s3'))), '23503', 'a session that does not exist in auth.sessions is not registered');
+select is(pg_temp.st(format('insert into app.student_sessions (session_id, institution_id, student_id, version) values (%s, %s, %s, 1)', pg_temp.i('sess_b'), pg_temp.i('i_b'), pg_temp.i('s3'))), 'ok', 'control: a session is registered');
 select is(pg_temp.st('update app.student_sessions set version = 2'), 'P0004', 'a registered session never changes');
 select is(pg_temp.st('truncate app.student_sessions'), 'P0004', 'nor is the table truncated');
-select is(pg_temp.st(format('insert into app.student_sessions (session_id, institution_id, student_id, version) values (gen_random_uuid(), %s, %s, 0)', pg_temp.i('i_b'), pg_temp.i('s3'))), '23514', 'a version starts at 1');
+select is(pg_temp.st(format('insert into app.student_sessions (session_id, institution_id, student_id, version) values (gen_random_uuid(), %s, %s, 0)', pg_temp.i('i_b'), pg_temp.i('s3'))), 'P0004', 'a version that is not the current one of the credential is refused (the guard answers before the foreign key)');
 -- The erasure order of phase 1: unlink the pseudonym and mark the account deleted, then the student goes.
 update app.student_pseudonyms set student_id = null, unlinked_at = now() where student_id = pg_temp.id('s3');
 update app.account_provisioning set status = 'deleted', revision = revision + 1 where student_id = pg_temp.id('s3');
