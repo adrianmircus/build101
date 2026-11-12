@@ -2,7 +2,7 @@
 -- list_student_notes, create_student_note, update_student_note, archive_student_note,
 -- list_student_consents, record_consent and revoke_consent. The whole file is rolled back.
 begin;
-select plan(195);
+select plan(196);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -489,7 +489,10 @@ select is(pg_temp.as_user('teach', format('select api.create_student_note(%L, ''
 select is((select count(*) from app.student_notes n where n.student_id = pg_temp.id('sn7')), 3::bigint, 'and nothing was created by it');
 select is(pg_temp.addk('other', 'sn7', 'x', '00000000-0000-4000-8000-0000000000a9') ->> 'error', 'P0001 NOT_FOUND not_found', 'a teacher of another group still gets NOT_FOUND with a key');
 select is((select count(*) from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'api' and p.proname = 'create_student_note'), 1::bigint, 'the old signature is gone: only one create_student_note');
-select is(pg_temp.as_user('teach', 'update app.student_notes set op_key = gen_random_uuid()') ->> 'error' is not null, true, 'the operation of a note is not editable');
+-- As the table owner, so the update reaches the guard: as authenticated it would stop at the schema privilege
+-- (42501) and pass even without the guard.
+select throws_ok(format('update app.student_notes set op_key = gen_random_uuid() where id = %L', pg_temp.id('k1')), 'P0004', null, 'the op_key of a note is frozen');
+select throws_ok(format('update app.student_notes set op_identity = repeat(''0'', 64) where id = %L', pg_temp.id('k1')), 'P0004', null, 'its op_identity too');
 
 select * from finish();
 rollback;
