@@ -1,7 +1,7 @@
 import "server-only";
 import type { AccountRow, UsernameDraft } from "@/lib/domain/accounts/entities";
 import type { NewStudent } from "@/lib/domain/accounts/inputs";
-import type { CreatedAccountRow, IssuedCards, ReconcileSummary } from "@/lib/domain/accounts/results";
+import type { CreatedAccountRow, IssuedCards } from "@/lib/domain/accounts/results";
 import { unavailable } from "../unavailable";
 
 // Accounts of students (T2.5b). Every operation with the admin client uses ids that an RPC called with the session
@@ -27,9 +27,4 @@ export async function listGroupAccounts(groupId: string): Promise<{ groupName: s
 /** begin_access_cards, the step per student (claim, provision, password, close sessions) and finish_access_cards. Passwords and QR urls live only in the answer. */
 export async function issueAccessCards(input: IssueAccessCards): Promise<IssuedCards> {
   return unavailable(input);
-}
-
-/** Finishes pending and failed accounts. Until phase 3 it runs by hand with `npm run admin:reconcile`. */
-export async function reconcileAccounts(limit: number): Promise<ReconcileSummary> {
-  return unavailable(limit);
 }

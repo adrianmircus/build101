@@ -110,6 +110,9 @@ export type Database = {
 "internal_claim_card_password":
 { Args: { "p_issue_id": string,"p_student_id": string }; Returns: Json
                            },
+"internal_claim_provisioning":
+{ Args: { "p_provisioning_id": string }; Returns: Json
+                           },
 "internal_create_generation":
 { Args: { "p_inputs": Json,"p_kind": string,"p_op_key": string,"p_profiles_hash": string,"p_profiles_revision": string,"p_prompt_version": string,"p_requested_by"?: string,"p_required_jobs": number,"p_target_exercise_id"?: string,"p_version_id": string }; Returns: Json
                            },
@@ -121,9 +124,6 @@ export type Database = {
                            },
 "internal_fail_student_account":
 { Args: { "p_error_code": string,"p_provisioning_id": string }; Returns: Json
-                           },
-"internal_find_auth_user":
-{ Args: { "p_email": string }; Returns: Json
                            },
 "internal_find_institution":
 { Args: { "p_code": string }; Returns: Json
@@ -182,6 +182,9 @@ export type Database = {
 "list_assessments":
 { Args: { "p_group_id": string,"p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number }; Returns: Json
                            },
+"list_enabled_subjects":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "list_group_accounts":
 { Args: { "p_group_id": string }; Returns: Json
                            },
@@ -216,7 +219,7 @@ export type Database = {
 { Args: { "p_assessment_id": string }; Returns: Json
                            },
 "mark_invitation_sent":
-{ Args: { "p_invitation_id": string }; Returns: Json
+{ Args: { "p_invitation_id": string,"p_revision": number }; Returns: Json
                            },
 "publish_version":
 { Args: { "p_answer_key_revision_id"?: string,"p_op_key": string,"p_revision": number,"p_version_id": string }; Returns: Json

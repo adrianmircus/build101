@@ -17,9 +17,9 @@ type AccountsRpc =
   | "list_invitations"
   | "list_institution_staff"
   | "get_institution_summary"
+  | "list_enabled_subjects"
   | "internal_get_invitation"
   | "internal_create_invitation"
-  | "internal_find_auth_user"
   | "internal_finish_invitation_signup"
   | "accept_invitation"
   | "list_taken_usernames"
@@ -27,6 +27,7 @@ type AccountsRpc =
   | "begin_access_cards"
   | "finish_access_cards"
   | "internal_claim_card_password"
+  | "internal_claim_provisioning"
   | "internal_get_student_accounts"
   | "internal_remember_student_account"
   | "internal_fail_student_account"
@@ -47,19 +48,20 @@ export const ACCOUNT_CALLS: CallsOf<AccountsRpc> = {
   create_invitation: async (s: Scene) => ({ args: { p_institution_id: s.institution.id, p_email: email(), p_role: "teacher", p_token_hash: bytea(), p_op_key: randomUUID() } }),
   resend_invitation: async () => ({ args: { p_invitation_id: randomUUID(), p_revision: 1, p_token_hash: bytea() } }),
   revoke_invitation: async () => ({ args: { p_invitation_id: randomUUID(), p_revision: 1 } }),
-  mark_invitation_sent: async () => ({ args: { p_invitation_id: randomUUID() } }),
+  mark_invitation_sent: async () => ({ args: { p_invitation_id: randomUUID(), p_revision: 1 } }),
   list_invitations: async (s) => ({ args: { p_institution_id: s.institution.id }, listing: true }),
   list_institution_staff: async (s) => ({ args: { p_institution_id: s.institution.id }, listing: true }),
   get_institution_summary: async (s) => ({ args: { p_institution_id: s.institution.id } }),
   internal_get_invitation: async () => ({ args: { p_token_hash: bytea() } }),
   internal_create_invitation: async (s) => ({ args: { p_institution_id: s.institution.id, p_email: email(), p_role: "teacher", p_token_hash: bytea() } }),
-  internal_find_auth_user: async () => ({ args: { p_email: email() } }),
   internal_finish_invitation_signup: async (s) => ({ args: { p_token_hash: bytea(), p_user_id: s.owner.userId, p_display_name: "Docente nuevo" } }),
   accept_invitation: async () => ({ args: { p_token_hash: bytea() } }),
   list_taken_usernames: async (s) => ({ args: { p_institution_id: s.institution.id, p_bases: ["luciaf"] }, listing: true }),
   list_group_accounts: async (s) => ({ args: { p_group_id: s.groupId }, listing: true, target: s.learner.studentId }),
   begin_access_cards: async (s) => ({ args: { p_group_id: s.groupId, p_cards: JSON.stringify([{ studentId: s.learner.studentId, tokenHash: hash() }]), p_op_key: randomUUID() } }),
   finish_access_cards: async (s) => ({ args: { p_issue_id: randomUUID(), p_done: [s.learner.studentId] } }),
+  internal_claim_provisioning: async () => ({ args: { p_provisioning_id: randomUUID() } }),
+  list_enabled_subjects: async () => ({ args: {}, listing: true }),
   internal_claim_card_password: async (s) => ({ args: { p_issue_id: randomUUID(), p_student_id: s.learner.studentId } }),
   internal_get_student_accounts: async (s) => ({ args: { p_student_ids: [s.learner.studentId] } }),
   internal_remember_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_auth_user_id: randomUUID() } }),

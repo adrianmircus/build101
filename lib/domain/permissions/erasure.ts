@@ -50,7 +50,6 @@ export const ERASURE_RULES = {
     nullifies: ["student_id", "op_identity"],
   },
   access_cards: { rule: "delete", why: "Sus tarjetas de acceso (su id y el hash del token); se van en cascada al borrar al estudiante." },
-  access_card_issues: { rule: "redact", why: "La emisión es del grupo; solo se saca el id del estudiante de student_ids, dentro de la supresión (la guardia lo permite solo ahí). Una emisión que quedaría sin estudiantes se borra entera." },
   student_needs: { rule: "delete", why: "Dato de salud." },
   student_need_events: { rule: "delete", why: "Historial de un dato de salud." },
   student_notes: { rule: "delete", why: "Notas privadas sobre el estudiante." },

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Created, DisplayName, Id, Limit, ReasonCode, Revision, type RpcSpec, Timestamp } from "../common";
+import { Created, DisplayName, Id, Limit, ReasonCode, Revision, type RpcSpec, SubjectId, Timestamp } from "../common";
 import { InstitutionCode, InvitedRole } from "../identity/entities";
 import { Username } from "../students/entities";
 import { AccountRow, InstitutionSummary, InvitationStatus, InvitationView, RateLimitKey, StaffRow } from "./entities";
@@ -16,7 +16,7 @@ export const TokenHashHex = z.string().regex(/^[0-9a-f]{64}$/);
 const WindowSeconds = z.int().min(1).max(86400);
 const EmailArg = z.string().trim().min(3).max(254);
 const Keys = z.array(RateLimitKey).min(1).max(4);
-const Sent = z.object({ id: Id, expiresAt: Timestamp, sentAt: Timestamp.nullable(), replayed: z.boolean() }).strict();
+const CreatedInvitation = z.object({ id: Id, expiresAt: Timestamp, sentAt: Timestamp.nullable(), revision: Revision, replayed: z.boolean() }).strict();
 
 const ProvisioningStatus = z.enum(["pending", "active", "failed", "deleted"]);
 const ProvisionedAccount = z
@@ -42,14 +42,15 @@ export const ACCOUNT_RPCS = {
   // Invitations (T2.3).
   create_invitation: {
     args: z.object({ p_institution_id: Id, p_email: EmailArg, p_role: InvitedRole, p_token_hash: TokenHash, p_op_key: Id }).strict(),
-    result: Sent,
+    result: CreatedInvitation,
   },
   resend_invitation: {
     args: z.object({ p_invitation_id: Id, p_revision: Revision, p_token_hash: TokenHash }).strict(),
     result: z.object({ id: Id, expiresAt: Timestamp, revision: Revision }).strict(),
   },
   revoke_invitation: { args: z.object({ p_invitation_id: Id, p_revision: Revision }).strict(), result: Created },
-  mark_invitation_sent: { args: z.object({ p_invitation_id: Id }).strict(), result: Created },
+  /** Marks the email of the token of that revision as sent; a rotated token gives CONFLICT revision_mismatch. */
+  mark_invitation_sent: { args: z.object({ p_invitation_id: Id, p_revision: Revision }).strict(), result: Created },
   list_invitations: {
     args: z.object({ p_institution_id: Id }).strict(),
     result: z.object({ items: z.array(InvitationView) }).strict(),
@@ -57,6 +58,11 @@ export const ACCOUNT_RPCS = {
   list_institution_staff: {
     args: z.object({ p_institution_id: Id }).strict(),
     result: z.object({ items: z.array(StaffRow) }).strict(),
+  },
+  /** The subjects with enabled = true, to choose the one of a new group. The Spanish name comes from the code catalog. */
+  list_enabled_subjects: {
+    args: z.object({}).strict(),
+    result: z.object({ items: z.array(z.object({ id: SubjectId }).strict()) }).strict(),
   },
   get_institution_summary: { args: z.object({ p_institution_id: Id }).strict(), result: InstitutionSummary },
   /** service_role: the page of an invitation, opened by someone with no session yet. */
@@ -78,12 +84,7 @@ export const ACCOUNT_RPCS = {
   /** service_role: only the admin command (T2.2); no actor, invited_by stays NULL. */
   internal_create_invitation: {
     args: z.object({ p_institution_id: Id, p_email: EmailArg, p_role: InvitedRole, p_token_hash: TokenHash }).strict(),
-    result: z.object({ id: Id, expiresAt: Timestamp }).strict(),
-  },
-  /** service_role: is there an account with that email, and whose is it (an invitation, a provisioning, or neither). */
-  internal_find_auth_user: {
-    args: z.object({ p_email: EmailArg }).strict(),
-    result: z.object({ userId: Id, invitationId: Id.nullable(), provisioningId: Id.nullable(), hasSignedIn: z.boolean() }).strict(),
+    result: z.object({ id: Id, expiresAt: Timestamp, revision: Revision }).strict(),
   },
   /** service_role: the atomic step of the signup by invitation: app_user, membership and acceptance in one transaction. */
   internal_finish_invitation_signup: {
@@ -130,6 +131,19 @@ export const ACCOUNT_RPCS = {
       .strict(),
   },
   /** service_role: up to 60 students, to know whose account to create or whose password to set. */
+  /** service_role: takes the lease of the provisioning row under lock; ok false (with retryAt) when someone else holds it or the row is deleted. */
+  internal_claim_provisioning: {
+    args: z.object({ p_provisioning_id: Id }).strict(),
+    result: z
+      .object({
+        ok: z.boolean(),
+        retryAt: Timestamp.nullable(),
+        status: ProvisioningStatus.nullable(),
+        authUserId: Id.nullable(),
+        leaseUntil: Timestamp.nullable(),
+      })
+      .strict(),
+  },
   internal_get_student_accounts: {
     args: z.object({ p_student_ids: z.array(Id).min(1).max(60) }).strict(),
     result: z.object({ items: z.array(ProvisionedAccount) }).strict(),
@@ -153,7 +167,7 @@ export const ACCOUNT_RPCS = {
   },
   internal_resolve_student_login: {
     args: z.object({ p_code: InstitutionCode, p_username: Username }).strict(),
-    result: z.object({ institutionFound: z.boolean(), authUserId: Id.nullable() }).strict(),
+    result: z.object({ institutionFound: z.boolean(), authEmail: z.string().nullable() }).strict(),
   },
   /** No student name: the card only completes the school and the username. */
   internal_resolve_access_card: {

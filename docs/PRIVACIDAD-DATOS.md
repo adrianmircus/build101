@@ -150,19 +150,19 @@ Una fila por cuenta de estudiante, para que `reconcile_accounts` no recree una c
 | `auth_user_id` | conserva | no personal | Es el id de la cuenta de Auth. Es no personal solo por el orden de la supresión (ver «Orden de la supresión»): la cuenta de Auth se borra en el paso 3, antes de cerrarla en el paso 4, y sin la cuenta el id no lleva a nadie. |
 | `status` | conserva | no personal | Pasa a `deleted`: es la marca que impide recrear la cuenta. |
 | `op_identity` | desvincula | no queda | Es el sha256 de grupo y username de la creación. Deja de ser «no personal»: los grupos y sus uuid siguen existiendo después de la supresión, así que quien conozca un username candidato puede calcular `sha256(grupo + ':' + username)` y comprobar si coincide. Queda en nulo al borrar al estudiante; se conservan la marca `deleted` y el `op_key`, que bastan para que `reconcile_accounts` no recree la cuenta. |
-| `op_key`, `attempts`, `error_code` | conserva | no personal | Control técnico del aprovisionamiento, sin texto libre. `op_key` es un uuid que genera el cliente y no se deriva de ningún dato del estudiante. |
+| `op_key`, `attempts`, `error_code`, `lease_until` | conserva | no personal | Control técnico del aprovisionamiento, sin texto libre. `op_key` es un uuid que genera el cliente y no se deriva de ningún dato del estudiante. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
 ### `access_card_issues`
 
-Regla: `redact`.
+Regla: `sin datos de estudiantes`.
 
-Una emisión de tarjetas: la operación con plazo que cambia contraseñas en Auth. Es del grupo; lista a los estudiantes de la emisión. Se borra con el grupo.
+Una emisión de tarjetas: la operación con plazo que cambia contraseñas en Auth. Es del grupo y no guarda ids de estudiantes: `op_identity` es el sha256 del grupo y del conjunto ordenado de estudiantes, solo para comparar repeticiones del mismo pedido. Se borra con el grupo.
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
-| `student_ids` | redacta | no personal | Se saca el id del estudiante del arreglo, solo dentro de la supresión (`app.begin_erasure`). Una emisión que quedaría sin estudiantes se borra entera. |
-| `institution_id`, `group_id`, `op_key`, `issued_by`, `status`, `lease_until`, `finished_at`, `id`, `created_at` | conserva | no personal | Control técnico de la operación y quién la hizo (un adulto). Sin datos del estudiante. |
+| `op_key`, `op_identity` | conserva | no personal | Identidad del pedido: un uuid del cliente y un resumen de grupo y conjunto de estudiantes. No contiene ningún id de estudiante y no permite recuperar la lista. |
+| `institution_id`, `group_id`, `issued_by`, `status`, `lease_until`, `finished_at`, `id`, `created_at` | conserva | no personal | Control técnico de la operación y quién la hizo (un adulto). |
 
 ### `access_cards`
 
@@ -174,6 +174,16 @@ La tarjeta de acceso de un estudiante: el QR que completa el colegio y el usuari
 |---|---|---|---|
 | `student_id`, `institution_id`, `issue_id`, `token_hash`, `status`, `activated_at`, `revoked_at` | borra | no queda | Dicen de qué estudiante es la tarjeta y cuándo se usó o se revocó. La clave foránea es `ON DELETE CASCADE`: se va con el estudiante, y solo así (una guardia impide borrarla a mano). |
 | `id`, `created_at` | borra | no queda | Identificador y fecha de la fila, sin dato propio. |
+
+### `invitation_spent_tokens`
+
+Regla: `sin datos de estudiantes`.
+
+Los hashes de invitación que ya no sirven (rotados, aceptados, revocados), para que no vuelvan a nacer vigentes. No se invita a estudiantes.
+
+| Campo | Qué pasa | Después | Por qué |
+|---|---|---|---|
+| `token_hash`, `invitation_id`, `institution_id`, `spent_at` | conserva | no personal | Un hash de 32 bytes, sin el token ni el correo, y la fecha en que dejó de servir. |
 
 ### `student_needs`
 

@@ -24,7 +24,12 @@ export async function listGroups(institutionId: string): Promise<GroupSummary[]>
   return unavailable(institutionId);
 }
 
-/** create_group (phase 1). The contract has no subjectId in this signature, but create_group needs a subject: see the notes. */
+/** The enabled subjects (list_enabled_subjects), for the group form; the Spanish name comes from the catalog in code. */
+export async function listSubjects(): Promise<{ id: string }[]> {
+  return unavailable();
+}
+
+/** create_group (phase 1). */
 export async function createGroup(input: CreateGroup): Promise<{ id: string }> {
   return unavailable(input);
 }
