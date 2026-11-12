@@ -257,11 +257,12 @@ La configuración de una versión (`config`) tiene perfiles y apoyos: dato de sa
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
-| `config` | individual: borra; compartida: conserva | personal | Perfiles, apoyos e intereses de la combinación. En una compartida es de varios estudiantes que siguen en la plataforma, así que sigue siendo dato de salud. Los intereses son texto libre y pueden nombrar a alguien. |
+| `config` | individual: borra; compartida: redacta | personal | JSON con perfiles, apoyos e intereses de la combinación. En una compartida se redacta el texto libre que nombre al estudiante (los intereses y cualquier otro texto del JSON). Los perfiles y apoyos de los demás destinatarios se conservan: siguen siendo dato de salud. |
 | `general_instructions` | individual: borra; compartida: redacta | personal | Instrucciones del profe; si nombran al estudiante, se redacta esa parte. |
 | `answer_mode`, `status`, `stale`, `error_code`, `approved_revision`, `instructions_revision` | individual: borra; compartida: conserva | no personal | Estado de la versión. No identifican a nadie y no hay forma de atribuirlos a un destinatario. |
 | `assessment_id`, `position`, `base_version_id`, `current_generation_id`, `archived_at` | individual: borra; compartida: conserva | no personal | Posición y referencias dentro del práctico: no dicen nada de un estudiante. |
-| `created_by`, `instructions_written_by` | individual: borra; compartida: conserva | no personal | Ids de profes. No de estudiantes. |
+| `created_by` | individual: borra; compartida: conserva | no personal | Id del profe que creó la versión. No es de un estudiante. |
+| `instructions_written_by` | individual: borra; compartida: conserva | no personal | Id de la generación que escribió las instrucciones. Es nulo si las escribió el profe a mano. No es un id de profe ni de estudiante. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | individual: borra; compartida: conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
 ### `version_exercises`
@@ -271,7 +272,7 @@ Regla: `by_version`.
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
 | `body` | individual: borra; compartida: redacta | personal | Texto adaptado a los perfiles de los destinatarios: deja deducir el perfil. |
-| `changes` | individual: borra; compartida: conserva | personal | Lista de adaptaciones aplicadas: deduce el perfil de los demás destinatarios. |
+| `changes` | individual: borra; compartida: redacta | personal | JSON con la lista de adaptaciones aplicadas y su motivo en texto libre. En una compartida se redacta el motivo que nombre al estudiante. Las adaptaciones de los demás destinatarios se conservan: deducen su perfil. |
 | `exercise_id`, `source_revision`, `status`, `error_code`, `current_generation_id`, `written_by_generation_id` | individual: borra; compartida: conserva | no personal | Referencias entre filas y estado de un conjunto cerrado: sin texto libre. |
 | `assessment_id`, `version_id`, `id`, `institution_id`, `created_at`, `updated_at`, `revision` | individual: borra; compartida: conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
@@ -283,7 +284,7 @@ Preguntas de mirada, sin la respuesta.
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
-| `stem`, `options` | individual: borra; compartida: conserva | personal | Texto de la pregunta y opciones. Dicen que la versión es para mirada, lo que deduce el perfil motriz. |
+| `stem`, `options` | individual: borra; compartida: redacta | personal | Texto de la pregunta y JSON con el texto de las opciones. En una compartida se redacta el texto que nombre al estudiante; el resto se conserva, porque dice que la versión es para mirada y deduce el perfil motriz de los demás. |
 | `position`, `version_exercise_id`, `version_id`, `id`, `institution_id`, `created_at`, `updated_at`, `revision` | individual: borra; compartida: conserva | no personal | Estructura y control. |
 
 ### `question_keys`

@@ -1,8 +1,8 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ERASURE_RULES, STUDENT_DATA_TABLES } from "./erasure";
-import { parseInventoryTables, parseSchemaColumns, parseSqlTableList, sliceBetween } from "./inventory";
+import { changedFields, documentedColumns, parseInventoryTables, parseSqlColumnList, parseSqlTableList, sliceBetween, type InventorySection } from "./inventory";
 import { APP_TABLES } from "./tables";
 
 // docs/PRIVACIDAD-DATOS.md (T1.9) against the schema, erasure.ts and the database test's literal list.
@@ -10,12 +10,6 @@ import { APP_TABLES } from "./tables";
 const root = join(__dirname, "..", "..", "..");
 const doc = readFileSync(join(root, "docs", "PRIVACIDAD-DATOS.md"), "utf8");
 const sqlTest = readFileSync(join(root, "supabase", "tests", "006_inventory.test.sql"), "utf8");
-const migrationsDir = join(root, "supabase", "migrations");
-const migrations = readdirSync(migrationsDir)
-  .filter((name) => name.endsWith(".sql"))
-  .sort()
-  .map((name) => readFileSync(join(migrationsDir, name), "utf8"));
-
 const sections = parseInventoryTables(doc);
 const byTable = new Map(sections.map((item) => [item.table, item]));
 const studentTables = new Set<string>(STUDENT_DATA_TABLES);
@@ -41,6 +35,40 @@ const REDACTABLE: Record<string, string[]> = {
   generations: ["inputs"],
 };
 
+// Exactly which fields are unlinked or redacted (for tables that follow a version, in a shared one).
+const CHANGED: Record<string, string> = {
+  "student_pseudonyms.student_id": "desvincula",
+  "account_provisioning.student_id": "desvincula",
+  "versions.config": "redacta",
+  "versions.general_instructions": "redacta",
+  "version_exercises.body": "redacta",
+  "version_exercises.changes": "redacta",
+  "version_questions.stem": "redacta",
+  "version_questions.options": "redacta",
+  "generations.inputs": "redacta",
+  "generation_outputs.output": "redacta",
+  "version_events.data": "redacta",
+  "version_events.result": "redacta",
+  "answer_key_revisions.content": "redacta",
+  "publications.content": "redacta",
+  "operations.merge_result": "redacta",
+  "group_analyses.pseudonym_map": "redacta",
+  "group_analyses.result": "redacta",
+  "assessment_exercises.body": "redacta",
+  "assessment_exercises.label": "redacta",
+  "assessments.topic": "redacta",
+  "assessments.general_instructions": "redacta",
+  "presets.name": "redacta",
+  "presets.config": "redacta",
+  "import_runs.id_map": "redacta",
+};
+
+function swap(source: InventorySection[], edit: { table: string; field: string; action: string }): InventorySection[] {
+  return source.map((item) => ({
+    ...item,
+    rows: item.table !== edit.table ? item.rows : item.rows.map((row) => (row.fields.includes(edit.field) ? { ...row, action: edit.action } : row)),
+  }));
+}
 function sorted(values: readonly string[]): string[] {
   return [...values].sort();
 }
@@ -66,18 +94,22 @@ describe("privacy inventory: tables", () => {
 });
 
 describe("privacy inventory: fields", () => {
-  const columns = parseSchemaColumns(migrations);
-
-  it("covers every column of every table, once", () => {
-    for (const table of APP_TABLES) {
-      const real = columns.get(table);
-      expect(real, `${table} is not in the migrations`).toBeDefined();
-      const documented = (byTable.get(table)?.rows ?? []).flatMap((row) => row.fields);
-      expect(new Set(documented).size, `${table}: a field appears twice`).toBe(documented.length);
-      expect(sorted(documented), table).toEqual(sorted(real ?? []));
-    }
+  it("lists exactly the columns the database has, once each", () => {
+    const real = parseSqlColumnList(sqlTest);
+    const documented = documentedColumns(sections);
+    expect(new Set(real).size, "a column appears twice in the SQL list").toBe(real.length);
+    expect(new Set(documented).size, "a field appears twice in the doc").toBe(documented.length);
+    expect(sorted(documented)).toEqual(sorted(real));
   });
 
+  it("fails when a column exists without being documented, or the other way around", () => {
+    const real = parseSqlColumnList(sqlTest);
+    const documented = documentedColumns(sections);
+    expect(sorted(documented)).not.toEqual(sorted([...real, "students.undocumented_personal_data"]));
+    expect(sorted(real)).not.toEqual(sorted([...documented, "students.invented"]));
+    const without = documented.filter((column) => column !== "student_needs.interests");
+    expect(sorted(without)).not.toEqual(sorted(real));
+  });
   it("explains every JSON column", () => {
     for (const [table, fields] of Object.entries(JSON_FIELDS)) {
       for (const field of fields) {
@@ -107,17 +139,26 @@ describe("privacy inventory: fields", () => {
     }
   });
 
+  it("unlinks and redacts exactly the expected fields", () => {
+    expect(changedFields(sections)).toEqual(CHANGED);
+  });
+
+  it("fails when an action moves to another field or a shared field is kept", () => {
+    const moved = swap(swap(sections, { table: "student_pseudonyms", field: "student_id", action: "conserva" }), { table: "student_pseudonyms", field: "id", action: "desvincula" });
+    expect(changedFields(moved)).not.toEqual(CHANGED);
+    expect(changedFields(swap(sections, { table: "version_questions", field: "stem", action: "individual: borra; compartida: conserva" }))).not.toEqual(CHANGED);
+    expect(changedFields(swap(sections, { table: "versions", field: "config", action: "individual: borra; compartida: conserva" }))).not.toEqual(CHANGED);
+    expect(changedFields(swap(sections, { table: "account_provisioning", field: "student_id", action: "conserva" }))).not.toEqual(CHANGED);
+  });
+
   it("matches each rule with what its fields do", () => {
     for (const [table, entry] of Object.entries(ERASURE_RULES)) {
       const actions = (byTable.get(table)?.rows ?? []).map((row) => row.action);
       if (entry.rule === "delete") expect(actions.every((item) => item === "borra"), `${table} deletes every field`).toBe(true);
       if (entry.rule === "by_version") expect(actions.every((item) => item.startsWith("individual: borra; ")), `${table}: an individual version goes whole`).toBe(true);
-      if (entry.rule === "redact") expect(actions, table).toContain("redacta");
-      if (entry.rule === "unlink") expect(actions, table).toContain("desvincula");
       if (entry.rule === "keep") expect(actions, table).toContain("conserva");
     }
   });
-
   it("redacts in immutable rows only the fields erasure mode lets through", () => {
     for (const [table, allowed] of Object.entries(REDACTABLE)) {
       for (const row of byTable.get(table)?.rows ?? []) {
