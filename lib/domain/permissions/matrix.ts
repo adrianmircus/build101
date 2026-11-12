@@ -80,6 +80,7 @@ const VERSIONS: Operation[] = [
   op({ rpc: "archive_version", ticket: "T1.4b", allow: STAFF }),
   op({ rpc: "list_versions", ticket: "T1.4b", allow: STAFF }),
   op({ rpc: "get_version", ticket: "T1.4b", allow: STAFF, note: "Auditada." }),
+  op({ rpc: "update_version_instructions", ticket: "T1.4c", allow: STAFF }),
   op({ rpc: "update_version_exercise", ticket: "T1.4c", allow: STAFF }),
   op({ rpc: "update_version_question", ticket: "T1.4c", allow: STAFF }),
   op({ rpc: "set_question_key", ticket: "T1.4c", allow: STAFF }),

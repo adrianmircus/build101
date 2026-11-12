@@ -6,7 +6,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 
 export type Database = {
   
-  "public": {
+  "api": {
           Tables: {
             [_ in never]: never
           }
@@ -227,6 +227,9 @@ export type Database = {
 "update_version_exercise":
 { Args: { "p_body": string,"p_op_id": string,"p_revision": number,"p_version_exercise_id": string }; Returns: Json
                            },
+"update_version_instructions":
+{ Args: { "p_general_instructions": string,"p_op_id": string,"p_revision": number,"p_version_id": string }; Returns: Json
+                           },
 "update_version_question":
 { Args: { "p_op_id": string,"p_options": Json,"p_question_id": string,"p_revision": number,"p_stem": string }; Returns: Json
                            }
@@ -242,7 +245,7 @@ export type Database = {
 
 type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "api">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
@@ -346,7 +349,7 @@ export type CompositeTypes<
   : never
 
 export const Constants = {
-  "public": {
+  "api": {
           Enums: {
             
           }

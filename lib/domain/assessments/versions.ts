@@ -49,6 +49,9 @@ export const Version = z
     assessmentId: Id,
     position: z.int().min(1),
     baseVersionId: Id.nullable(),
+    // The version's own copy: approved and published with the rest of its content.
+    generalInstructions: z.string().max(5000),
+    instructionsRevision: Revision,
     config: VersionConfig,
     answerMode: AnswerMode,
     status: z.enum(VERSION_STATUSES),

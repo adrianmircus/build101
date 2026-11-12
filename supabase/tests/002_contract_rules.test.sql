@@ -184,9 +184,9 @@ select is(pg_temp.error_of($$ select app.assert_revision(3, 4) $$),
   'P0001 CONFLICT revision_mismatch', 'a stale revision is a CONFLICT');
 select is(left(pg_temp.error_of($$ select app.raise_error('CONFLICT', 'El estudiante Juan') $$), 5),
   'P0004', 'a reason that is not a key is refused: no data reaches a message');
--- Stub today, implemented in phase 4: either way it answers through the convention.
+-- Stub today, implemented by T1.5a: either way it answers through the convention.
 select ok(
-  pg_temp.error_of($$ select public.publish_version(gen_random_uuid(), 1, gen_random_uuid()) $$)
+  pg_temp.error_of($$ select api.publish_version(gen_random_uuid(), 1, gen_random_uuid()) $$)
     in ('P0001 UNAVAILABLE not_implemented', 'P0001 FORBIDDEN no_session', 'P0001 NOT_FOUND not_found'),
   'RPCs answer through the same convention');
 

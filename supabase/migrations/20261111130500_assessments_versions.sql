@@ -63,6 +63,14 @@ create table app.versions (
   -- Neutral display order ("Versión 1"): a listing never needs the profile to name a version.
   position integer not null check (position >= 1),
   base_version_id uuid,
+  -- The version's own copy of the general instructions (adapted or not). It is part of what the
+  -- teacher approves and what a publication copies: changing the assessment's instructions marks
+  -- the version stale but never changes an approved text under the teacher (R3-18).
+  general_instructions text not null default '' check (char_length(general_instructions) <= 5000),
+  -- Provenance of the instructions, like version_exercises: their own revision and the generation
+  -- that wrote it (null when a person did). See written_by_generation_id there.
+  instructions_revision integer not null default 1 check (instructions_revision >= 1),
+  instructions_written_by uuid,
   -- Sensitive: { profiles, supports, interests, keep }. Validated by zod on every read.
   config jsonb not null default '{}' check (jsonb_typeof(config) = 'object'),
   answer_mode text not null default 'typed' check (answer_mode in ('typed', 'gaze', 'voice')),
@@ -99,8 +107,15 @@ create table app.version_exercises (
   status text not null default 'pending' check (status in ('pending', 'generating', 'ready', 'error')),
   error_code text check (error_code is null or error_code ~ '^[a-z][a-z0-9_]{1,62}$'),
   current_generation_id uuid,
+  -- The generation that wrote the current revision; null when a person did. An output of the
+  -- generation in force applies when the revision is the one it started from OR this column says
+  -- the generation itself made the later revisions (its text and its gaze questions land in any
+  -- order). A manual edit sets it to null, so later outputs of that generation are obsolete.
+  written_by_generation_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  -- Covers the text, the changes and this exercise's questions and keys: editing a question, its
+  -- options or its correct option bumps the parent exercise too (docs/contratos/fase-1.md, «Clave»).
   revision integer not null default 1 check (revision >= 1),
   unique (institution_id, id),
   unique (institution_id, version_id, id),

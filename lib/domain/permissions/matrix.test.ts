@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { RPC_NAMES, isInternalRpc } from "../rpc";
 import { PERMISSIONS, can, operationsFor } from "./matrix";
 import { MATRIX_ROLES } from "./roles";
-import { APP_TABLES, STUDENT_DATA_TABLES } from "./tables";
+import { ERASURE_RULES, STUDENT_DATA_TABLES } from "./erasure";
+import { APP_TABLES } from "./tables";
 
 describe("permissions matrix", () => {
   it("has exactly one row per RPC of the contract", () => {
@@ -47,8 +48,15 @@ describe("permissions matrix", () => {
 });
 
 describe("tables", () => {
-  it("lists each table once, and student data tables are a subset", () => {
+  it("lists each table once", () => {
     expect(new Set(APP_TABLES).size).toBe(APP_TABLES.length);
-    for (const table of STUDENT_DATA_TABLES) expect(APP_TABLES).toContain(table);
+  });
+
+  it("gives an erasure rule, with its reason, to every table with data about a student", () => {
+    expect(STUDENT_DATA_TABLES).toHaveLength(Object.keys(ERASURE_RULES).length);
+    for (const entry of Object.values(ERASURE_RULES)) expect(entry.why.length).toBeGreaterThan(5);
+    // Derived from a profile, so they must be there (adapted texts, raw outputs, keys).
+    const derived = ["version_exercises", "version_questions", "question_keys", "generation_outputs", "answer_keys", "answer_key_revisions", "operations"];
+    for (const table of derived) expect(STUDENT_DATA_TABLES, table).toContain(table);
   });
 });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AssessmentKind } from "../assessments/entities";
 import { AnswerMode, GraphSpec, OptionId } from "../assessments/versions";
 import { DisplayName, Id, SubjectId, Timestamp } from "../common";
+import { PROFILE_IDS } from "../students/needs";
 import { Aids, Answers, Choices, ExerciseResultStatus, Score } from "./entities";
 
 // What a student reads, one DTO per context (docs/PLATAFORMA.md, «Lo que ve el estudiante»).
@@ -81,14 +82,18 @@ export const StudentGrade = z
 export const StudentGrades = z.object({ grades: z.array(StudentGrade) }).strict();
 export type StudentGrades = z.infer<typeof StudentGrades>;
 
-/** keys: every object key allowed at any depth. idKeyed: objects whose keys are ids, not names. */
-export type DtoAllowlist = { keys: ReadonlySet<string>; idKeyed: ReadonlySet<string> };
+/**
+ * keys: every object key allowed at any depth. idKeyed: objects whose keys are ids, not names.
+ * ownContent: subtrees the student wrote (their answers): exempt from the forbidden-words check.
+ */
+export type DtoAllowlist = { keys: ReadonlySet<string>; idKeyed: ReadonlySet<string>; ownContent: ReadonlySet<string> };
 
 const GRAPH_KEYS = ["graph", "functions", "expr", "label", "points", "x", "y", "window", "xMin", "xMax", "yMin", "yMax"];
 const ANSWER_KEYS = ["text", "mode", "transcript", "graph"];
 
 function allowlist(keys: string[], idKeyed: string[] = []): DtoAllowlist {
-  return { keys: new Set(keys), idKeyed: new Set(idKeyed) };
+  // Whatever is keyed by id here is the student's own draft: answers and choices.
+  return { keys: new Set(keys), idKeyed: new Set(idKeyed), ownContent: new Set(idKeyed) };
 }
 
 export const STUDENT_DTO_ALLOWLISTS = {
@@ -109,6 +114,25 @@ export const STUDENT_DTO_ALLOWLISTS = {
     "exercises", "exerciseId", "label", "status",
   ]),
 } as const satisfies Record<string, DtoAllowlist>;
+
+export const STUDENT_DTO_SCHEMAS = {
+  student_home: StudentHome,
+  student_task_list: StudentTaskList,
+  student_task: StudentTask,
+  student_grades: StudentGrades,
+} as const;
+export type StudentDtoName = keyof typeof STUDENT_DTO_SCHEMAS;
+
+/**
+ * Words that name a profile, in the catalogue's ids and in Spanish. None may appear in text the
+ * server sends a student (an adapted exercise that says «adaptado para dislexia» is a leak). The
+ * leak test's fixtures avoid them; a false positive is fixed in the fixture, never by dropping a word.
+ */
+export const PROFILE_WORDS = [
+  ...PROFILE_IDS,
+  "tdah", "deficit de atencion", "tea", "autismo", "autista", "asperger", "dislexia", "dislexico", "disgrafia",
+  "motriz", "discapacidad", "perfil", "adaptado para", "adaptacion",
+] as const;
 
 /** Keys that must never reach a student, whatever the DTO: the leak test names them on failure. */
 export const NEVER_FOR_STUDENTS = [

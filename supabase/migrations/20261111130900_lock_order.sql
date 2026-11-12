@@ -115,3 +115,25 @@ begin
   return v_count;
 end
 $$;
+
+-- Every RPC that touches one attempt (start, save, submit, grade) goes through here: it resolves
+-- the assignment without a lock, then locks assignment -> attempt -> submission in that order,
+-- the same order publish follows. Returns false when the attempt does not exist. The grade row,
+-- when needed, is locked by the caller afterwards (it comes last in the order).
+create function app.lock_attempt_tree(p_attempt_id uuid) returns boolean
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_assignment_id uuid;
+begin
+  select t.assignment_id into v_assignment_id from app.assignment_attempts t where t.id = p_attempt_id;
+  if not found then
+    return false;
+  end if;
+  perform app.lock_assignments(array[v_assignment_id]);
+  perform 1 from app.assignment_attempts t where t.id = p_attempt_id for update;
+  perform 1 from app.submissions s where s.attempt_id = p_attempt_id for update;
+  return true;
+end
+$$;

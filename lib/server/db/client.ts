@@ -5,7 +5,8 @@ import { cookies } from "next/headers";
 import { readPublicDbEnv } from "./env";
 import type { Database } from "./types";
 
-export type SessionClient = SupabaseClient<Database>;
+// Every RPC lives in schema api, the only one PostgREST exposes (supabase/config.toml).
+export type SessionClient = SupabaseClient<Database, "api">;
 
 /**
  * Client that acts as the logged-in user: it reads the Supabase session from the request cookies, so
@@ -19,7 +20,8 @@ export async function createSessionClient(): Promise<SessionClient> {
   const { url, publishableKey } = readPublicDbEnv();
   const cookieStore = await cookies();
 
-  return createServerClient<Database>(url, publishableKey, {
+  return createServerClient<Database, "api">(url, publishableKey, {
+    db: { schema: "api" },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (toSet) => {

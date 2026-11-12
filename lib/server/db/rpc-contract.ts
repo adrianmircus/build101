@@ -7,7 +7,7 @@ import type { Database } from "./types";
 // database really has (types.ts, generated). If a migration renames a parameter or adds an RPC
 // without its schema, `npm run typecheck` fails here, before any repo is written against it.
 
-type DbFunctions = Database["public"]["Functions"];
+type DbFunctions = Database["api"]["Functions"];
 
 /** Names on one side and not on the other. Both must be never. */
 export type MissingInRegistry = Exclude<keyof DbFunctions, keyof typeof RPCS>;

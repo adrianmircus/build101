@@ -1,6 +1,7 @@
 // Every table of the contract, in schema app. None is reachable through the REST API: the matrix
 // test (T1.8) asks PostgREST for each one as every role and expects it not to exist, and the
-// inventory test (T1.9) checks that each one is in docs/PRIVACIDAD-DATOS.md.
+// inventory test (T1.9) checks that each one is in docs/PRIVACIDAD-DATOS.md. Which of them hold
+// data about a student, and what erasure does to each, is in erasure.ts.
 // 001_contract.test.sql keeps the database honest about the same list's properties.
 
 export const APP_TABLES = [
@@ -50,31 +51,3 @@ export const APP_TABLES = [
   "sandbox_sessions",
 ] as const;
 export type AppTable = (typeof APP_TABLES)[number];
-
-/** Tables whose rows are about a student (directly or by pseudonym): the inventory must say what erasure does to each. */
-export const STUDENT_DATA_TABLES: readonly AppTable[] = [
-  "students",
-  "enrollments",
-  "student_pseudonyms",
-  "account_provisioning",
-  "student_needs",
-  "student_need_events",
-  "student_notes",
-  "files",
-  "consents",
-  "version_recipients",
-  "versions",
-  "version_events",
-  "generations",
-  "publications",
-  "assignments",
-  "assignment_attempts",
-  "submissions",
-  "grades",
-  "group_analyses",
-  "feedback_events",
-  "audit_log",
-  "erasures",
-  "notifications",
-  "import_runs",
-];

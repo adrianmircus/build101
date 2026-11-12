@@ -1,6 +1,6 @@
 -- The shape every contract table and RPC must keep, whatever later tickets add.
 begin;
-select plan(17);
+select plan(19);
 
 -- Tables: born closed.
 select is_empty($$
@@ -94,37 +94,52 @@ select is_empty($$
      and not exists (select 1 from pg_attribute a where a.attrelid = c.conrelid and a.attname = 'institution_id')
 $$, 'no global table references an institutional one');
 
--- RPCs and helpers.
+-- History never rewrites itself: an append-only or immutable row cannot be the target of an FK
+-- action that updates it (SET NULL, SET DEFAULT, ON UPDATE CASCADE). Deleting the parent may
+-- delete it (CASCADE) or fail (NO ACTION); actors on those rows are kept as plain ids.
+select is_empty($$
+  select c.conname::text from pg_constraint c
+   where c.contype = 'f' and c.connamespace = 'app'::regnamespace
+     and (c.confdeltype in ('n', 'd') or c.confupdtype not in ('a', 'r'))
+     and exists (
+       select 1 from pg_trigger t
+        where t.tgrelid = c.conrelid
+          and t.tgfoid in ('app.append_only'::regproc, 'app.publications_guard'::regproc))
+$$, 'no FK action rewrites an append-only or immutable row');
+
+-- RPCs and helpers. RPCs live in api; nothing of ours is in public.
 select is_empty($$
   select p.oid::regprocedure::text from pg_proc p
-   where p.pronamespace in ('public'::regnamespace, 'app'::regnamespace)
-     and (p.prosecdef or p.pronamespace = 'app'::regnamespace)
+   where p.pronamespace = 'public'::regnamespace and pg_get_userbyid(p.proowner) = 'postgres'
+$$, 'postgres owns no function in public: RPCs live in api');
+
+select is_empty($$
+  select p.oid::regprocedure::text from pg_proc p
+   where p.pronamespace in ('api'::regnamespace, 'app'::regnamespace)
      and not coalesce('search_path=""' = any (p.proconfig), false)
-$$, 'every function in app and every SECURITY DEFINER in public pins search_path to empty');
+$$, 'every function in app and api pins search_path to empty');
 
 select is_empty($$
   select p.oid::regprocedure::text from pg_proc p
-   where p.pronamespace = 'public'::regnamespace and not p.prosecdef
-$$, 'every function in public is a SECURITY DEFINER RPC');
+   where p.pronamespace = 'api'::regnamespace and not p.prosecdef
+$$, 'every function in api is a SECURITY DEFINER RPC');
 
 select is_empty($$
   select p.oid::regprocedure::text from pg_proc p
-   where p.pronamespace = 'public'::regnamespace
+   where p.pronamespace = 'api'::regnamespace
      and p.prorettype <> 'jsonb'::regtype
 $$, 'every RPC returns jsonb');
 
 select is_empty($$
   select p.oid::regprocedure::text from pg_proc p
-   cross join (values ('anon'), ('public')) as r(role_name)
-   where p.pronamespace = 'public'::regnamespace
-     and (r.role_name = 'anon' and has_function_privilege('anon', p.oid, 'execute')
-       or r.role_name = 'public' and exists (
-            select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) as a where a.grantee = 0))
+   where p.pronamespace = 'api'::regnamespace
+     and (has_function_privilege('anon', p.oid, 'execute')
+       or exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) as a where a.grantee = 0))
 $$, 'no RPC is executable by anon or PUBLIC');
 
 select is_empty($$
   select p.oid::regprocedure::text from pg_proc p
-   where p.pronamespace = 'public'::regnamespace and p.proname like 'internal\_%'
+   where p.pronamespace = 'api'::regnamespace and starts_with(p.proname, 'internal_')
      and has_function_privilege('authenticated', p.oid, 'execute')
 $$, 'no internal_* RPC is executable by authenticated');
 

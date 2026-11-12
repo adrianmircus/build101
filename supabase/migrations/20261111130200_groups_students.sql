@@ -138,7 +138,9 @@ create table app.student_need_events (
   need_revision integer not null check (need_revision >= 1),
   before jsonb check (before is null or jsonb_typeof(before) = 'object'),
   after jsonb not null check (jsonb_typeof(after) = 'object'),
-  actor_user_id uuid references app.app_users (id) on delete set null,
+  -- Historical identity, no FK: an append-only row never changes, so deleting the account must
+  -- not rewrite it. The id stops resolving to anyone, as in audit_log.
+  actor_user_id uuid,
   created_at timestamptz not null default now(),
   unique (institution_id, id),
   unique (institution_id, op_id),

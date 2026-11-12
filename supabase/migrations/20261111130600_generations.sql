@@ -111,7 +111,7 @@ create table app.generation_outputs (
   version_id uuid not null,
   generation_id uuid not null,
   version_exercise_id uuid,
-  kind text not null check (kind in ('exercise', 'gaze_questions', 'answer_key')),
+  kind text not null check (kind in ('exercise', 'gaze_questions', 'instructions', 'answer_key')),
   output jsonb not null check (jsonb_typeof(output) = 'object'),
   expected_revision integer check (expected_revision is null or expected_revision >= 1),
   outcome text not null check (outcome in ('applied', 'obsolete', 'discarded')),
@@ -121,7 +121,8 @@ create table app.generation_outputs (
   unique nulls not distinct (generation_id, kind, version_exercise_id),
   foreign key (institution_id, version_id) references app.versions (institution_id, id) on delete cascade,
   foreign key (institution_id, version_id, generation_id) references app.generations (institution_id, version_id, id),
-  foreign key (institution_id, version_id, version_exercise_id) references app.version_exercises (institution_id, version_id, id)
+  foreign key (institution_id, version_id, version_exercise_id) references app.version_exercises (institution_id, version_id, id),
+  check ((kind in ('exercise', 'gaze_questions')) = (version_exercise_id is not null))
 );
 
 -- Append-only feedback of a version. op_id makes each operation write its event once.
@@ -138,7 +139,8 @@ create table app.version_events (
   -- edited: { body }; rejected: { reasons }; regenerated: { instruction }; recipients_changed:
   -- { added, removed } (sensitive). Validated by zod.
   data jsonb not null default '{}' check (jsonb_typeof(data) = 'object'),
-  actor_user_id uuid references app.app_users (id) on delete set null,
+  -- Historical identity, no FK: deleting the account must not rewrite an append-only row.
+  actor_user_id uuid,
   created_at timestamptz not null default now(),
   unique (institution_id, id),
   unique (institution_id, op_id),
@@ -171,8 +173,10 @@ create table app.answer_keys (
   foreign key (institution_id, version_id, current_generation_id) references app.generations (institution_id, version_id, id)
 );
 
--- Immutable revisions of a key (R3-3). Each is tied to the version revision, the revision of every
--- adapted exercise and the question ids it was made for. Attempts are graded against one of these.
+-- Immutable revisions of a key (R3-3). Each keeps the snapshot it was made for: the version
+-- revision, the revision of every adapted exercise and of every gaze question. A generated one
+-- keeps the snapshot of its generation's inputs, not today's, and becomes current only if that
+-- snapshot still matches. Attempts are graded against one of these.
 create table app.answer_key_revisions (
   id uuid primary key default gen_random_uuid(),
   institution_id uuid not null references app.institutions (id) on delete cascade,
@@ -183,11 +187,12 @@ create table app.answer_key_revisions (
   -- { exercises: { <version_exercise_id>: {...} }, questions: { <question_id>: "A" } }.
   content jsonb not null check (jsonb_typeof(content) = 'object'),
   version_revision integer not null check (version_revision >= 1),
-  -- { <version_exercise_id>: <revision> } at the moment this revision was made.
+  -- { <version_exercise_id>: <revision> } and { <question_id>: <revision> } of the snapshot.
   exercise_revisions jsonb not null check (jsonb_typeof(exercise_revisions) = 'object'),
-  question_ids uuid[] not null default '{}' check (app.is_uuid_set(question_ids)),
+  question_revisions jsonb not null default '{}' check (jsonb_typeof(question_revisions) = 'object'),
   generation_id uuid,
-  author_user_id uuid references app.app_users (id) on delete set null,
+  -- Historical identity, no FK: deleting the account must not rewrite an append-only row.
+  author_user_id uuid,
   created_at timestamptz not null default now(),
   unique (institution_id, id),
   unique (institution_id, version_id, id),
@@ -201,10 +206,38 @@ create table app.answer_key_revisions (
 alter table app.versions
   add foreign key (institution_id, id, current_generation_id) references app.generations (institution_id, version_id, id);
 alter table app.version_exercises
-  add foreign key (institution_id, version_id, current_generation_id) references app.generations (institution_id, version_id, id);
+  add foreign key (institution_id, version_id, current_generation_id) references app.generations (institution_id, version_id, id),
+  add foreign key (institution_id, version_id, written_by_generation_id) references app.generations (institution_id, version_id, id);
+alter table app.versions
+  add foreign key (institution_id, id, instructions_written_by) references app.generations (institution_id, version_id, id);
 alter table app.answer_keys
   add foreign key (institution_id, version_id, current_revision_id) references app.answer_key_revisions (institution_id, version_id, id),
   add foreign key (institution_id, version_id, approved_revision_id) references app.answer_key_revisions (institution_id, version_id, id);
+
+-- Idempotency of an operation on a version, checked UNDER the version lock (so two copies of the
+-- same request serialize and the second finds the first's event). Returns the event already
+-- written by this op_id, or null when there is none. The same op_id on another resource or
+-- another kind of operation is a CONFLICT, never a silent success. The unique (institution_id,
+-- op_id) index is the backstop: an RPC turns its unique_violation into the same CONFLICT.
+create function app.claim_version_op(p_institution_id uuid, p_op_id uuid, p_kind text, p_version_id uuid, p_version_exercise_id uuid)
+returns app.version_events
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_event app.version_events;
+begin
+  select * into v_event from app.version_events e where e.institution_id = p_institution_id and e.op_id = p_op_id;
+  if not found then
+    return null;
+  end if;
+  if v_event.kind <> p_kind or v_event.version_id <> p_version_id
+     or v_event.version_exercise_id is distinct from p_version_exercise_id then
+    perform app.raise_error('CONFLICT', 'op_key_reused');
+  end if;
+  return v_event;
+end
+$$;
 
 create trigger generations_touch before update on app.generations for each row execute function app.touch_row();
 create trigger generations_guard before update on app.generations for each row execute function app.generations_guard();

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { findLeaks } from "./leaks";
+import { checkStudentDto, findLeaks } from "./leaks";
 import {
   NEVER_FOR_STUDENTS,
+  PROFILE_WORDS,
   STUDENT_DTO_ALLOWLISTS,
   StudentGrades,
   StudentHome,
@@ -64,5 +65,39 @@ describe("findLeaks", () => {
   it("reports a forbidden value anywhere, such as another student's id", () => {
     const leaked = { ...examples.student_home, groups: [{ id: OTHER, name: "3.º A", subjectId: "math" }] };
     expect(findLeaks(leaked, STUDENT_DTO_ALLOWLISTS.student_home, { forbiddenValues: new Set([OTHER]) })).toEqual(["groups.0.id"]);
+  });
+
+  it("reports a forbidden value used as a key, even inside the student's own answers", () => {
+    const leaked = { ...examples.student_task, draft: { revision: 1, answers: { [OTHER]: { text: "x", mode: "typed" } }, choices: {} } };
+    expect(findLeaks(leaked, task, { forbiddenValues: new Set([OTHER]) })).toEqual([`draft.answers.${OTHER}`]);
+  });
+
+  it("reports a profile word inside text the server wrote, whatever its case and accents", () => {
+    const leaked = { ...examples.student_task, exercises: [{ id: ID, label: "1", body: "Ejercicio adaptado para DISLEXÍA" }] };
+    expect(findLeaks(leaked, task, { forbiddenWords: PROFILE_WORDS })).toEqual(["exercises.0.body"]);
+  });
+
+  it("does not flag the student's own answers for what they wrote", () => {
+    const own = { ...examples.student_task, draft: { revision: 1, answers: { [ID]: { text: "Tengo dislexia", mode: "typed" } }, choices: {} } };
+    expect(findLeaks(own, task, { forbiddenWords: PROFILE_WORDS })).toEqual([]);
+  });
+
+  it("finds no profile word in the fullest DTOs", () => {
+    const names = ["student_home", "student_task_list", "student_task", "student_grades"] as const;
+    for (const name of names) {
+      expect(checkStudentDto(name, examples[name], { forbiddenWords: PROFILE_WORDS }), name).toEqual([]);
+    }
+  });
+});
+
+describe("checkStudentDto", () => {
+  it("reports a structure that does not match the schema, such as a missing field", () => {
+    const withoutAids = { ...examples.student_task, aids: undefined };
+    expect(checkStudentDto("student_task", withoutAids)).toEqual(["schema: aids"]);
+  });
+
+  it("reports an extra key both as a schema error and as a leak", () => {
+    const leaked = { ...examples.student_home, profiles: ["motor"] };
+    expect(checkStudentDto("student_home", leaked)).toEqual(["schema: (root)", "profiles"]);
   });
 });

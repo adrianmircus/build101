@@ -18,7 +18,8 @@ create table app.publications (
   content jsonb not null check (jsonb_typeof(content) = 'object'),
   answer_mode text not null check (answer_mode in ('typed', 'gaze', 'voice')),
   aids jsonb not null default '{}' check (jsonb_typeof(aids) = 'object'),
-  published_by uuid references app.app_users (id) on delete set null,
+  -- Historical identity, no FK: a publication is immutable, deleting the account must not rewrite it.
+  published_by uuid,
   published_at timestamptz not null default now(),
   withdrawn_at timestamptz,
   created_at timestamptz not null default now(),
@@ -105,11 +106,28 @@ begin
      < array_position(array['opened', 'started', 'submitted'], old.status) then
     raise exception 'app.attempts_guard: an attempt never goes back' using errcode = 'P0004';
   end if;
-  if (new.publication_id <> old.publication_id or new.version_id <> old.version_id) and old.status <> 'opened' then
-    raise exception 'app.attempts_guard: a started attempt keeps its publication' using errcode = 'P0004';
+  if (new.publication_id <> old.publication_id or new.version_id <> old.version_id
+      or new.answer_key_revision_id is distinct from old.answer_key_revision_id) and old.status <> 'opened' then
+    raise exception 'app.attempts_guard: a started attempt keeps its publication and its key' using errcode = 'P0004';
   end if;
   if old.superseded_at is not null and new.superseded_at is distinct from old.superseded_at then
     raise exception 'app.attempts_guard: superseded is final' using errcode = 'P0004';
+  end if;
+  return new;
+end
+$$;
+
+-- An attempt is graded with its publication's key revision, never another one: the publication is
+-- immutable, so after start (when the publication freezes) the key cannot move either.
+create function app.attempts_key_matches() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.answer_key_revision_id is distinct from (
+    select p.answer_key_revision_id from app.publications p where p.id = new.publication_id
+  ) then
+    raise exception 'app.attempts_key_matches: the key revision is the publication''s' using errcode = 'P0004';
   end if;
   return new;
 end
@@ -206,6 +224,7 @@ create trigger publications_guard before update on app.publications for each row
 create trigger assignments_touch before update on app.assignments for each row execute function app.touch_row();
 create trigger assignment_attempts_touch before update on app.assignment_attempts for each row execute function app.touch_row();
 create trigger assignment_attempts_guard before update on app.assignment_attempts for each row execute function app.attempts_guard();
+create trigger assignment_attempts_key before insert or update on app.assignment_attempts for each row execute function app.attempts_key_matches();
 create trigger submissions_guard before update on app.submissions for each row execute function app.submissions_guard();
 create trigger submissions_touch before update on app.submissions for each row execute function app.touch_row();
 create trigger grades_touch before update on app.grades for each row execute function app.touch_row();

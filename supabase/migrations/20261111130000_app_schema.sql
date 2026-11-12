@@ -1,12 +1,19 @@
--- Contract, phase 1: the internal schema and the generic helpers every later migration uses.
+-- Contract, phase 1: the schemas and the generic helpers every later migration uses.
 --
--- Why a separate schema: PostgREST only exposes the schemas listed in config.toml (public and
--- graphql_public). Tables live in `app`, so even a GRANT added by mistake cannot turn into a REST
--- endpoint. Everything users reach is an RPC in public, SECURITY DEFINER, that authorizes the actor
--- itself. Helpers live in `app` too: they are building blocks for those RPCs, never endpoints.
+-- Three schemas, three roles:
+--   app     tables and helpers. Not exposed by PostgREST; no API role can even use it.
+--   api     the only schema PostgREST exposes (config.toml, and the hosted "Exposed schemas"
+--           setting). Only SECURITY DEFINER RPCs live here; each authorizes the actor itself.
+--   public  nothing of ours, and closed to anon and authenticated.
+--
+-- Why not public for the RPCs: Supabase's own creator role (supabase_admin) keeps default
+-- privileges in public that grant everything it creates there to anon and authenticated, and the
+-- migration role (postgres) cannot change another role's defaults. api is created by postgres, so
+-- only postgres's defaults apply in it, and those are closed below. 000_privileges fails if any
+-- object in api or app belongs to another role, or if any other role ever gets defaults there.
 
 create schema app;
-comment on schema app is 'Internal: tables and helpers. Not exposed by PostgREST. Reached only through RPCs in public.';
+comment on schema app is 'Internal: tables and helpers. Not exposed by PostgREST. Reached only through RPCs in api.';
 
 -- Nobody but the owner uses the schema. service_role is listed on purpose: the privileged server
 -- code goes through internal RPCs too, never through tables.
@@ -17,6 +24,35 @@ revoke all on schema app from public, anon, authenticated, service_role;
 alter default privileges for role postgres in schema app revoke all on tables from public, anon, authenticated, service_role;
 alter default privileges for role postgres in schema app revoke all on sequences from public, anon, authenticated, service_role;
 alter default privileges for role postgres in schema app revoke all on functions from public, anon, authenticated, service_role;
+
+-- The exposed schema. authenticated and service_role may look into it; what they can run is
+-- granted function by function, by the ticket that implements it. anon gets nothing at all.
+create schema api;
+comment on schema api is 'Exposed by PostgREST, alone. SECURITY DEFINER RPCs only. Owned by postgres.';
+revoke all on schema api from public, anon;
+grant usage on schema api to authenticated, service_role;
+alter default privileges for role postgres in schema api revoke all on tables from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema api revoke all on sequences from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema api revoke all on functions from public, anon, authenticated, service_role;
+
+-- public: whatever supabase_admin creates there with its open defaults (an extension, something
+-- from the dashboard) stays unreachable for the API roles, because they cannot use the schema at
+-- all. USAGE came from PUBLIC and from explicit grants; it is revoked from both and given back,
+-- explicitly, to every other role that had it, so only anon and authenticated lose it. A role
+-- Supabase adds later starts without it, which fails closed.
+do $$
+declare
+  v_role text;
+begin
+  revoke usage on schema public from public, anon, authenticated;
+  for v_role in
+    select r.rolname from pg_roles r
+     where r.rolname not in ('anon', 'authenticated') and r.rolname !~ '^pg_'
+  loop
+    execute format('grant usage on schema public to %I', v_role);
+  end loop;
+end
+$$;
 
 -- Error convention. Every expected failure of an RPC goes through here:
 --   SQLSTATE P0001, MESSAGE = one of the AppError codes, DETAIL = a snake_case reason key.

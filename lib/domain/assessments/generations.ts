@@ -16,7 +16,7 @@ export const TERMINAL_GENERATION_STATUSES = ["done", "failed", "cancelled", "sup
 export const OPERATION_KINDS = ["read_document", "read_syllabus", "analyze_group"] as const;
 export const OPERATION_STATUSES = ["running", "merging", "done", "failed", "cancelled"] as const;
 
-export const OUTPUT_KINDS = ["exercise", "gaze_questions", "answer_key"] as const;
+export const OUTPUT_KINDS = ["exercise", "gaze_questions", "instructions", "answer_key"] as const;
 export const OutputKind = z.enum(OUTPUT_KINDS);
 export const OUTPUT_OUTCOMES = ["applied", "obsolete", "discarded"] as const;
 export const OutputOutcome = z.enum(OUTPUT_OUTCOMES);
@@ -78,7 +78,10 @@ export const AnswerKeyContent = z
   .strict();
 export type AnswerKeyContent = z.infer<typeof AnswerKeyContent>;
 
-/** Immutable. Tied to the version revision, each exercise's revision and the question ids. */
+/**
+ * Immutable. Keeps the snapshot it was made for: the version revision and the revision of every
+ * adapted exercise and gaze question. It corresponds to a version when both maps equal today's.
+ */
 export const AnswerKeyRevision = z
   .object({
     id: Id,
@@ -87,7 +90,7 @@ export const AnswerKeyRevision = z
     content: AnswerKeyContent,
     versionRevision: Revision,
     exerciseRevisions: z.record(Id, Revision),
-    questionIds: z.array(Id),
+    questionRevisions: z.record(Id, Revision),
     createdAt: Timestamp,
   })
   .strict();

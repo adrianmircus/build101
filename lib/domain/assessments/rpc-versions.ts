@@ -48,6 +48,13 @@ const ContentWritten = z.object({ id: Id, revision: Revision, versionRevision: R
 const versionRevision = z.object({ p_version_id: Id, p_revision: Revision }).strict();
 
 export const VERSION_RPCS = {
+  update_version_instructions: {
+    // p_revision is the version's instructionsRevision.
+    args: z
+      .object({ p_version_id: Id, p_revision: Revision, p_general_instructions: z.string().max(5000), p_op_id: Id })
+      .strict(),
+    result: z.object({ id: Id, instructionsRevision: Revision, versionRevision: Revision }).strict(),
+  },
   create_version: {
     args: z
       .object({ p_assessment_id: Id, p_config: VersionConfig, p_answer_mode: AnswerMode, p_base_version_id: Id.optional() })

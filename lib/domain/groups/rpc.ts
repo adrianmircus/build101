@@ -5,7 +5,10 @@ import { GroupName, SchoolYear, StaffRole } from "./entities";
 // RPCs of groups (supabase/migrations/20261111131000_rpc_identity_groups.sql).
 // Writes are T1.2a; the projections are T1.2b. No projection here carries a sensitive field.
 
-/** What a group listing shows: no student, no profile. */
+/**
+ * What a group listing shows: no student, no profile. myRole is the caller's teaching role, null
+ * for an admin or an inclusion member who reads the group without teaching it.
+ */
 export const GroupSummary = z
   .object({
     id: Id,
@@ -14,7 +17,7 @@ export const GroupSummary = z
     schoolYear: z.int(),
     archivedAt: Timestamp.nullable(),
     revision: Revision,
-    myRole: StaffRole,
+    myRole: StaffRole.nullable(),
     studentCount: z.int().min(0),
   })
   .strict();
@@ -23,7 +26,7 @@ export type GroupSummary = z.infer<typeof GroupSummary>;
 export const GroupDetail = GroupSummary.omit({ myRole: true, studentCount: true })
   .extend({
     institutionId: Id,
-    myRole: StaffRole,
+    myRole: StaffRole.nullable(),
     staff: z.array(z.object({ userId: Id, displayName: DisplayName.nullable(), role: StaffRole }).strict()),
   })
   .strict();
