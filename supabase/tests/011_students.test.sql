@@ -333,7 +333,7 @@ select is((select count(*) from app.memberships where institution_id = pg_temp.i
 select is((select revision from app.account_provisioning where student_id = pg_temp.id('sl1')), 2, 'nor touch the provisioning');
 select is(pg_temp.link('sl1', 'stu_l2') ->> 'error', 'P0001 CONFLICT op_key_reused', 'another account for the same student is CONFLICT op_key_reused');
 select is(pg_temp.link('sl2', 'stu_l') ->> 'error', 'P0001 CONFLICT op_key_reused', 'the account of another student is CONFLICT op_key_reused');
-select is(pg_temp.link('sl2', 'teach') ->> 'error', 'P0001 INVALID user_is_staff', 'an account that is staff in the institution is INVALID user_is_staff');
+select is(pg_temp.link('sl2', 'teach') ->> 'error', 'P0001 CONFLICT role_conflict', 'an account that is staff in the institution is CONFLICT role_conflict');
 select is((select s.user_id from app.students s where s.id = pg_temp.id('sl2')), null, 'and the student stays unlinked');
 select is(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', gen_random_uuid(), pg_temp.id('stu_l2'))) ->> 'error', 'P0001 NOT_FOUND not_found',
   'an unknown student is NOT_FOUND');
