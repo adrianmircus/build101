@@ -5,7 +5,6 @@
 // longer apply.
 
 const legacyRules = {
-  "app/api/assessments/read-pdf/route.ts": {"complexity":12},
   "app/page.tsx": {"tiza/function-size":{"max":40,"componentMax":212},"max-lines":255},
   "components/assessments/AssessmentDetail.tsx": {"tiza/function-size":{"max":40,"componentMax":540},"complexity":81,"max-lines":573},
   "components/assessments/NewAssessment.tsx": {"tiza/function-size":{"max":40,"componentMax":337},"complexity":41,"max-lines":407},
