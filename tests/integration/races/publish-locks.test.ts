@@ -70,6 +70,43 @@ async function assignmentIds(r: Ready): Promise<string[]> {
   return rows.map((row) => row.id);
 }
 
+describe("race: publish_version takes the assessment first (T1.F5)", () => {
+  // The holder keeps ONLY the assessment. If publish_version took the version, an assignment or an enrollment before the
+  // assessment, or took the assessment late (FOR SHARE first and the status at the end, which two publications of the
+  // same assessment turn into a deadlock), the NOWAIT of the prober would fail on one of them.
+  for (const mode of ["for share", "for update"] as const) {
+    it(`waits on an assessment held ${mode} and has taken neither the version, nor assignments, attempts or enrollments`, async () => {
+      const r = await ready(1, 2);
+      await publishNow(r);
+      const assignments = await assignmentIds(r);
+      const held = await whileWaiting(
+        r,
+        async (holder) => {
+          await holder.rows(`select id from app.assessments where id = $1 ${mode}`, [r.o.assessmentId]);
+        },
+        async (prober) => {
+          const states: Record<string, string> = { version: await nowait(prober, VERSION_ROW, r.version) };
+          for (const [index, assignment] of assignments.entries()) {
+            states[`assignment${index}`] = await nowait(prober, ASSIGNMENT_ROW, assignment);
+            states[`attempt${index}`] = await nowait(prober, ATTEMPT_ROW, assignment);
+          }
+          for (const [index, student] of r.students.entries()) {
+            const rows = await prober.rows<{ free: boolean }>(
+              "select pg_try_advisory_xact_lock(hashtextextended('tiza.enrollment:' || $1::text || ':' || $2::text, 0)) as free",
+              [r.o.world.groupId, student],
+            );
+            states[`enrollment${index}`] = rows[0]?.free ? "free" : "locked";
+          }
+          return states;
+        },
+      );
+      expect(held.waitedOn).not.toBeNull();
+      expect(held.result).toBe("ok");
+      expect(held.states).toEqual({ version: "free", assignment0: "free", attempt0: "free", assignment1: "free", attempt1: "free", enrollment0: "free", enrollment1: "free" });
+    });
+  }
+});
+
 describe("race: publish_version takes its parents before its children", () => {
   it("waits on the version and has taken no assignment, no attempt and no enrollment lock, but already holds the assessment", async () => {
     const r = await ready(1, 2);

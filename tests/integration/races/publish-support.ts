@@ -21,6 +21,13 @@ export async function versionRevision(version: string): Promise<number> {
 /** A typed version with p_exercises adapted exercises ready, p_students recipients and its approval. */
 export async function ready(exercises: number, students: number): Promise<Ready> {
   const o = await original(exercises);
+  const ids: string[] = [];
+  for (let index = 0; index < students; index += 1) ids.push(await createStudent(o.world));
+  return readyOn(o, ids);
+}
+
+/** Another typed version, ready and approved, of the same original and for the given recipients (T1.F5: two versions of one assessment). */
+export async function readyOn(o: Original, students: string[]): Promise<Ready> {
   const actor = teacherOf(o.world);
   const version = idOf(
     await runRpc(actor, "create_version", { p_assessment_id: o.assessmentId, p_config: CONFIG, p_answer_mode: "typed", p_op_key: randomUUID(), p_base_version_id: null }),
@@ -33,11 +40,9 @@ export async function ready(exercises: number, students: number): Promise<Ready>
   for (const [index, id] of adapted.entries()) {
     idOf(await runRpc(actor, "update_version_exercise", { p_version_exercise_id: id, p_revision: 1, p_body: `Adaptado ${index + 1}`, p_op_id: randomUUID() }));
   }
-  const ids: string[] = [];
-  for (let index = 0; index < students; index += 1) ids.push(await createStudent(o.world));
-  idOf(await runRpc(actor, "set_version_recipients", { p_version_id: version, p_revision: await versionRevision(version), p_student_ids: ids, p_op_id: randomUUID() }));
+  idOf(await runRpc(actor, "set_version_recipients", { p_version_id: version, p_revision: await versionRevision(version), p_student_ids: students, p_op_id: randomUUID() }));
   idOf(await runRpc(actor, "approve_version", { p_version_id: version, p_revision: await versionRevision(version), p_op_id: randomUUID() }));
-  return { o, version, adapted, students: ids };
+  return { o, version, adapted, students };
 }
 
 /** The teacher publishes the version at its current revision (or the given one). */

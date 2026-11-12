@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { openSession, readRows } from "../support/db";
-import { heldRace, waitUntilBlocked } from "../support/race";
+import { heldRace, stampede, waitUntilBlocked } from "../support/race";
 import { describeOutcome, type Session } from "../support/session";
-import { teacherOf } from "../support/world";
-import { attemptOf, attemptRows, publishNow, publishStep, publishedIds, ready } from "./publish-support";
+import { createStudent, teacherOf } from "../support/world";
+import { attemptOf, attemptRows, publishNow, publishStep, publishedIds, ready, readyOn } from "./publish-support";
 import { at } from "./version-ops-support";
 
 // Publishing under concurrent writers (T1.5a). Each test keeps the first transaction open, starts the second on another
@@ -39,6 +39,40 @@ describe("race: publishing", () => {
     const attempts = await attemptRows(r.o.assessmentId);
     expect(attempts).toHaveLength(2);
     expect(attempts.every((row) => row.publication === publications[1] && row.number === 1)).toBe(true);
+  });
+
+  it("two publications of DIFFERENT versions of the same assessment at once: they queue on the assessment, none dies of a deadlock, and it ends published", async () => {
+    // T1.F5: both take the assessment at the start (FOR NO KEY UPDATE). With a FOR SHARE at the start and the update of the
+    // status at the end, both would hold the share and wait for each other: 40P01. Several rounds because the stampede is
+    // not deterministic; the deterministic proof of the order is in publish-locks.test.ts.
+    for (let round = 0; round < 3; round += 1) {
+      const first = await ready(1, 2);
+      // A student has one version per assessment: the second version has its own recipient, and what they share is the assessment.
+      const second = await readyOn(first.o, [await createStudent(first.o.world)]);
+      const outcomes = await stampede([await publishStep(first), await publishStep(second)]);
+      expect(outcomes.map(describeOutcome)).toEqual(["ok", "ok"]);
+      expect(await publishedIds(first.version)).toHaveLength(1);
+      expect(await publishedIds(second.version)).toHaveLength(1);
+      const status = await readRows<{ status: string }>("select status from app.assessments where id = $1", [first.o.assessmentId]);
+      expect(at(status, 0).status).toBe("published");
+      expect(await attemptRows(first.o.assessmentId)).toHaveLength(3);
+    }
+  });
+
+  it("an archive that commits first: the publication waits for the assessment and is INVALID assessment_archived, and the assessment stays archived", async () => {
+    const r = await ready(1, 1);
+    const archive = {
+      actor: teacherOf(r.o.world),
+      rpc: "archive_assessment",
+      args: { p_assessment_id: r.o.assessmentId, p_revision: 1 },
+    };
+    const held = await heldRace(archive, await publishStep(r));
+    expect(held.waitedOn).not.toBeNull();
+    expect(describeOutcome(held.first)).toBe("ok");
+    expect(describeOutcome(held.second)).toBe("P0001 INVALID assessment_archived");
+    const status = await readRows<{ status: string }>("select status from app.assessments where id = $1", [r.o.assessmentId]);
+    expect(at(status, 0).status).toBe("archived");
+    expect(await publishedIds(r.version)).toHaveLength(0);
   });
 
   it("an edit of the version that commits first: the publication of the old revision is a CONFLICT and publishes nothing", async () => {

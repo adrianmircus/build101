@@ -237,7 +237,7 @@ select is((select count(*) from app.publications where version_id = pg_temp.id('
 select is((select concat_ws('|', p.version_revision = v.revision, p.answer_mode, p.answer_key_revision_id is null, p.aids, p.published_by = pg_temp.id('teach'), p.withdrawn_at is null,
                              p.op_key is not null, p.op_identity ~ '^[0-9a-f]{64}$', p.op_attempts)
              from app.publications p join app.versions v on v.id = p.version_id where p.id = pg_temp.id('p1')),
-  't|typed|t|{"readAloud": false}|t|t|t|t|2', 'it copies the approved revision, the mode and the aids, with no key; who published it; not withdrawn; and its op_key, identity and attempts');
+  't|typed|t|{"readAloud": true}|t|t|t|t|2', 'it copies the approved revision, the mode and the aids, with no key; who published it; not withdrawn; and its op_key, identity and attempts');
 select is((select p.assessment_id = a.id from app.publications p join app.assessments a on a.id = pg_temp.id('a_vt') where p.id = pg_temp.id('p1')), true, 'of its assessment');
 select is((select p.content ->> 'generalInstructions' from app.publications p where p.id = pg_temp.id('p1')), 'Instrucciones de la versión', 'the copy carries the instructions of the VERSION, not the assessment''s');
 select is((select (p.content -> 'exercises') from app.publications p where p.id = pg_temp.id('p1')),
@@ -298,7 +298,7 @@ select pg_temp.as_user('teach', format($q$ select api.update_version_config(%L, 
 select pg_temp.edit_ex('x_vd1', 'Adaptado de nuevo');
 select pg_temp.apv('vd');
 select pg_temp.keepp('pd', pg_temp.pub('vd'));
-select is((select aids from app.publications where id = pg_temp.id('pd')), '{"readAloud": true}'::jsonb, 'a configuration with dyslexia turns read aloud on, without naming the profile');
+select is((select aids from app.publications where id = pg_temp.id('pd')), '{"readAloud": true}'::jsonb, 'a configuration with dyslexia has read aloud on, without naming the profile (T1.F5: it is on for everybody, see 020c)');
 
 -- ---------------------------------------------------------------------------------------------
 -- The checks, one by one. Each answers its code and reason and changes nothing.
