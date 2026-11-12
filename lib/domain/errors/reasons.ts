@@ -83,6 +83,9 @@ export const REASON_MESSAGES: Record<string, string> = {
   invalid_output: "La respuesta de la IA no se puede guardar así. Probá de nuevo.",
   invalid_status: "El estado con el que se quiso cerrar la generación no es válido.",
   invalid_error_code: "El código de error de la generación no es válido.",
+  invalid_answer_key: "La clave no tiene el formato correcto o nombra ejercicios o preguntas que no son de esta versión. Recargá y volvé a intentar.",
+  key_incomplete: "Falta la respuesta correcta de alguna pregunta. Elegila antes de guardar la clave.",
+  no_answer_key: "Todavía no hay una clave de respuestas para esta versión.",
   recipient_in_other_version: "Alguno de los estudiantes ya recibe otra versión de este práctico. Sacalo de esa versión primero.",
 };
 

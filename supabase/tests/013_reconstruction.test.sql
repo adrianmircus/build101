@@ -17,7 +17,7 @@
 -- test fails until it does, comparing full signatures). The student_* reads are not here: a teacher
 -- cannot call them, and 023_student_dto and the leak test cover them.
 begin;
-select plan(45);
+select plan(47);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -117,6 +117,10 @@ declare
   k text; v jsonb;
 begin
   if p_val is null or jsonb_typeof(p_val) = 'null' then return true; end if;
+  -- "map": an object whose keys are ids (the content of an answer key); the leak detector still reads its values.
+  if p_spec = '"map"'::jsonb then
+    return jsonb_typeof(p_val) = 'object';
+  end if;
   if jsonb_typeof(p_spec) = 'string' then
     return jsonb_typeof(p_val) in ('string', 'number', 'boolean');
   elsif jsonb_typeof(p_spec) = 'object' then
@@ -199,6 +203,10 @@ insert into specs (name, spec) values
   ('approve_version', '{"id":"s","approvedRevision":"s"}'),
   ('reject_version', '{"eventId":"s"}'),
   ('list_versions', '{"items":[{"approved":"s","exerciseCount":"s","id":"s","position":"s","readyCount":"s","revision":"s","stale":"s","status":"s"}]}'),
+  ('edit_answer_key', '{"revisionId":"s","number":"s"}'),
+  ('confirm_answer_key', '{"revisionId":"s","number":"s"}'),
+  ('approve_answer_key', '{"answerKeyId":"s","approvedRevisionId":"s","revision":"s"}'),
+  ('get_answer_key', '{"id":"s","versionId":"s","status":"s","stale":"s","approvedRevisionId":"s","revision":"s","current":{"id":"s","number":"s","source":"s","content":{"exercises":"map","questions":"map"},"versionRevision":"s","exerciseRevisions":"map","questionRevisions":"map","instructionsRevision":"s","createdAt":"s"}}'),
   ('get_assessment', '{"assessment":{"createdAt":"s","dueAt":"s","generalInstructions":"s","groupId":"s","id":"s","kind":"s","publishAt":"s","revision":"s","sourceFileId":"s","status":"s","subjectId":"s","topic":"s"},"exercises":[{"body":"s","id":"s","label":"s","position":"s","revision":"s","topicId":"s"}]}');
 
 -- A control: the detector does flag the audited read of the same data, so a green result below is not a blind detector.
@@ -284,13 +292,23 @@ select pg_temp.call('update_version_question', 'api.update_version_question(uuid
 select pg_temp.call('set_question_key', 'api.set_question_key(uuid,text,integer)', format('select api.set_question_key(%L, ''B'', null)', pg_temp.id('qb')));
 select pg_temp.call('approve_version', 'api.approve_version(uuid,integer,uuid)', format('select api.approve_version(%L, 5, gen_random_uuid())', pg_temp.id('vb')));
 select pg_temp.call('reject_version', 'api.reject_version(uuid,integer,text[],uuid)', format('select api.reject_version(%L, 5, ''{no_adapta}'', gen_random_uuid())', pg_temp.id('vb')));
+-- The answer key (T1.4e): the content of the key and the revisions of the snapshot are maps keyed by id; the keys
+-- of everything else are literal. get_answer_key is not audited and carries no student, profile or recipient.
+select pg_temp.call('edit_answer_key', 'api.edit_answer_key(uuid,jsonb,uuid)', format($$ select api.edit_answer_key(%L, jsonb_build_object('exercises', jsonb_build_object(%L, jsonb_build_object('answer', 'Respuesta 3', 'rubric', 'Criterio')), 'questions', jsonb_build_object(%L, 'B')), null) $$, pg_temp.id('vb'), pg_temp.id('xb'), pg_temp.id('qb')));
+select pg_temp.call('confirm_answer_key', 'api.confirm_answer_key(uuid,uuid)', format('select api.confirm_answer_key(%L, %L)', pg_temp.id('vb'), (select res ->> 'revisionId' from answers where name = 'edit_answer_key')));
+select pg_temp.call('approve_answer_key', 'api.approve_answer_key(uuid,uuid)', format('select api.approve_answer_key(%L, %L)', pg_temp.id('vb'), (select res ->> 'revisionId' from answers where name = 'confirm_answer_key')));
+select pg_temp.call('get_answer_key', 'api.get_answer_key(uuid)', format('select api.get_answer_key(%L)', pg_temp.id('vb')));
 select pg_temp.call('archive_assessment','api.archive_assessment(uuid,integer)', format('select api.archive_assessment(%L, 3)', pg_temp.id('aa')));
 
 select is((select count(*) from answers where res ? 'error'), 0::bigint, 'every call worked: none answered an error (so each answer is a real one)');
 select is((select string_agg(a.name, ',' order by a.name) from answers a where pg_temp.verdict(a.res, (select sp.spec from specs sp where sp.name = a.name)) <> ''), null::text,
   'no answer carries a profile, a support, an interest, a review date, an interface, a configuration, inputs or a recipient, and each one conforms to its keys');
 select is((select count(*) from answers a join specs sp on sp.name = a.name), (select count(*) from answers), 'every answer has its spec of keys');
-select is((select count(*) from answers), 42::bigint, 'forty-two RPCs were called');
+select is((select count(*) from answers), 46::bigint, 'forty-six RPCs were called');
+select is((select res -> 'current' -> 'content' -> 'questions' ->> pg_temp.id('qb')::text from answers where name = 'get_answer_key'), 'B',
+  'the answer key read did carry the correct option and the exercise answer (so there was something to leak)');
+select is(pg_temp.verdict((select res || '{"config": {}}'::jsonb from answers where name = 'get_answer_key'), (select spec from specs where name = 'get_answer_key')), 'key,shape',
+  'control: a configuration smuggled into the answer key read is flagged');
 select is(jsonb_array_length((select res -> 'items' from answers where name = 'list_group_students')), 4,
   'and the roster answer did list the students that have needs (so there was something to leak)');
 select is((select string_agg(k, ',' order by k) from (select jsonb_object_keys(res -> 'items' -> 0) k from answers where name = 'list_group_students') t),
