@@ -2,7 +2,6 @@ import "server-only";
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
 import { createSessionClient } from "../db/client";
-import { unavailable } from "../unavailable";
 
 // Every call to Supabase Auth made with the session of the user (the publishable key and the cookies), the only way
 // layers.mjs lets db/client.ts be used. T2.1 writes getClaims; T2.3 writes the rest. None logs an email, a password or a
@@ -99,7 +98,11 @@ export type SessionTokens = { accessToken: string; refreshToken: string };
  * after internal_bind_student_session said ok. The tokens never leave the server except in those cookies, and are never logged.
  */
 export async function setSessionTokens(tokens: SessionTokens): Promise<void> {
-  return unavailable(tokens);
+  const client = await createSessionClient();
+  const { error } = await client.auth.setSession({ access_token: tokens.accessToken, refresh_token: tokens.refreshToken });
+  if (!error) return;
+  // The session is already registered (the bind said ok) but there is no cookie to carry it: the student tries again, with a new one.
+  throw isOutage(error) ? outage(error) : new AppError("UNAVAILABLE", OUTAGE);
 }
 
 /** updateUser({ password }) for the current session. A password Auth does not accept is INVALID; with no session, FORBIDDEN. */
