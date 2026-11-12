@@ -1,3 +1,5 @@
+import { execSync } from "node:child_process";
+import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ruleIdsFor, ruleMessages } from "./lint.helper";
 
@@ -6,7 +8,8 @@ const LEGACY = "tiza/no-legacy-imports";
 const SERVER_ONLY = "tiza/require-server-only";
 const STATIC = "tiza/static-import-target";
 
-const imp = (source: string) => `import { x } from "${source}";\nexport const y = x;\n`;
+// JSON.stringify keeps backslashes in the specifier instead of turning them into escape sequences.
+const imp = (source: string) => `import { x } from ${JSON.stringify(source)};\nexport const y = x;\n`;
 
 describe("aliases are normalized like relative paths", () => {
   it.each([
@@ -24,6 +27,145 @@ describe("aliases are normalized like relative paths", () => {
     expect(ids).not.toContain(LAYERS);
     expect(ids).not.toContain(LEGACY);
   });
+});
+
+describe("aliases and paths are canonicalized like TypeScript does", () => {
+  it.each([
+    ["lib/domain/a.ts", "@//lib/server/log", LAYERS],
+    ["lib/domain/a.ts", "@///lib/server/log", LAYERS],
+    ["lib/domain/a.ts", "@/lib\\server\\log", LAYERS],
+    ["lib/domain/a.ts", "@\\/lib//domain/../server\\log", LAYERS],
+    ["lib/domain/a.ts", "..\\server\\log", LAYERS],
+    ["lib/domain/a.ts", "..//server//log", LAYERS],
+    ["lib/server/services/x.ts", "@//lib/server/db//client", LAYERS],
+    ["lib/server/services/x.ts", "..\\db\\client", LAYERS],
+    ["lib/domain/a.ts", "@///lib/groups/store", LEGACY],
+    ["lib/domain/a.ts", "@/lib\\groups\\store", LEGACY],
+    ["lib/server/a.ts", "..\\groups\\store", LEGACY],
+    ["lib/server/a.ts", "..//groups//store", LEGACY],
+  ])("%s importing %s trips %s", async (file, source, rule) => {
+    expect(await ruleIdsFor(imp(source), file)).toContain(rule);
+  });
+  it("covers namespace imports and dynamic import() too", async () => {
+    const ns = 'import * as x from "@//lib/server/log";\nexport const y = x;\n';
+    expect(await ruleIdsFor(ns, "lib/domain/a.ts")).toContain(LAYERS);
+    const dyn = 'export const m = () => import("@///lib/groups/store");\n';
+    expect(await ruleIdsFor(dyn, "lib/domain/a.ts")).toContain(LEGACY);
+  });
+  it("still accepts harmless spellings", async () => {
+    const ids = await ruleIdsFor(imp("@//lib\\domain/../errors"), "lib/domain/a.ts");
+    expect(ids).not.toContain(LAYERS);
+    expect(ids).not.toContain(LEGACY);
+  });
+});
+
+describe("paths that leave the repo and come back in", () => {
+  // The worktree folder name is part of the spelling, so build it from the current repo.
+  const repo = basename(process.cwd());
+  it.each([
+    [`@/../${repo}/lib/server/log`, LAYERS],
+    [`@/../${repo}/lib/groups/store`, LEGACY],
+    [`../../../${repo}/lib/server/log`, LAYERS],
+    // Absolute paths, in both separator styles.
+    [`${process.cwd().replaceAll("\\", "/")}/lib/server/log`, LAYERS],
+    [`${process.cwd().replaceAll("/", "\\")}\\lib\\groups\\store`, LEGACY],
+  ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
+    expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
+  });
+});
+
+// A package specifier with ../ walks out of node_modules into the repo; TypeScript follows it.
+describe("package paths that climb back into the repo", () => {
+  it.each([
+    ["typescript/../../lib/server/log", LAYERS],
+    ["typescript/../../lib/groups/store", LEGACY],
+    ["@types/node/../../../lib/server/log", LAYERS],
+  ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
+    expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
+  });
+  it("still treats real packages as packages", async () => {
+    const ids = await ruleIdsFor(imp("zod"), "lib/domain/a.ts");
+    expect(ids).not.toContain(LAYERS);
+    expect(ids).not.toContain(LEGACY);
+  });
+});
+
+describe("every way TypeScript can name a module", () => {
+  it("judges .mts files too, and rejects them in the layers", async () => {
+    const code = 'export type P = import("@/lib/server/log").LogFields;\n';
+    const messages = await ruleMessages(code, "lib/domain/probe.mts");
+    expect(messages.some((m) => m.includes("solo admiten .ts y .tsx"))).toBe(true);
+    expect(await ruleIdsFor(code, "lib/domain/probe.mts")).toContain(LAYERS);
+  });
+  it.each([
+    ['export type P = import("typescript/../../lib/server/log").LogFields;\n', LAYERS],
+    ['export type P = import("@/lib/groups/store").X;\n', LEGACY],
+    ['import log = require("../server/log");\nexport const y = log;\n', LAYERS],
+    ['/// <reference path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference preserve="true" path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference PATH="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference preserve=">" path="../server/log.ts" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference path="../groups/store.ts" />\nexport const y = 1;\n', LEGACY],
+    ['/// <reference types="react" />\nexport type View = React.ReactNode;\n', LAYERS],
+    ['/// <reference types="next" />\nexport const y = 1;\n', LAYERS],
+    ['/// <reference types="@types/react" />\nexport type View = React.ReactNode;\n', LAYERS],
+    ['/// <reference types="@types/react-dom" />\nexport const y = 1;\n', LAYERS],
+    ['export type V = import("../../node_modules/@types/react/index").ReactNode;\n', LAYERS],
+    ['import type { ReactNode } from "react/jsx-runtime";\nexport type V = ReactNode;\n', LAYERS],
+    ['import { callAction } from "@/lib/client/callAction";\nexport const save = callAction;\n', LAYERS],
+    // No import at all: @types/react's global namespace.
+    ["export type View = React.ReactNode;\n", "no-restricted-syntax"],
+    ["export type El = React.JSX.Element;\n", "no-restricted-syntax"],
+  ])("lib/domain/a.ts with %j trips %s", async (code, rule) => {
+    expect(await ruleIdsFor(code, "lib/domain/a.ts")).toContain(rule);
+  });
+});
+
+// Windows resolves these to the same file (case-insensitive, device prefixes, 8.3 short names), and so
+// does TypeScript there. On Linux they point to files that don't exist, so tsc fails and they aren't a bypass.
+describe.runIf(process.platform === "win32")("Windows spellings of the same file", () => {
+  const cwd = process.cwd().replaceAll("\\", "/");
+  const shortCwd = () => {
+    const out = execSync(`for %I in ("${process.cwd()}") do @echo %~sI`, { shell: "cmd.exe" }).toString().trim();
+    return out.replaceAll("\\", "/");
+  };
+  it.each([
+    ["@/LIB/server/log", LAYERS],
+    ["@/Lib/groups/store", LEGACY],
+    [`//?/${cwd}/lib/server/log`, LAYERS],
+    [`//./${cwd}/lib/groups/store`, LEGACY],
+    // TypeScript's extension substitution: a written .js/.jsx/.d.ts names the .ts source.
+    ["@/LIB/server/log.js", LAYERS],
+    ["@/Lib/groups/store.js", LEGACY],
+    ["../SERVER/log.jsx", LAYERS],
+    ["@/LIB/server/log.d.ts", LAYERS],
+    [`//?/${cwd}/LIB/server/log.js`, LAYERS],
+    // No such file: Windows would still match case-insensitively, so it's judged in lowercase.
+    ["@/LIB/Server/missing.js", LAYERS],
+  ])("lib/domain/a.ts importing %s trips %s", async (source, rule) => {
+    expect(await ruleIdsFor(imp(source), "lib/domain/a.ts")).toContain(rule);
+  });
+  it("follows 8.3 short names", async () => {
+    expect(await ruleIdsFor(imp(`${shortCwd()}/lib/server/log`), "lib/domain/a.ts")).toContain(LAYERS);
+  });
+});
+
+describe(".tsx in new code", () => {
+  const dyn = "declare const name: string;\nexport const m = () => import(name);\n";
+  it("is an error anywhere in lib/domain, with an explanation", async () => {
+    const code = "export const a = 1;\n";
+    expect(await ruleIdsFor(code, "lib/domain/a.tsx")).toContain("no-restricted-syntax");
+    expect((await ruleMessages(code, "lib/domain/deep/a.tsx")).some((m) => m.includes("no admite archivos .tsx"))).toBe(true);
+    expect(await ruleIdsFor(code, "lib/domain/a.ts")).not.toContain("no-restricted-syntax");
+  });
+  it.each(["lib/domain/a.tsx", "lib/server/a.tsx", "lib/client/a.tsx", "tests/a.tsx"])(
+    "applies the new-code rules to %s",
+    async (file) => {
+      expect(await ruleIdsFor(dyn, file)).toContain(STATIC);
+      const any = "export const f = (x: any) => x as number;\n";
+      expect(await ruleIdsFor(any, file)).toContain("@typescript-eslint/no-explicit-any");
+    },
+  );
 });
 
 describe("dynamic import() targets", () => {

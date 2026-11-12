@@ -12,7 +12,7 @@ Rama: `plataforma/fase-0`, desde `0244c25`.
 | T0.1 Vitest | Mergeado | `plataforma/t0-1-vitest` | backend (Sonnet) | Sin migraciones | Umbral de cobertura (80 %) activo, sin archivos todavía en lib/domain y lib/server/services |
 | T0.2 ESLint | Mergeado | `plataforma/t0-2-eslint` | backend (Sonnet) | Sin migraciones | 34 archivos viejos en `eslint/legacy.mjs`, congelados en su tamaño |
 | T0.3 Playwright | Mergeado | `plataforma/t0-3-playwright` | frontend (Sonnet) | Sin migraciones | Encontró bugs de la demo (ver abajo) |
-| T0.4 CI | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | Sin probar en GitHub hasta el primer push |
+| T0.4 CI | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | Corre en los PR y en main: se prueba en GitHub con el primer PR |
 | T0.5 Esqueleto de capas | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | |
 | T0.6 Compuerta de Netlify | Código listo, falta medir | `plataforma/t0-6-netlify-gate` (temporal, no se mergea) | backend (Sonnet), orquestador y usuario | Sin migraciones | Necesita un deploy preview en Netlify |
 | T0.7 AGENTS.md y README | Hecho | `plataforma/fase-0` | Orquestador | Sin migraciones | |
@@ -45,6 +45,16 @@ Un revisor que no vio el código encontró 1 hallazgo alto, 9 medios y 8 bajos. 
 4. **Ya no se reproduce** con el arreglo del 1: con movimiento reducido el recorrido llega al final. Queda como prueba normal.
 5. **Abierto.** En el celular, una transición de vista abortada por un cambio de tamaño de pantalla deja una promesa rechazada sin atrapar («Transition was aborted because of invalid state»). Es la única entrada permitida en `ALLOWED_CONSOLE_ERRORS`.
 
+### Revisión de Codex
+
+Codex revisó la fase en 15 rondas (`docs/revisiones/fase-0-codex-1.md` a `-3.md`):
+
+- **Ronda 1:** 7 hallazgos. Logs que podían llevar datos de estudiantes en el mensaje del error, validación fuera del manejo de errores, alias que esquivaban las capas, `server-only` como import de tipo, y dos pruebas de Playwright demasiado blandas. Los arreglaron T0.9a, T0.9b y T0.9c.
+- **Rondas 2 a 14:** cada una encontró otra forma de escribir un import que pasaba las reglas de capas. La solución final no mira el texto: le pregunta a TypeScript qué archivo carga cada import (`ts.resolveModuleName` y `ts.preProcessFile`) y juzga ese archivo o ese paquete.
+- **Ronda 15:** pasada sistemática por cada regla de capas con las formas normales de importar. Todas bloqueadas. Veredicto: listo para push.
+
+Quedan como baja, aceptadas: accesos deliberados por cadenas al namespace global de React (`Reflect.get(globalThis, "React")`).
+
 ### Cierre
 
-`npm run check` en verde sobre `plataforma/fase-0`: tipos (con el chequeo estricto), lint, 372 pruebas, build y Playwright en escritorio y celular. Falta T0.6, que necesita un deploy en Netlify.
+`npm run check` en verde sobre `plataforma/fase-0`: tipos (con el chequeo estricto), lint, 454 pruebas, build y Playwright (19 pasan, 3 salteadas por proyecto). Pusheada al fork el 11/11/2026. Falta T0.6, que necesita un deploy en Netlify.

@@ -10,6 +10,9 @@ export default defineConfig({
   timeout: 120_000,
   expect: { timeout: 20_000 },
   fullyParallel: true,
+  // Each test drives a full production build with axe on every screen: more than two browsers at once
+  // starve a laptop (crashed targets, EPERM on close) and the run stops meaning anything.
+  workers: 2,
   forbidOnly: CI,
   retries: CI ? 1 : 0,
   reporter: CI ? [["html"], ["github"]] : "list",
