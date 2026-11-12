@@ -41,48 +41,35 @@ export function parseInventoryTables(doc: string): InventorySection[] {
     }));
 }
 
-function splitTopLevel(text: string): string[] {
-  const parts: string[] = [];
-  let level = 0;
-  let current = "";
-  for (const char of text) {
-    level += char === "(" ? 1 : char === ")" ? -1 : 0;
-    if (char === "," && level === 0) {
-      parts.push(current);
-      current = "";
-    } else current += char;
-  }
-  return [...parts, current];
-}
-
-function tableBody(sql: string, from: number): string {
-  let depth = 1;
-  let index = from;
-  while (depth > 0 && index < sql.length) {
-    const char = sql[index++];
-    depth += char === "(" ? 1 : char === ")" ? -1 : 0;
-  }
-  return sql.slice(from, index - 1);
-}
-
-/** Column names of each `create table app.<name> (...)`. Migrations do not alter tables later. */
-export function parseSchemaColumns(migrations: string[]): Map<string, string[]> {
-  const columns = new Map<string, string[]>();
-  for (const raw of migrations) {
-    const sql = raw.replace(/--[^\n]*/g, "");
-    for (const match of sql.matchAll(/create table app\.([a-z_]+)\s*\(/g)) {
-      const names = splitTopLevel(tableBody(sql, (match.index ?? 0) + match[0].length))
-        .map((part) => part.trim())
-        .filter((part) => part !== "" && !/^(unique|foreign|check|primary|constraint|exclude)\b/i.test(part))
-        .map((part) => /^"?([a-z_][a-z0-9_]*)"?/.exec(part)?.[1] ?? "");
-      columns.set(match[1] ?? "", names);
-    }
-  }
-  return columns;
-}
-
 /** The literal table list of 006_inventory between its markers. */
 export function parseSqlTableList(sql: string): string[] {
   const list = sliceBetween(sql, "-- inventory:begin", "-- inventory:end");
   return [...list.matchAll(/\(\s*'([a-z_]+)'\s*\)/g)].map((match) => match[1] ?? "");
+}
+
+/** The literal `table.column` list of 006_inventory between its markers. */
+export function parseSqlColumnList(sql: string): string[] {
+  const list = sliceBetween(sql, "-- columns:begin", "-- columns:end");
+  return [...list.matchAll(/\(\s*'([a-z_]+\.[a-z_]+)'\s*\)/g)].map((match) => match[1] ?? "");
+}
+
+/** Every `table.column` the doc lists. */
+export function documentedColumns(sections: InventorySection[]): string[] {
+  return sections.flatMap((item) => item.rows.flatMap((row) => row.fields.map((field) => `${item.table}.${field}`)));
+}
+
+/**
+ * The fields the doc says are unlinked or redacted, as `table.field` to action. For tables that
+ * follow a version, the action is the one for a shared version (an individual one goes whole).
+ */
+export function changedFields(sections: InventorySection[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const item of sections) {
+    for (const row of item.rows) {
+      const action = row.action.replace(/^individual: [a-z]+; compartida: /, "");
+      if (action !== "desvincula" && action !== "redacta") continue;
+      for (const field of row.fields) result[`${item.table}.${field}`] = action;
+    }
+  }
+  return result;
 }
