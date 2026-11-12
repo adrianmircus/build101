@@ -61,12 +61,12 @@ export const CreatedAccountRow = z
   .strict();
 export type CreatedAccountRow = z.infer<typeof CreatedAccountRow>;
 
-/** What happened to a student who got no card: busy (another lease in force), uncertain (Auth did not confirm) or failed. */
-export const CARD_OUTCOMES = ["busy", "uncertain", "failed"] as const;
-export const OtherCard = z.object({ studentId: Id, outcome: z.enum(CARD_OUTCOMES), retryAt: Timestamp.nullable() }).strict();
+/** Why a student got no card: failed (his account could not be created) or uncertain (Auth did not confirm; try again right away). */
+export const CARD_OUTCOMES = ["failed", "uncertain"] as const;
+export const OtherCard = z.object({ studentId: Id, outcome: z.enum(CARD_OUTCOMES) }).strict();
 export type OtherCard = z.infer<typeof OtherCard>;
 
-/** The cards that came out well, and the others with why (retryAt when they have to wait). */
+/** The cards that came out well, and the others with why. */
 export const IssuedCards = z.object({ cards: z.array(AccessCard), others: z.array(OtherCard) }).strict();
 export type IssuedCards = z.infer<typeof IssuedCards>;
 

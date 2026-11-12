@@ -4,7 +4,7 @@ import { upsertAppUser } from "@/lib/server/repos/admin/identity";
 import { linkStudentUser } from "@/lib/server/repos/admin/students";
 import { callRpc, type RpcDb } from "@/lib/server/repos/rpc";
 import { readRows } from "../integration/support/db";
-import { createUserClient, type TestClient } from "./clients";
+import { createMagicLinkClient, type TestClient } from "./clients";
 
 // A student is always made through create_student, as the logged-in teacher of the group (which
 // also enrolls them). Only a test that needs a logged-in student links an Auth account, with the
@@ -41,25 +41,21 @@ export type LoggedInStudent = TestStudent & {
   client: TestClient;
 };
 
-/** The student with an Auth account linked and a session open: what their own browser sees. */
+/**
+ * The student with an Auth account linked and a session open: what their own browser sees. The account has the fixed shape of
+ * phase 2 (docs/contratos/fase-2.md): its id is remembered in the provisioning row before it is created, its email is
+ * <id>@estudiantes.usetiza.app, and it has no password. The session comes from a magic link, as the login of the students does.
+ */
 export async function createLoggedInStudent(admin: AdminClient, student: TestStudent): Promise<LoggedInStudent> {
-  const email = `${randomUUID()}@tiza-test.example`;
-  const password = `${randomUUID()}${randomUUID()}`;
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
+  const userId = randomUUID();
+  const email = `${userId}@estudiantes.usetiza.app`;
+  await readRows("update app.account_provisioning set auth_user_id = $2 where student_id = $1", [student.id, userId]);
+  const { error } = await admin.auth.admin.createUser({ id: userId, email, email_confirm: true });
   if (error) throw new Error(`No se pudo crear el usuario de prueba (${error.code ?? "sin código"}).`);
 
-  const userId = data.user.id;
   await upsertAppUser(admin, userId, student.displayName);
   await linkStudentUser(admin, student.id, userId);
-  return {
-    ...student,
-    userId,
-    client: await createUserClient({ email, password }),
-  };
+  return { ...student, userId, client: await createMagicLinkClient(admin, email) };
 }
 
 export type AuditRow = {

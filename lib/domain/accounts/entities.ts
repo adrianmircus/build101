@@ -99,8 +99,6 @@ export const AccountRow = z
     accountStatus: AccountStatus,
     hasSignedIn: z.boolean(),
     lastCardAt: Timestamp.nullable(),
-    /** The end of the lease while it is in force, else null: from when another card can be made. */
-    nextCardAt: Timestamp.nullable(),
   })
   .strict();
 export type AccountRow = z.infer<typeof AccountRow>;

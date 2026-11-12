@@ -131,15 +131,14 @@ const ACCOUNTS: Operation[] = [
   op({ rpc: "accept_invitation", ticket: "T2.3", since: 2, note: "Lo acepta quien tiene el correo de la invitación, sea cual sea su rol; ningún rol de la matriz lo es. Un estudiante no puede." }),
   op({ rpc: "list_taken_usernames", ticket: "T2.5a", since: 2, allow: ANY_TEACHER, note: "Admin o profe de la institución." }),
   op({ rpc: "list_group_accounts", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group", "sandbox_anonymous"], note: "No dice nada del perfil." }),
-  op({ rpc: "begin_access_cards", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group"], note: "No en un sandbox." }),
-  op({ rpc: "finish_access_cards", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group"], note: "Solo el mismo actor que empezó la emisión; otra persona recibe NOT_FOUND." }),
-  op({ rpc: "internal_claim_account", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "issue_access_cards", ticket: "T2.5a", since: 2, allow: ["admin", "teacher_of_group"], note: "No en un sandbox. Una sola transacción: tarjetas, credenciales y sesiones." }),
+  op({ rpc: "internal_get_student_login", ticket: "T2.5a", since: 2 }),
+  op({ rpc: "internal_bind_student_session", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_get_student_accounts", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_remember_student_account", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_fail_student_account", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_list_unfinished_accounts", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_find_institution", ticket: "T2.5a", since: 2 }),
-  op({ rpc: "internal_resolve_student_login", ticket: "T2.5a", since: 2 }),
   op({ rpc: "internal_resolve_access_card", ticket: "T2.5a", since: 2 }),
 ];
 

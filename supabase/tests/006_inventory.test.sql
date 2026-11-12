@@ -26,6 +26,7 @@ select set_eq(
     ('account_provisioning'),
     ('access_card_issues'),
     ('access_cards'),
+    ('student_credentials'),
     ('invitation_tokens'),
     ('student_needs'),
     ('student_need_events'),
@@ -90,9 +91,9 @@ select set_eq(
   $$
     values
     -- columns:begin
-    ('access_card_issues.created_at'), ('access_card_issues.finished_at'), ('access_card_issues.group_id'), ('access_card_issues.id'), ('access_card_issues.institution_id'), ('access_card_issues.issued_by'), ('access_card_issues.op_identity'), ('access_card_issues.op_key'), ('access_card_issues.status'),
-    ('access_cards.activated_at'), ('access_cards.created_at'), ('access_cards.id'), ('access_cards.institution_id'), ('access_cards.issue_id'), ('access_cards.revoked_at'), ('access_cards.status'), ('access_cards.student_id'), ('access_cards.token_hash'),
-    ('account_provisioning.attempts'), ('account_provisioning.auth_user_id'), ('account_provisioning.created_at'), ('account_provisioning.error_code'), ('account_provisioning.id'), ('account_provisioning.institution_id'), ('account_provisioning.lease_holder'), ('account_provisioning.lease_until'), ('account_provisioning.op_identity'), ('account_provisioning.op_key'), ('account_provisioning.revision'), ('account_provisioning.status'), ('account_provisioning.student_id'), ('account_provisioning.updated_at'),
+    ('access_card_issues.created_at'), ('access_card_issues.group_id'), ('access_card_issues.id'), ('access_card_issues.institution_id'), ('access_card_issues.issued_by'), ('access_card_issues.op_identity'), ('access_card_issues.op_key'),
+    ('access_cards.created_at'), ('access_cards.id'), ('access_cards.institution_id'), ('access_cards.issue_id'), ('access_cards.revoked_at'), ('access_cards.status'), ('access_cards.student_id'), ('access_cards.token_hash'),
+    ('account_provisioning.attempts'), ('account_provisioning.auth_user_id'), ('account_provisioning.created_at'), ('account_provisioning.error_code'), ('account_provisioning.id'), ('account_provisioning.institution_id'), ('account_provisioning.op_identity'), ('account_provisioning.op_key'), ('account_provisioning.revision'), ('account_provisioning.status'), ('account_provisioning.student_id'), ('account_provisioning.updated_at'),
     ('answer_key_revisions.answer_key_id'), ('answer_key_revisions.author_user_id'), ('answer_key_revisions.content'), ('answer_key_revisions.created_at'), ('answer_key_revisions.exercise_revisions'), ('answer_key_revisions.generation_id'), ('answer_key_revisions.id'), ('answer_key_revisions.institution_id'), ('answer_key_revisions.instructions_revision'), ('answer_key_revisions.number'), ('answer_key_revisions.question_revisions'), ('answer_key_revisions.source'), ('answer_key_revisions.version_id'), ('answer_key_revisions.version_revision'),
     ('answer_keys.approved_revision_id'), ('answer_keys.created_at'), ('answer_keys.current_generation_id'), ('answer_keys.current_revision_id'), ('answer_keys.error_code'), ('answer_keys.id'), ('answer_keys.institution_id'), ('answer_keys.revision'), ('answer_keys.stale'), ('answer_keys.status'), ('answer_keys.updated_at'), ('answer_keys.version_id'),
     ('app_users.created_at'), ('app_users.display_name'), ('app_users.id'), ('app_users.revision'), ('app_users.updated_at'),
@@ -127,7 +128,8 @@ select set_eq(
     ('student_need_events.actor_user_id'), ('student_need_events.after'), ('student_need_events.before'), ('student_need_events.created_at'), ('student_need_events.id'), ('student_need_events.institution_id'), ('student_need_events.kind'), ('student_need_events.need_revision'), ('student_need_events.op_id'), ('student_need_events.student_id'),
     ('student_needs.created_at'), ('student_needs.id'), ('student_needs.institution_id'), ('student_needs.interests'), ('student_needs.profiles'), ('student_needs.review_due_on'), ('student_needs.revision'), ('student_needs.student_id'), ('student_needs.supports'), ('student_needs.updated_at'),
     ('student_notes.archived_at'), ('student_notes.author_user_id'), ('student_notes.body'), ('student_notes.created_at'), ('student_notes.id'), ('student_notes.institution_id'), ('student_notes.op_identity'), ('student_notes.op_key'), ('student_notes.revision'), ('student_notes.student_id'), ('student_notes.updated_at'),
-    ('student_pseudonyms.created_at'), ('student_pseudonyms.id'), ('student_pseudonyms.institution_id'), ('student_pseudonyms.student_id'), ('student_pseudonyms.unlinked_at'),
+    ('student_pseudonyms.created_at'), ('student_pseudonyms.id'), ('student_pseudonyms.institution_id'), ('student_pseudonyms.student_id'), ('student_credentials.created_at'), ('student_credentials.id'), ('student_credentials.institution_id'), ('student_credentials.issue_id'), ('student_credentials.password_hash'), ('student_credentials.student_id'), ('student_credentials.updated_at'), ('student_credentials.version'),
+    ('student_pseudonyms.unlinked_at'),
     ('student_rpc_windows.created_at'), ('student_rpc_windows.id'), ('student_rpc_windows.txid'),
     ('students.archived_at'), ('students.created_at'), ('students.display_name'), ('students.id'), ('students.institution_id'), ('students.interface'), ('students.revision'), ('students.updated_at'), ('students.user_id'), ('students.username'),
     ('subjects.created_at'), ('subjects.enabled'), ('subjects.id'),

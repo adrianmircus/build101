@@ -24,17 +24,17 @@ type AccountsRpc =
   | "accept_invitation"
   | "list_taken_usernames"
   | "list_group_accounts"
-  | "begin_access_cards"
-  | "finish_access_cards"
-  | "internal_claim_account"
+  | "issue_access_cards"
   | "internal_get_student_accounts"
   | "internal_remember_student_account"
   | "internal_fail_student_account"
   | "internal_list_unfinished_accounts"
   | "internal_find_institution"
-  | "internal_resolve_student_login"
+  | "internal_get_student_login"
+  | "internal_bind_student_session"
   | "internal_resolve_access_card";
 
+const PASSWORD_HASH = `scrypt$15$8$1$${Buffer.alloc(16, 1).toString("base64")}$${Buffer.alloc(64, 2).toString("base64")}`;
 const hash = () => createHash("sha256").update(randomUUID()).digest("hex");
 const bytea = () => `\\x${hash()}`;
 const email = () => `invitada-${randomUUID().slice(0, 8)}@correo-de-prueba.invalid`;
@@ -57,15 +57,14 @@ export const ACCOUNT_CALLS: CallsOf<AccountsRpc> = {
   accept_invitation: async () => ({ args: { p_token_hash: bytea() } }),
   list_taken_usernames: async (s) => ({ args: { p_institution_id: s.institution.id, p_bases: ["luciaf"] }, listing: true }),
   list_group_accounts: async (s) => ({ args: { p_group_id: s.groupId }, listing: true, target: s.learner.studentId }),
-  begin_access_cards: async (s) => ({ args: { p_group_id: s.groupId, p_cards: JSON.stringify([{ studentId: s.learner.studentId, tokenHash: hash() }]), p_op_key: randomUUID() } }),
-  finish_access_cards: async (s) => ({ args: { p_issue_id: randomUUID(), p_done: [s.learner.studentId] } }),
-  internal_claim_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_holder: randomUUID() } }),
+  issue_access_cards: async (s) => ({ args: { p_group_id: s.groupId, p_cards: JSON.stringify([{ studentId: s.learner.studentId, tokenHash: hash(), passwordHash: PASSWORD_HASH }]), p_op_key: randomUUID() } }),
   list_enabled_subjects: async () => ({ args: {}, listing: true }),
   internal_get_student_accounts: async (s) => ({ args: { p_student_ids: [s.learner.studentId] } }),
-  internal_remember_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_holder: randomUUID(), p_auth_user_id: randomUUID() } }),
-  internal_fail_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_holder: randomUUID(), p_error_code: "email_taken" } }),
+  internal_remember_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_auth_user_id: randomUUID() } }),
+  internal_fail_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_error_code: "email_taken" } }),
   internal_list_unfinished_accounts: async () => ({ args: { p_limit: 10 } }),
   internal_find_institution: async () => ({ args: { p_code: "colegio-de-prueba" } }),
-  internal_resolve_student_login: async () => ({ args: { p_code: "colegio-de-prueba", p_username: "luciaf" } }),
+  internal_bind_student_session: async () => ({ args: { p_auth_user_id: randomUUID(), p_session_id: randomUUID(), p_version: 1 } }),
+  internal_get_student_login: async () => ({ args: { p_code: "colegio-de-prueba", p_username: "luciaf" } }),
   internal_resolve_access_card: async () => ({ args: { p_token_hash: bytea() } }),
 };

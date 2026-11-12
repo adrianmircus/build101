@@ -44,9 +44,6 @@ export type Database = {
 "archive_version":
 { Args: { "p_revision": number,"p_version_id": string }; Returns: Json
                            },
-"begin_access_cards":
-{ Args: { "p_cards": Json,"p_group_id": string,"p_op_key": string }; Returns: Json
-                           },
 "confirm_answer_key":
 { Args: { "p_base_revision_id": string,"p_version_id": string }; Returns: Json
                            },
@@ -73,9 +70,6 @@ export type Database = {
                            },
 "enroll_student":
 { Args: { "p_group_id": string,"p_student_id": string }; Returns: Json
-                           },
-"finish_access_cards":
-{ Args: { "p_done": (string)[],"p_issue_id": string }; Returns: Json
                            },
 "get_answer_key":
 { Args: { "p_version_id": string }; Returns: Json
@@ -107,8 +101,8 @@ export type Database = {
 "internal_add_membership":
 { Args: { "p_institution_id": string,"p_role": string,"p_user_id": string }; Returns: Json
                            },
-"internal_claim_account":
-{ Args: { "p_holder": string,"p_provisioning_id": string }; Returns: Json
+"internal_bind_student_session":
+{ Args: { "p_auth_user_id": string,"p_session_id": string,"p_version": number }; Returns: Json
                            },
 "internal_create_generation":
 { Args: { "p_inputs": Json,"p_kind": string,"p_op_key": string,"p_profiles_hash": string,"p_profiles_revision": string,"p_prompt_version": string,"p_requested_by"?: string,"p_required_jobs": number,"p_target_exercise_id"?: string,"p_version_id": string }; Returns: Json
@@ -120,7 +114,7 @@ export type Database = {
 { Args: { "p_email": string,"p_institution_id": string,"p_role": string,"p_token_hash": string }; Returns: Json
                            },
 "internal_fail_student_account":
-{ Args: { "p_error_code": string,"p_holder": string,"p_provisioning_id": string }; Returns: Json
+{ Args: { "p_error_code": string,"p_provisioning_id": string }; Returns: Json
                            },
 "internal_find_institution":
 { Args: { "p_code": string }; Returns: Json
@@ -136,6 +130,9 @@ export type Database = {
                            },
 "internal_get_student_accounts":
 { Args: { "p_student_ids": (string)[] }; Returns: Json
+                           },
+"internal_get_student_login":
+{ Args: { "p_code": string,"p_username": string }; Returns: Json
                            },
 "internal_link_student_user":
 { Args: { "p_student_id": string,"p_user_id": string }; Returns: Json
@@ -156,13 +153,10 @@ export type Database = {
 { Args: { "p_generation_id": string,"p_kind": string,"p_output": Json,"p_version_exercise_id"?: string }; Returns: Json
                            },
 "internal_remember_student_account":
-{ Args: { "p_auth_user_id": string,"p_holder": string,"p_provisioning_id": string }; Returns: Json
+{ Args: { "p_auth_user_id": string,"p_provisioning_id": string }; Returns: Json
                            },
 "internal_resolve_access_card":
 { Args: { "p_token_hash": string }; Returns: Json
-                           },
-"internal_resolve_student_login":
-{ Args: { "p_code": string,"p_username": string }; Returns: Json
                            },
 "internal_revoke_membership":
 { Args: { "p_membership_id": string }; Returns: Json
@@ -172,6 +166,9 @@ export type Database = {
                            },
 "internal_upsert_app_user":
 { Args: { "p_display_name"?: string,"p_user_id": string }; Returns: Json
+                           },
+"issue_access_cards":
+{ Args: { "p_cards": Json,"p_group_id": string,"p_op_key": string }; Returns: Json
                            },
 "list_assessment_attempts":
 { Args: { "p_assessment_id": string }; Returns: Json

@@ -27,6 +27,17 @@ export async function verifyRecoveryOtp(tokenHash: string): Promise<boolean> {
   return unavailable(tokenHash);
 }
 
+/** The tokens of a session that our server obtained without cookies (see exchangeMagicLink in repos/admin/auth-users.ts). */
+export type SessionTokens = { accessToken: string; refreshToken: string };
+
+/**
+ * setSession with those tokens in the client of the request: leaves the cookies of the student. It is the last step of his login,
+ * after internal_bind_student_session said ok. The tokens never leave the server except in those cookies, and are never logged.
+ */
+export async function setSessionTokens(tokens: SessionTokens): Promise<void> {
+  return unavailable(tokens);
+}
+
 /** updateUser({ password }) for the current session. */
 export async function updatePassword(password: string): Promise<void> {
   return unavailable(password);

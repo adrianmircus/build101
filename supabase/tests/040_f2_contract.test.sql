@@ -1,10 +1,10 @@
--- Contract of phase 2 (docs/contratos/fase-2.md, version 6; supabase/migrations/20261114100000_f2_contract.sql): the closed
--- tables access_card_issues, access_cards and invitation_tokens, the new columns of invitations and account_provisioning, their
--- guards, and the stubs of the 27 new RPCs.
+-- Contract of phase 2 (docs/contratos/fase-2.md, version 9; supabase/migrations/20261114100000_f2_contract.sql): the closed
+-- tables access_card_issues, access_cards, student_credentials and invitation_tokens, the new columns of invitations, their
+-- guards, and the stubs of the 26 new RPCs.
 -- Guards are tested as the table owner and must fail with P0004 (as authenticated the UPDATE fails earlier with 42501
 -- and would pass even without the guard). Placeholder data only. The whole file is rolled back.
 begin;
-select plan(154);
+select plan(180);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -45,28 +45,27 @@ create function pg_temp.hash(p_seed text) returns text language sql as $$ select
 select has_table('app', 'access_card_issues', 'access_card_issues exists');
 select has_table('app', 'access_cards', 'access_cards exists');
 select columns_are('app', 'access_card_issues',
-  array['id', 'institution_id', 'group_id', 'op_key', 'op_identity', 'issued_by', 'status', 'created_at', 'finished_at'],
+  array['id', 'institution_id', 'group_id', 'op_key', 'op_identity', 'issued_by', 'created_at'],
   'access_card_issues has exactly the columns of the contract');
 select columns_are('app', 'access_cards',
-  array['id', 'institution_id', 'student_id', 'issue_id', 'token_hash', 'status', 'created_at', 'activated_at', 'revoked_at'],
+  array['id', 'institution_id', 'student_id', 'issue_id', 'token_hash', 'status', 'created_at', 'revoked_at'],
   'access_cards has exactly the columns of the contract');
+select columns_are('app', 'student_credentials', array['id', 'institution_id', 'student_id', 'password_hash', 'version', 'issue_id', 'created_at', 'updated_at'], 'student_credentials has exactly the columns of the contract');
 select col_type_is('app', 'access_cards', 'token_hash', 'bytea', 'the token is stored as a hash');
-select is((select count(*) from pg_attribute a where a.attrelid = 'app.access_card_issues'::regclass and a.attname in ('student_ids', 'lease_until') and not a.attisdropped), 0::bigint,
-  'an issue keeps no student ids and no lease: the exclusion lives in the lease of each student');
+select is((select count(*) from pg_attribute a where a.attrelid = 'app.access_card_issues'::regclass and a.attname in ('student_ids', 'lease_until', 'status', 'finished_at') and not a.attisdropped), 0::bigint,
+  'an issue keeps no student ids, no lease and no state: it is one transaction and never changes');
 select col_type_is('app', 'access_card_issues', 'op_identity', 'text', 'its identity is a hash');
+select col_default_is('app', 'student_credentials', 'version', '1', 'a credential starts at version 1');
 select has_table('app', 'invitation_tokens', 'invitation_tokens exists');
 select columns_are('app', 'invitation_tokens', array['id', 'token_hash', 'institution_id', 'invitation_id', 'created_at'], 'with exactly the columns of the contract');
-select col_type_is('app', 'account_provisioning', 'lease_until', 'timestamp with time zone', 'account_provisioning has its lease');
-select col_type_is('app', 'account_provisioning', 'lease_holder', 'uuid', 'and its holder');
+select is((select count(*) from pg_attribute a where a.attrelid = 'app.account_provisioning'::regclass and a.attname in ('lease_until', 'lease_holder') and not a.attisdropped), 0::bigint, 'account_provisioning has no lease: nothing writes in Auth under a reservation any more');
 select ok(exists (select 1 from pg_indexes where schemaname = 'app' and tablename = 'access_cards' and indexname = 'access_cards_active_key'
                     and indexdef ilike '%unique%(student_id)%status = ''active''%'),
   'one active card per student');
-select ok(exists (select 1 from pg_indexes where schemaname = 'app' and tablename = 'access_cards' and indexname = 'access_cards_pending_key'
-                    and indexdef ilike '%unique%(student_id)%status = ''pending''%'),
-  'one pending card per student');
-select is((select count(*) from pg_class c where c.oid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)
-            and c.relrowsecurity and c.relforcerowsecurity), 3::bigint, 'all three have RLS enabled and forced');
-select is((select count(*) from pg_policy where polrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)),
+select is((select count(*) from pg_indexes where schemaname = 'app' and tablename = 'access_cards' and indexname = 'access_cards_pending_key'), 0::bigint, 'there is no pending card: a card is born active');
+select is((select count(*) from pg_class c where c.oid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass, 'app.student_credentials'::regclass)
+            and c.relrowsecurity and c.relforcerowsecurity), 4::bigint, 'all four have RLS enabled and forced');
+select is((select count(*) from pg_policy where polrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass, 'app.student_credentials'::regclass)),
   0::bigint, 'and no policies');
 select is((select count(*) from pg_attribute a where a.attrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)
             and a.attname in ('updated_at', 'revision') and not a.attisdropped),
@@ -74,14 +73,14 @@ select is((select count(*) from pg_attribute a where a.attrelid in ('app.access_
 
 select is_empty($$
   select t.tbl || ' ' || r.role_name || ' ' || p.priv
-    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_tokens')) as t(tbl)
+    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_tokens'), ('app.student_credentials')) as t(tbl)
    cross join (values ('anon'), ('authenticated'), ('service_role'), ('tiza_student')) as r(role_name)
    cross join (values ('select'), ('insert'), ('update'), ('delete'), ('truncate'), ('references'), ('trigger')) as p(priv)
    where has_table_privilege(r.role_name, t.tbl, p.priv)
 $$, 'anon, authenticated, service_role and tiza_student have no privilege on any of them');
 select is_empty($$
   select t.tbl || ' ' || r.role_name || ' ' || a.attname
-    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_tokens')) as t(tbl)
+    from (values ('app.access_card_issues'), ('app.access_cards'), ('app.invitation_tokens'), ('app.student_credentials')) as t(tbl)
    cross join (values ('anon'), ('authenticated'), ('service_role'), ('tiza_student')) as r(role_name)
    cross join pg_attribute a
    where a.attrelid = t.tbl::regclass and a.attnum > 0 and not a.attisdropped
@@ -94,13 +93,13 @@ select is_empty($$
       or has_column_privilege(r.role_name, 'app.invitations', a.attname, 'update')
 $$, 'nor on the new columns of invitations');
 
-select is((select count(*) from pg_trigger t where t.tgrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass)
+select is((select count(*) from pg_trigger t where t.tgrelid in ('app.access_card_issues'::regclass, 'app.access_cards'::regclass, 'app.invitation_tokens'::regclass, 'app.student_credentials'::regclass)
             and t.tgfoid = 'app.no_truncate'::regproc and not t.tgisinternal and t.tgenabled <> 'D'),
-  3::bigint, 'all three refuse TRUNCATE (app.no_truncate)');
+  4::bigint, 'all four refuse TRUNCATE (app.no_truncate)');
 select is_empty($$
-  select f.name from (values ('access_card_issues_born'), ('access_card_issues_frozen'), ('access_card_issues_kept')) as f(name)
+  select f.name from (values ('access_card_issues_frozen'), ('access_card_issues_kept')) as f(name)
    where not exists (select 1 from pg_trigger t where t.tgrelid = 'app.access_card_issues'::regclass and t.tgname = f.name and t.tgenabled <> 'D')
-$$, 'access_card_issues has its born, frozen and kept guards');
+$$, 'access_card_issues has its frozen and kept guards');
 select is_empty($$
   select f.name from (values ('access_cards_born'), ('access_cards_frozen'), ('access_cards_kept')) as f(name)
    where not exists (select 1 from pg_trigger t where t.tgrelid = 'app.access_cards'::regclass and t.tgname = f.name and t.tgenabled <> 'D')
@@ -114,10 +113,6 @@ select is_empty($$
   select f.name from (values ('invitations_born'), ('invitations_frozen'), ('invitations_kept'), ('invitations_register_hash')) as f(name)
    where not exists (select 1 from pg_trigger t where t.tgrelid = 'app.invitations'::regclass and t.tgname = f.name and t.tgenabled <> 'D')
 $$, 'and invitations has its born, frozen and kept guards');
-
-select is(
-  (select count(*) from pg_trigger t where t.tgrelid = 'app.account_provisioning'::regclass and t.tgname = 'account_provisioning_lease' and t.tgenabled <> 'D'),
-  1::bigint, 'account_provisioning has its lease guard');
 
 -- 2. The new columns of invitations.
 select col_type_is('app', 'invitations', 'op_key', 'uuid', 'invitations.op_key is a uuid');
@@ -147,24 +142,23 @@ insert into stubs (proname, args) values
   ('accept_invitation', 'p_token_hash bytea'),
   ('list_taken_usernames', 'p_institution_id uuid, p_bases text[]'),
   ('list_group_accounts', 'p_group_id uuid'),
-  ('begin_access_cards', 'p_group_id uuid, p_cards jsonb, p_op_key uuid'),
-  ('finish_access_cards', 'p_issue_id uuid, p_done uuid[]'),
-  ('internal_claim_account', 'p_provisioning_id uuid, p_holder uuid'),
+  ('issue_access_cards', 'p_group_id uuid, p_cards jsonb, p_op_key uuid'),
+  ('internal_bind_student_session', 'p_auth_user_id uuid, p_session_id uuid, p_version integer'),
   ('internal_get_student_accounts', 'p_student_ids uuid[]'),
-  ('internal_remember_student_account', 'p_provisioning_id uuid, p_holder uuid, p_auth_user_id uuid'),
-  ('internal_fail_student_account', 'p_provisioning_id uuid, p_holder uuid, p_error_code text'),
+  ('internal_remember_student_account', 'p_provisioning_id uuid, p_auth_user_id uuid'),
+  ('internal_fail_student_account', 'p_provisioning_id uuid, p_error_code text'),
   ('internal_list_unfinished_accounts', 'p_limit integer'),
   ('internal_find_institution', 'p_code text'),
-  ('internal_resolve_student_login', 'p_code text, p_username text'),
+  ('internal_get_student_login', 'p_code text, p_username text'),
   ('internal_resolve_access_card', 'p_token_hash bytea');
 
-select is((select count(*) from stubs), 27::bigint, 'the contract lists 27 new RPCs');
+select is((select count(*) from stubs), 26::bigint, 'the contract lists 26 new RPCs');
 select is_empty($$ select p.oid::regprocedure::text from pg_proc p where p.pronamespace = 'api'::regnamespace
-                    and p.proname in ('issue_access_cards', 'internal_rate_limit_status', 'internal_find_auth_user', 'internal_claim_card_password', 'internal_claim_provisioning', 'internal_extend_provisioning', 'internal_extend_card_issue') $$,
+                    and p.proname in ('internal_rate_limit_status', 'internal_find_auth_user', 'internal_claim_card_password', 'internal_claim_provisioning', 'internal_extend_provisioning', 'internal_extend_card_issue', 'begin_access_cards', 'finish_access_cards', 'internal_claim_account', 'internal_resolve_student_login') $$,
   'the RPCs of the earlier drafts are gone');
 select is_empty($$ select p.oid::regprocedure::text from pg_proc p where p.pronamespace = 'api'::regnamespace and ((p.proname = 'mark_invitation_sent' and pg_get_function_identity_arguments(p.oid) = 'p_invitation_id uuid')
-         or (p.proname = 'finish_access_cards' and pg_get_function_identity_arguments(p.oid) <> 'p_issue_id uuid, p_done uuid[]')) $$,
-  'and the old signatures of mark_invitation_sent and finish_access_cards are gone');
+         or (p.proname in ('internal_remember_student_account', 'internal_fail_student_account') and pg_get_function_identity_arguments(p.oid) like '%p_holder%')) $$,
+  'and the old signatures of mark_invitation_sent, internal_remember_student_account and internal_fail_student_account are gone');
 
 select is_empty($$
   select s.proname from stubs s
@@ -181,18 +175,20 @@ select is_empty($$
    where pg_get_userbyid(p.proowner) <> 'postgres'
 $$, 'postgres owns every new RPC');
 
--- Nobody but the owner: no grant to PUBLIC, anon, authenticated or service_role until the implementing ticket grants.
+-- Nobody but the owner: no grant to PUBLIC, anon, authenticated or service_role until the implementing ticket grants. These
+-- checks look at the RPCs that are still stubs: a ticket that replaces one (and grants it) does not break this file, which keeps
+-- the signatures for good.
 select is_empty($$
   select s.proname || ' ' || coalesce(a.grantee::regrole::text, 'PUBLIC')
     from stubs s join pg_proc p on p.pronamespace = 'api'::regnamespace and p.proname = s.proname
    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
-   where a.grantee <> p.proowner
+   where a.grantee <> p.proowner and p.prosrc like '%''not_implemented''%'
 $$, 'no ACL entry on a stub besides its owner (PUBLIC revoked, nothing granted)');
 select is_empty($$
   select s.proname || ' ' || r.role_name
     from stubs s join pg_proc p on p.pronamespace = 'api'::regnamespace and p.proname = s.proname
    cross join (values ('anon'), ('authenticated'), ('service_role'), ('tiza_student')) as r(role_name)
-   where has_function_privilege(r.role_name, p.oid, 'execute')
+   where has_function_privilege(r.role_name, p.oid, 'execute') and p.prosrc like '%''not_implemented''%'
 $$, 'neither anon, authenticated, service_role nor tiza_student can execute a stub');
 select is_empty($$
   select s.proname from stubs s join pg_proc p on p.pronamespace = 'api'::regnamespace and p.proname = s.proname
@@ -208,6 +204,10 @@ declare
   v_message text;
   v_detail text;
 begin
+  -- an RPC that a ticket already implemented is not called with nulls: only the stubs are
+  if not exists (select 1 from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname = p_name and p.prosrc like '%''not_implemented''%') then
+    return 'P0001 UNAVAILABLE not_implemented';
+  end if;
   select format('select api.%I(%s)', s.proname, coalesce((select string_agg('null::' || split_part(trim(a), ' ', 2), ', ')
                                                 from unnest(string_to_array(s.args, ',')) as a where trim(a) <> ''), ''))
     into v_sql from stubs s where s.proname = p_name;
@@ -219,8 +219,9 @@ exception when others then
 end
 $f$;
 select is_empty($$ select s.proname || ': ' || pg_temp.stub_answer(s.proname) from stubs s
-                    where pg_temp.stub_answer(s.proname) <> 'P0001 UNAVAILABLE not_implemented' $$,
-  'every stub answers UNAVAILABLE / not_implemented');
+                    where exists (select 1 from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname = s.proname and p.prosrc like '%''not_implemented''%')
+                      and pg_temp.stub_answer(s.proname) <> 'P0001 UNAVAILABLE not_implemented' $$,
+  'every RPC that is still a stub answers UNAVAILABLE / not_implemented');
 select is_empty($$
   select s.proname from stubs s join pg_proc p on p.pronamespace = 'api'::regnamespace and p.proname = s.proname
    where coalesce(lower(regexp_replace(substring(p.prosrc from '(?i)\mbegin\M\s*([^;]*;)'), '\s+', ' ', 'g')), '') <> 'perform app.rpc_begin();'
@@ -249,11 +250,18 @@ insert into ids (k, id) select 's2', (pg_temp.rpc(pg_temp.id('teach'), 'authenti
 insert into ids (k, id) select 's3', (pg_temp.rpc(pg_temp.id('teachb'), 'authenticated', format('select api.create_student(%L, ''Estudiante 3'', ''est.3'', gen_random_uuid())', pg_temp.id('g_b'))) ->> 'id')::uuid;
 insert into ids (k, id) select k, gen_random_uuid() from unnest(array['issue_a', 'issue_a2', 'issue_b']) as k;
 
--- 4a. Issues.
-select is(pg_temp.st(format('insert into app.access_card_issues (id, institution_id, group_id, op_key, op_identity, issued_by) values (%s, %s, %s, gen_random_uuid(), %L, %s)',
-  pg_temp.i('issue_a'), pg_temp.i('i_a'), pg_temp.i('g_a'), pg_temp.ident('a'), pg_temp.i('teach'))), 'ok', 'control: an issue is born running with its identity and its issuer');
-select is(pg_temp.st(format('insert into app.access_card_issues (institution_id, group_id, op_key, op_identity, status, finished_at) values (%s, %s, gen_random_uuid(), %L, ''done'', now())',
-  pg_temp.i('i_a'), pg_temp.i('g_a'), pg_temp.ident('b'))), 'P0004', 'an issue is not born done');
+create function pg_temp.scrypt(p_seed text) returns text language sql as $$
+  select format('scrypt$15$8$1$%s$%s',
+    replace(encode(substr(sha256(convert_to(p_seed, 'utf8')), 1, 16), 'base64'), E'
+', ''),
+    replace(encode(sha256(convert_to(p_seed || 'a', 'utf8')) || sha256(convert_to(p_seed || 'b', 'utf8')), 'base64'), E'
+', '')) $$;
+
+-- 4a. Issues: one transaction, kept for idempotency. It never changes.
+select is(pg_temp.st(format('insert into app.access_card_issues (id, institution_id, group_id, op_key, op_identity, issued_by) values (%s, %s, %s, ''00000000-0000-0000-0000-0000000000f1'', %L, %s)',
+  pg_temp.i('issue_a'), pg_temp.i('i_a'), pg_temp.i('g_a'), pg_temp.ident('a'), pg_temp.i('teach'))), 'ok', 'control: an issue is born with its identity and its issuer');
+select is(pg_temp.st(format('insert into app.access_card_issues (institution_id, group_id, op_key, op_identity) values (%s, %s, ''00000000-0000-0000-0000-0000000000f1'', %L)',
+  pg_temp.i('i_a'), pg_temp.i('g_a'), pg_temp.ident('b'))), '23505', 'the same op_key in the same institution is one issue');
 select is(pg_temp.st(format('insert into app.access_card_issues (institution_id, group_id, op_key, op_identity) values (%s, %s, gen_random_uuid(), %L)',
   pg_temp.i('i_a'), pg_temp.i('g_b'), pg_temp.ident('c'))), '23503', 'an issue cannot point at a group of another institution');
 select is(pg_temp.st(format('insert into app.access_card_issues (institution_id, group_id, op_key, op_identity) values (%s, %s, gen_random_uuid(), ''abc'')',
@@ -265,22 +273,25 @@ select is(pg_temp.st(format('update app.access_card_issues set institution_id = 
 select is(pg_temp.st(format('update app.access_card_issues set group_id = %s where id = %s', pg_temp.i('g_b'), pg_temp.i('issue_a'))), 'P0004', 'group_id never changes');
 select is(pg_temp.st(format('update app.access_card_issues set op_key = gen_random_uuid() where id = %s', pg_temp.i('issue_a'))), 'P0004', 'op_key never changes');
 select is(pg_temp.st(format('update app.access_card_issues set op_identity = %L where id = %s', pg_temp.ident('otra'), pg_temp.i('issue_a'))), 'P0004', 'op_identity never changes');
+select is(pg_temp.st(format('update app.access_card_issues set created_at = now() - interval ''1 day'' where id = %s', pg_temp.i('issue_a'))), 'P0004', 'created_at never changes');
+select is(pg_temp.st(format('update app.access_card_issues set id = gen_random_uuid() where id = %s', pg_temp.i('issue_a'))), 'P0004', 'nor does id');
 select is(pg_temp.st(format('update app.access_card_issues set issued_by = %s where id = %s', pg_temp.i('userx'), pg_temp.i('issue_a'))), 'P0004', 'issued_by is not replaced by another actor');
 select is(pg_temp.st(format('update app.access_card_issues set issued_by = null where id = %s', pg_temp.i('issue_a'))), 'P0004', 'nor goes to NULL while the account exists');
-select is(pg_temp.st(format('update app.access_card_issues set status = ''running'', finished_at = now() where id = %s', pg_temp.i('issue_a'))), '23514', 'running with a finished_at is refused by the table');
+select is(pg_temp.st(format('update app.access_card_issues set op_identity = op_identity where id = %s', pg_temp.i('issue_a'))), 'ok', 'control: an update that changes nothing is no change');
 select is(pg_temp.st(format('delete from app.access_card_issues where id = %s', pg_temp.i('issue_a'))), 'P0004', 'an issue is not deleted by hand while its group exists');
 
--- 4b. Cards.
+-- 4b. Cards: born active, active goes to revoked and no further.
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
-  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1'))), 'ok', 'control: a card is born pending');
+  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1'))), 'ok', 'control: a card is born active');
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
   pg_temp.i('i_a'), pg_temp.i('s2'), pg_temp.i('issue_a'), pg_temp.hash('c2'))), 'ok', 'control: one per student of the issue');
-select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash, status, activated_at) values (%s, %s, %s, %s, ''active'', now())',
-  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1a'))), 'P0004', 'a card is not born active');
+select is((select status from app.access_cards where token_hash = decode(pg_temp.ident('c1'), 'hex')), 'active', 'and it is active');
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash, status, revoked_at) values (%s, %s, %s, %s, ''revoked'', now())',
-  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1r'))), 'P0004', 'nor revoked');
+  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1r'))), 'P0004', 'a card is not born revoked');
+select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash, status) values (%s, %s, %s, %s, ''pending'')',
+  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1p'))), 'P0004', 'there is no pending card: a card is born active');
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
-  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1b'))), '23505', 'a second pending card for the same student is refused');
+  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1b'))), '23505', 'a second active card for the same student is refused');
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
   pg_temp.i('i_a'), pg_temp.i('s3'), pg_temp.i('issue_a'), pg_temp.hash('c3'))), '23503', 'a card cannot point at a student of another institution');
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, ''\x0102''::bytea)',
@@ -293,33 +304,46 @@ select is(pg_temp.st(format('update app.access_cards set issue_id = %s where stu
 select is(pg_temp.st(format('update app.access_cards set token_hash = %s where student_id = %s', pg_temp.hash('otro'), pg_temp.i('s1'))), 'P0004', 'token_hash never changes');
 select is(pg_temp.st(format('update app.access_cards set id = gen_random_uuid() where student_id = %s', pg_temp.i('s1'))), 'P0004', 'id never changes');
 select is(pg_temp.st(format('update app.access_cards set created_at = now() - interval ''1 day'' where student_id = %s', pg_temp.i('s1'))), 'P0004', 'created_at never changes');
+select is(pg_temp.st(format('update app.access_cards set status = ''revoked'' where student_id = %s', pg_temp.i('s2'))), '23514', 'revoked needs its revoked_at (the table refuses it)');
 
-select is(pg_temp.st(format('update app.access_cards set status = ''active'' where student_id = %s', pg_temp.i('s1'))), '23514', 'active needs its activated_at (the table refuses it)');
-select is(pg_temp.st(format('update app.access_cards set status = ''active'', activated_at = now() where student_id = %s', pg_temp.i('s1'))), 'ok', 'control: pending goes to active');
-select is(pg_temp.st(format('update app.access_cards set status = ''pending'', activated_at = null where student_id = %s', pg_temp.i('s1'))), 'P0004', 'active never goes back to pending');
-select is(pg_temp.st(format('update app.access_cards set activated_at = now() + interval ''1 hour'' where student_id = %s', pg_temp.i('s1'))), 'P0004', 'activated_at never changes once set');
-select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
-  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1n'))), 'ok', 'control: an active card and a pending one coexist (the new one that replaces it)');
 select is(pg_temp.st(format('update app.access_cards set status = ''revoked'', revoked_at = now() where token_hash = %s', pg_temp.hash('c1'))), 'ok', 'control: active goes to revoked');
 select is(pg_temp.st(format('update app.access_cards set status = ''active'', revoked_at = null where token_hash = %s', pg_temp.hash('c1'))), 'P0004', 'a revoked card is never revived');
-select is(pg_temp.st(format('update app.access_cards set status = ''pending'', revoked_at = null where token_hash = %s', pg_temp.hash('c1'))), 'P0004', 'nor goes back to pending');
 select is(pg_temp.st(format('update app.access_cards set revoked_at = now() + interval ''1 hour'' where token_hash = %s', pg_temp.hash('c1'))), 'P0004', 'nor is its revocation moved');
-select is(pg_temp.st(format('update app.access_cards set status = ''revoked'', revoked_at = now() where token_hash = %s', pg_temp.hash('c2'))), 'ok', 'control: pending goes straight to revoked');
-select is(pg_temp.st(format('delete from app.access_cards where token_hash = %s', pg_temp.hash('c1'))), 'P0004',
-  'a revoked card is not deleted by hand: its hash never comes back as a current one');
-select is(pg_temp.st(format('delete from app.access_cards where token_hash = %s', pg_temp.hash('c1n'))), 'P0004', 'nor a pending one');
+select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
+  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.i('issue_a'), pg_temp.hash('c1n'))), 'ok', 'control: once the old one is revoked, a new one is active');
+select is(pg_temp.st(format('delete from app.access_cards where token_hash = %s', pg_temp.hash('c1'))), 'P0004', 'a revoked card is not deleted by hand: its hash never comes back as a current one');
+select is(pg_temp.st(format('delete from app.access_cards where token_hash = %s', pg_temp.hash('c1n'))), 'P0004', 'nor an active one');
+
+insert into app.access_card_issues (id, institution_id, group_id, op_key, op_identity) values (pg_temp.id('issue_a2'), pg_temp.id('i_a'), pg_temp.id('g_a'), gen_random_uuid(), pg_temp.ident('a2'));
+
+-- 4c. Credentials: the scrypt hash of the password of a student; only the server writes it, only the student's erasure deletes it.
+select is(pg_temp.st(format('insert into app.student_credentials (institution_id, student_id, password_hash, issue_id) values (%s, %s, %L, %s)',
+  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.scrypt('p1'), pg_temp.i('issue_a'))), 'ok', 'control: a credential is stored');
+select is(pg_temp.st(format('insert into app.student_credentials (institution_id, student_id, password_hash, issue_id) values (%s, %s, %L, %s)',
+  pg_temp.i('i_a'), pg_temp.i('s1'), pg_temp.scrypt('p1b'), pg_temp.i('issue_a'))), '23505', 'one per student');
+select is(pg_temp.st(format('insert into app.student_credentials (institution_id, student_id, password_hash, issue_id) values (%s, %s, ''nube-tigre-47'', %s)',
+  pg_temp.i('i_a'), pg_temp.i('s2'), pg_temp.i('issue_a'))), '23514', 'a plain password is not accepted: only the scrypt format');
+select is(pg_temp.st(format('insert into app.student_credentials (institution_id, student_id, password_hash, issue_id) values (%s, %s, ''scrypt$14$8$1$AAAA$AAAA'', %s)',
+  pg_temp.i('i_a'), pg_temp.i('s2'), pg_temp.i('issue_a'))), '23514', 'nor other parameters than N = 2^15, r = 8, p = 1');
+select is(pg_temp.st(format('insert into app.student_credentials (institution_id, student_id, password_hash, issue_id) values (%s, %s, %L, %s)',
+  pg_temp.i('i_a'), pg_temp.i('s3'), pg_temp.scrypt('p3'), pg_temp.i('issue_a'))), '23503', 'a credential cannot point at a student of another institution');
+select is(pg_temp.st(format('update app.student_credentials set password_hash = %L where student_id = %s', pg_temp.scrypt('p1new'), pg_temp.i('s1'))), 'P0004', 'a new hash alone is refused: it comes with another issue and the next version');
+select is(pg_temp.st(format('update app.student_credentials set password_hash = %L, issue_id = %s where student_id = %s', pg_temp.scrypt('p1new'), pg_temp.i('issue_a2'), pg_temp.i('s1'))), 'P0004', 'a new hash and issue without the next version is refused');
+select is(pg_temp.st(format('update app.student_credentials set version = version + 1 where student_id = %s', pg_temp.i('s1'))), 'P0004', 'a version alone is refused');
+select is(pg_temp.st(format('update app.student_credentials set password_hash = %L, version = version + 1 where student_id = %s', pg_temp.scrypt('p1new'), pg_temp.i('s1'))), 'P0004', 'a hash and version in the same issue are refused: the issue is another one');
+select is(pg_temp.st(format('update app.student_credentials set issue_id = %s where student_id = %s', pg_temp.i('issue_a2'), pg_temp.i('s1'))), 'P0004', 'an issue alone is refused');
+select is(pg_temp.st(format('update app.student_credentials set password_hash = %L, issue_id = %s, version = version + 2 where student_id = %s', pg_temp.scrypt('p1new'), pg_temp.i('issue_a2'), pg_temp.i('s1'))), 'P0004', 'the version goes up by exactly one');
+select is(pg_temp.st(format('update app.student_credentials set password_hash = %L, issue_id = %s, version = version + 1 where student_id = %s', pg_temp.scrypt('p1new'), pg_temp.i('issue_a2'), pg_temp.i('s1'))), 'ok', 'control: a new card changes hash, issue and version together');
+select is((select version from app.student_credentials where student_id = pg_temp.id('s1')), 2, 'and the version is the next one');
+select is(pg_temp.st(format('update app.student_credentials set institution_id = %s where student_id = %s', pg_temp.i('i_b'), pg_temp.i('s1'))), 'P0004', 'credential: institution_id never changes');
+select is(pg_temp.st(format('update app.student_credentials set student_id = %s where student_id = %s', pg_temp.i('s2'), pg_temp.i('s1'))), 'P0004', 'student_id never changes');
+select is(pg_temp.st(format('delete from app.student_credentials where student_id = %s', pg_temp.i('s1'))), 'P0004', 'a credential is not deleted by hand');
 
 select is(pg_temp.st('truncate app.access_cards'), 'P0004', 'access_cards is never truncated');
--- access_cards references access_card_issues, so Postgres refuses this one before any trigger (the trigger is checked above).
+select is(pg_temp.st('truncate app.student_credentials'), 'P0004', 'nor student_credentials');
+-- access_card_issues and invitations are referenced by other tables, so Postgres refuses these before any trigger (the triggers are checked above).
 select is(pg_temp.st('truncate app.access_card_issues'), '0A000', 'nor access_card_issues');
--- invitation_tokens references invitations, so Postgres refuses this one first too (its own trigger is checked above).
 select is(pg_temp.st('truncate app.invitations'), '0A000', 'nor invitations');
-
--- 4c. States of the issue: running advances to done or abandoned and no further.
-select is(pg_temp.st(format('update app.access_card_issues set status = ''done'', finished_at = now() where id = %s', pg_temp.i('issue_a'))), 'ok', 'control: running goes to done');
-select is(pg_temp.st(format('update app.access_card_issues set status = ''running'', finished_at = null where id = %s', pg_temp.i('issue_a'))), 'P0004', 'done never reopens');
-select is(pg_temp.st(format('update app.access_card_issues set status = ''abandoned'' where id = %s', pg_temp.i('issue_a'))), 'P0004', 'nor becomes abandoned');
-select is(pg_temp.st(format('update app.access_card_issues set finished_at = now() + interval ''1 hour'' where id = %s', pg_temp.i('issue_a'))), 'P0004', 'finished_at never changes');
 
 -- 4d. Deleting an account, a student, a group: what goes with them.
 select is(pg_temp.st(format('delete from auth.users where id = %s', pg_temp.i('teach'))), 'ok', 'control: the account of the issuer is deleted');
@@ -328,11 +352,15 @@ select is(pg_temp.st(format('insert into app.access_card_issues (id, institution
   pg_temp.i('issue_b'), pg_temp.i('i_b'), pg_temp.i('g_b'), pg_temp.ident('d'))), 'ok', 'control: an issue of the other institution');
 select is(pg_temp.st(format('insert into app.access_cards (institution_id, student_id, issue_id, token_hash) values (%s, %s, %s, %s)',
   pg_temp.i('i_b'), pg_temp.i('s3'), pg_temp.i('issue_b'), pg_temp.hash('c3'))), 'ok', 'and its card');
+select is(pg_temp.st(format('insert into app.student_credentials (institution_id, student_id, password_hash, issue_id) values (%s, %s, %L, %s)',
+  pg_temp.i('i_b'), pg_temp.i('s3'), pg_temp.scrypt('p3'), pg_temp.i('issue_b'))), 'ok', 'and its credential');
 -- The erasure order of phase 1: unlink the pseudonym and mark the account deleted, then the student goes.
 update app.student_pseudonyms set student_id = null, unlinked_at = now() where student_id = pg_temp.id('s3');
 update app.account_provisioning set status = 'deleted', revision = revision + 1 where student_id = pg_temp.id('s3');
 select is(pg_temp.st(format('delete from app.students where id = %s', pg_temp.i('s3'))), 'ok', 'control: the student is deleted (the erasure)');
-select is((select count(*) from app.access_cards where institution_id = pg_temp.id('i_b')), 0::bigint, 'and his cards go with him, by the cascade');
+select is(pg_temp.st(format('delete from app.account_provisioning where institution_id = %s and status = ''deleted'' and student_id is null', pg_temp.i('i_b'))), 'P0004', 'a deleted mark is not deleted while its institution exists, even without its student');
+select is((select count(*) from app.access_cards where institution_id = pg_temp.id('i_b')), 0::bigint, 'his cards go with him, by the cascade');
+select is((select count(*) from app.student_credentials where institution_id = pg_temp.id('i_b')), 0::bigint, 'and his credential');
 select is(pg_temp.st(format('delete from app.groups where id = %s', pg_temp.i('g_b'))), 'ok', 'control: the group is deleted');
 select is((select count(*) from app.access_card_issues where institution_id = pg_temp.id('i_b')), 0::bigint, 'and its issues go with it, by the cascade');
 select is((select count(*) from app.access_cards where institution_id = pg_temp.id('i_a')), 3::bigint, 'nothing of the other institution was lost');
@@ -384,40 +412,54 @@ select is(pg_temp.st('delete from app.invitation_tokens'), 'P0004', 'nor a regis
 select is(pg_temp.st('update app.invitation_tokens set created_at = now()'), 'P0004', 'a registered hash never changes');
 select is(pg_temp.st('insert into app.invitation_tokens (token_hash, institution_id, invitation_id) select token_hash, institution_id, invitation_id from app.invitation_tokens limit 1'), '23505', 'a hash is registered once');
 
--- 7. Leases only grow. A provisioning row of a student (it is pending, with no lease) and an issue (it has one).
-select is(pg_temp.st(format('update app.account_provisioning set lease_until = now() + interval ''5 minutes'', lease_holder = %s where student_id = %s', pg_temp.i('userx'), pg_temp.i('s1'))), 'ok',
-  'control: the first claim sets the lease and its holder');
-select is(pg_temp.st(format('update app.account_provisioning set lease_until = now() + interval ''1 minute'' where student_id = %s', pg_temp.i('s1'))), 'P0004', 'the lease does not go down');
-select is(pg_temp.st(format('update app.account_provisioning set lease_until = null where student_id = %s', pg_temp.i('s1'))), 'P0004', 'nor back to NULL');
-select is(pg_temp.st(format('update app.account_provisioning set lease_holder = %s where student_id = %s', pg_temp.i('teachb'), pg_temp.i('s1'))), 'P0004', 'the holder does not change while the lease is in force');
-select is(pg_temp.st(format('update app.account_provisioning set lease_holder = null where student_id = %s', pg_temp.i('s1'))), 'P0004', 'nor go to NULL');
-select is(pg_temp.st(format('update app.account_provisioning set lease_until = now() + interval ''15 minutes'' where student_id = %s', pg_temp.i('s1'))), 'ok', 'control: the lease grows (an uncertain result extends it)');
-select is(pg_temp.st(format('update app.account_provisioning set status = ''failed'', attempts = attempts + 1, revision = revision + 1 where student_id = %s', pg_temp.i('s1'))), 'ok', 'control: other columns change without touching the lease');
-select is(pg_temp.st(format('update app.account_provisioning set lease_until = clock_timestamp() - interval ''1 minute'' where student_id = %s', pg_temp.i('s2'))), 'ok', 'control: a row with no lease takes one in the past');
-select is(pg_temp.st(format('update app.account_provisioning set lease_holder = %s where student_id = %s', pg_temp.i('teachb'), pg_temp.i('s2'))), 'ok', 'the holder changes once the lease expired');
-
 select is(pg_temp.st(format('delete from app.institutions where id = %s', pg_temp.i('i_b'))), 'ok', 'control: with the institution, everything of it goes by the cascade');
 select is((select count(*) from app.invitation_tokens where institution_id = pg_temp.id('i_b')), 0::bigint, 'including its registered hashes');
 
--- 8. deleted is final, and a student does not change his credentials in Auth without a live lease.
+-- 8. deleted is final, and nobody puts a password on, or changes the email of, the Auth account of a student.
+insert into ids (k, id) select k, gen_random_uuid() from unnest(array['acct_s1', 'acct_s2', 'acct_new']) as k;
+update app.account_provisioning set auth_user_id = pg_temp.id('acct_s1') where student_id = pg_temp.id('s1');
+update app.account_provisioning set auth_user_id = pg_temp.id('acct_s2') where student_id = pg_temp.id('s2');
+-- Born after the id is remembered (the provisioning): the email is exactly <id>@estudiantes.usetiza.app, for every remembered id.
+select is(pg_temp.st(format('insert into auth.users (id) values (%s)', pg_temp.i('acct_s1'))), 'P0004', 'a remembered account is not born with no email');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, ''acct_s1@f2-credentials.invalid'')', pg_temp.i('acct_s1'))), 'P0004', 'nor with an email of another domain');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, %L)', pg_temp.i('acct_s1'), pg_temp.id('acct_s2')::text || '@estudiantes.usetiza.app')), 'P0004', 'nor with the synthetic email of another id');
+select is(pg_temp.st(format('insert into auth.users (id, email, encrypted_password) values (%s, %L, ''random-hash-of-createUser'')', pg_temp.i('acct_s1'), pg_temp.id('acct_s1')::text || '@estudiantes.usetiza.app')), 'ok', 'control: createUser without a password still makes one: it is accepted...');
+select is((select encrypted_password from auth.users where id = pg_temp.id('acct_s1')), null, '...and the trigger erases it before it is stored');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, %L)', pg_temp.i('acct_s2'), pg_temp.id('acct_s2')::text || '@estudiantes.usetiza.app')), 'ok', 'control: and without it, too');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'but an UPDATE that leaves a password is refused');
 select is(pg_temp.st(format('update app.account_provisioning set status = ''deleted'', revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'ok', 'control: a row is marked deleted (the erasure)');
 select is(pg_temp.st(format('update app.account_provisioning set status = ''failed'', revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'P0004', 'a deleted provisioning row never changes state');
 select is(pg_temp.st(format('update app.account_provisioning set status = ''pending'', revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'P0004', 'not even back to pending');
 select is(pg_temp.st(format('update app.account_provisioning set attempts = attempts + 1, revision = revision + 1 where student_id = %s', pg_temp.i('s2'))), 'ok', 'control: what is not its state still changes');
-insert into ids (k, id) select k, gen_random_uuid() from unnest(array['acct_s1', 'acct_s2']) as k;
-insert into auth.users (id, email) select id, k || '@f2-credentials.invalid' from ids where k in ('acct_s1', 'acct_s2');
-update app.account_provisioning set auth_user_id = pg_temp.id('acct_s1') where student_id = pg_temp.id('s1');
-update app.account_provisioning set auth_user_id = pg_temp.id('acct_s2') where student_id = pg_temp.id('s2');
-select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'a student account without a live lease keeps its password');
-select is(pg_temp.st(format('update auth.users set email = ''otro@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'and its email');
-select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''otro@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'both at once too');
-select is(pg_temp.st(format('update auth.users set last_sign_in_at = now() where id = %s', pg_temp.i('acct_s2'))), 'ok', 'control: what is not a credential is not guarded');
-select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'' where id = %s', pg_temp.i('acct_s1'))), 'ok', 'with a live lease (the minutes of a card issue) it changes');
-select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''nuevo@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s1'))), 'ok', 'and so does its email');
-select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''staff@f2-credentials.invalid'' where id = %s', pg_temp.i('teachb'))), 'ok', 'a staff account always changes');
-select is((select p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres' and coalesce('search_path=""' = any (p.proconfig), false)
-             from pg_proc p where p.oid = 'app.student_credentials_guard'::regproc), true, 'the guard is security definer, owned by postgres, with search_path pinned');
-select is((select count(*) from pg_trigger t where t.tgrelid = 'auth.users'::regclass and t.tgname = 'student_credentials_guard' and t.tgenabled <> 'D'), 1::bigint, 'and it is a trigger of auth.users');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'' where id = %s', pg_temp.i('acct_s1'))), 'P0004', 'the Auth account of a student gets no password, whatever the situation');
+select is(pg_temp.st(format('update auth.users set email = ''otro@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s1'))), 'P0004', 'nor another email');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''otro@f2-credentials.invalid'' where id = %s', pg_temp.i('acct_s1'))), 'P0004', 'both at once too');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'' where id = %s', pg_temp.i('acct_s2'))), 'P0004', 'also when the student was erased');
+select is(pg_temp.st(format('update auth.users set last_sign_in_at = now(), updated_at = now() where id = %s', pg_temp.i('acct_s1'))), 'ok', 'control: what is not a credential is not guarded');
+select is(pg_temp.st(format('update auth.users set encrypted_password = encrypted_password, email = email, last_sign_in_at = now() where id = %s', pg_temp.i('acct_s1'))), 'ok', 'a rewrite with the same values (a login of GoTrue) is not a change');
+select is(pg_temp.st(format('update auth.users set encrypted_password = ''x'', email = ''staff@f2-credentials.invalid'' where id = %s', pg_temp.i('teachb'))), 'ok', 'a staff account changes as ever');
+select is(pg_temp.st(format('update auth.users set id = gen_random_uuid() where id = %s', pg_temp.i('acct_s1'))), 'P0004', 'the id of a remembered account never changes');
+select is((select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres' and coalesce('search_path=""' = any (p.proconfig), false))
+             from pg_proc p where p.oid in ('app.student_auth_guard'::regproc, 'app.student_auth_birth_guard'::regproc)), true,
+  'both guards are security definer, owned by postgres, with search_path pinned');
+select is((select count(*) from pg_trigger t where t.tgrelid = 'auth.users'::regclass and t.tgname in ('student_auth_guard', 'student_auth_birth_guard') and t.tgenabled <> 'D'), 2::bigint, 'and they are triggers of auth.users');
+select is((select t.tgtype & 4 > 0 and t.tgtype & 16 > 0 from pg_trigger t where t.tgrelid = 'auth.users'::regclass and t.tgname = 'student_auth_guard'), true, 'student_auth_guard is BEFORE INSERT OR UPDATE (insert and update)');
+select is((select t.tgtype & 4 > 0 and t.tgtype & 16 > 0 from pg_trigger t where t.tgrelid = 'auth.users'::regclass and t.tgname = 'student_auth_birth_guard'), true, 'student_auth_birth_guard fires on insert and on update of id');
+select is((select count(*) from pg_trigger t where t.tgrelid = 'auth.users'::regclass and t.tgname = 'student_credentials_guard'), 0::bigint, 'the guard of the leases is gone');
 
-select * from finish();select * from finish();
+-- The fixed shape of the synthetic email.
+select is(pg_temp.st(format('insert into auth.users (id, email) values (gen_random_uuid(), %L)', pg_temp.id('acct_new')::text || '@estudiantes.usetiza.app')), 'P0004', 'a synthetic email of nobody is refused');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, ''luciaf@estudiantes.usetiza.app'')', pg_temp.i('acct_new'))), 'P0004', 'a synthetic email that is not the id of its row is refused (what GoTrue would insert for a link of an account that is not there)');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, %L)', pg_temp.i('acct_new'), pg_temp.id('acct_new') || '@estudiantes.usetiza.app')), 'P0004', 'the right synthetic email of an id that nobody remembered is refused');
+
+-- An account whose id is remembered in a deleted row is not born (nor armed by an UPDATE); one remembered in a live row, or unknown, is.
+select is(pg_temp.st(format('delete from auth.users where id = %s', pg_temp.i('acct_s2'))), 'ok', 'control: an account is deleted from Auth (the erasure deletes it after marking the row)');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, ''gone@f2-credentials.invalid'')', pg_temp.i('acct_s2'))), 'P0004', 'the account of an erased student is not born again');
+select is(pg_temp.st(format('delete from auth.users where id = %s', pg_temp.i('acct_s1'))), 'ok', 'control: an account that vanished from Auth without an erasure');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, %L)', pg_temp.i('acct_s1'), pg_temp.id('acct_s1')::text || '@estudiantes.usetiza.app')), 'ok', 'is born again with the same id and its synthetic email: the student keeps his identity');
+select is(pg_temp.st(format('insert into auth.users (id, email) values (%s, ''new@f2-credentials.invalid'')', pg_temp.i('acct_new'))), 'ok', 'an id that nobody remembered (staff, tests) is born');
+select is(pg_temp.st(format('update auth.users set id = %s where id = %s', pg_temp.i('acct_s2'), pg_temp.i('acct_new'))), 'P0004', 'and it cannot take the id of an erased student by an UPDATE');
+select is((select encrypted_password from auth.users where id = pg_temp.id('acct_s1')), null, 'the account born again has no password either');
+
+select * from finish();
 rollback;

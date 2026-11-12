@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createGroup, createSchool } from "../../factories";
 import { createLoggedInStudent, createStudent } from "../../factories/students";
-import { openSession, readRows } from "../support/db";
+import { createAdminClient } from "@/lib/server/db/admin";
+import { readRows } from "../support/db";
 
-// F2C-47: a student does not change his own credentials in Auth. PUT /auth/v1/user with the session of the student writes
-// encrypted_password or email; the trigger app.student_credentials_guard on auth.users refuses it unless the account holds a
-// live lease (the minutes of a card issue). The real endpoint, through supabase-js, with the session of a logged-in student.
+// F2C-47: the password of a student lives in our database and the Auth account of a student has none. Nobody puts one there:
+// PUT /auth/v1/user with the session of a student writes encrypted_password, and the trigger app.student_auth_guard on
+// auth.users refuses it, always. The real endpoint, through supabase-js, with the session of a logged-in student.
 
 async function student() {
   const school = await createSchool();
@@ -15,48 +16,45 @@ async function student() {
   return createLoggedInStudent(school.admin, created);
 }
 
-async function leaseFor(studentId: string, interval: string) {
-  const session = await openSession();
-  try {
-    await session.rows(`update app.account_provisioning set lease_until = clock_timestamp() + interval '${interval}', lease_holder = $2 where student_id = $1`, [studentId, randomUUID()]);
-  } finally {
-    await session.close();
-  }
+async function authRow(userId: string): Promise<{ hash: string; email: string }> {
+  const rows = await readRows<{ hash: string; email: string }>("select coalesce(encrypted_password, '') as hash, email from auth.users where id = $1", [userId]);
+  return rows[0] ?? { hash: "", email: "" };
 }
 
-async function passwordHash(userId: string): Promise<string> {
-  return (await readRows<{ h: string }>("select encrypted_password as h from auth.users where id = $1", [userId]))[0]?.h ?? "";
-}
-
-describe("a student cannot change his credentials in Auth", () => {
-  it("PUT /auth/v1/user with his session fails for the password and leaves the email as it was", async () => {
+describe("a student cannot put a password on, or change the email of, his Auth account", () => {
+  it("PUT /auth/v1/user with his session fails for the password and leaves the account as it was", async () => {
     const me = await student();
-    const before = await passwordHash(me.userId);
-    const emailBefore = (await readRows<{ email: string }>("select email from auth.users where id = $1", [me.userId]))[0]?.email;
+    const before = await authRow(me.userId);
 
     const password = await me.client.auth.updateUser({ password: `${randomUUID()}${randomUUID()}` });
     expect(password.error).not.toBeNull();
-    // The email does not change on the PUT: Auth keeps the new address in email_change until the link sent to it is used, and
-    // that confirmation is the UPDATE of email that the guard refuses (the pgTAP test 040 covers the UPDATE itself).
+    expect(await authRow(me.userId)).toEqual(before);
+  });
+
+  it("asking for another email does not change it either: the confirmation is the update the guard refuses", async () => {
+    const me = await student();
+    const before = await authRow(me.userId);
+    // Auth keeps the new address in email_change until the link sent to it is used; that confirmation is the UPDATE of
+    // email, which the guard refuses (pgTAP 040 covers the UPDATE itself).
     await me.client.auth.updateUser({ email: `${randomUUID()}@tiza-test.example` });
-
-    expect(await passwordHash(me.userId)).toBe(before);
-    expect((await readRows<{ email: string }>("select email from auth.users where id = $1", [me.userId]))[0]?.email).toBe(emailBefore);
+    expect(await authRow(me.userId)).toEqual(before);
   });
 
-  it("the same call goes through while the account holds a live lease (the minutes of a card issue)", async () => {
-    const me = await student();
-    const before = await passwordHash(me.userId);
-    await leaseFor(me.id, "5 minutes");
-    const changed = await me.client.auth.updateUser({ password: `${randomUUID()}${randomUUID()}` });
+  it("createUser without a password for a remembered id leaves encrypted_password NULL (F2C-65)", async () => {
+    const school = await createSchool();
+    const group = await createGroup(school.teacher.client, school.institution.id);
+    const created = await createStudent(school.teacher.client, group.id);
+    const id = randomUUID();
+    await readRows("update app.account_provisioning set auth_user_id = $2 where student_id = $1", [created.id, id]);
+    const { error } = await createAdminClient().auth.admin.createUser({ id, email: `${id}@estudiantes.usetiza.app`, email_confirm: true });
+    expect(error).toBeNull();
+    const rows = await readRows<{ hash: string | null }>("select encrypted_password as hash from auth.users where id = $1", [id]);
+    expect(rows[0]?.hash).toBeNull();
+  });
+
+  it("a staff user still changes his password as ever", async () => {
+    const school = await createSchool();
+    const changed = await school.teacher.client.auth.updateUser({ password: `${randomUUID()}${randomUUID()}` });
     expect(changed.error).toBeNull();
-    expect(await passwordHash(me.userId)).not.toBe(before);
-  });
-
-  it("and fails again once the lease expired", async () => {
-    const me = await student();
-    await leaseFor(me.id, "-1 minute");
-    const refused = await me.client.auth.updateUser({ password: `${randomUUID()}${randomUUID()}` });
-    expect(refused.error).not.toBeNull();
   });
 });

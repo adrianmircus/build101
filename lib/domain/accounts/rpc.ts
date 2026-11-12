@@ -23,7 +23,10 @@ const ProvisionedAccount = z
   .object({ studentId: Id, provisioningId: Id, status: ProvisioningStatus, authUserId: Id.nullable() })
   .strict();
 
-const Issued = z.object({ studentId: Id, tokenHash: TokenHashHex }).strict();
+/** The scrypt hash of a password: `scrypt$15$8$1$salt$hash` (N = 2^15, r = 8, p = 1), the salt and the hash in base64. Computed by the server, never by the browser. */
+export const PasswordHash = z.string().regex(/^scrypt\$15\$8\$1\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/);
+
+const Issued = z.object({ studentId: Id, tokenHash: TokenHashHex, passwordHash: PasswordHash }).strict();
 
 export const ACCOUNT_RPCS = {
   // Session (T2.7).
@@ -105,51 +108,41 @@ export const ACCOUNT_RPCS = {
     args: z.object({ p_group_id: Id }).strict(),
     result: z.object({ groupName: z.string(), institutionCode: InstitutionCode, items: z.array(AccountRow) }).strict(),
   },
-  /** Starts an issue of cards (see «Emitir tarjetas»): the pending cards and the lease. The hashes are hex in the jsonb. */
-  begin_access_cards: {
+  /**
+   * One transaction (see «Emitir tarjetas»): per student it revokes the current card, inserts the new one active, stores the
+   * hash of the password and closes the sessions of his account. The hashes of tokens are hex in the jsonb.
+   */
+  issue_access_cards: {
     args: z.object({ p_group_id: Id, p_cards: z.array(Issued).min(1).max(60), p_op_key: Id }).strict(),
     result: z
       .object({
-        issueId: Id.nullable(),
         institutionCode: InstitutionCode,
         institutionName: z.string(),
-        items: z.array(z.object({ studentId: Id, provisioningId: Id, displayName: DisplayName, username: Username }).strict()),
-        busy: z.array(z.object({ studentId: Id, retryAt: Timestamp }).strict()),
+        items: z.array(z.object({ studentId: Id, displayName: DisplayName, username: Username }).strict()),
       })
       .strict(),
   },
-  /** The same actor that began closes the issue: the cards of p_done become active, the other pending ones are revoked. */
-  finish_access_cards: {
-    args: z.object({ p_issue_id: Id, p_done: z.array(Id).max(60) }).strict(),
-    result: z.object({ activated: z.array(Id) }).strict(),
-  },
-  /** service_role: up to 60 students, to know whose account to create or whose password to set. */
+  /** service_role: up to 60 students, to know whose account to create. */
   /**
-   * service_role: takes or confirms the one lease of the student (under his lock, then the row's) and takes it to 15
-   * minutes from now. ok false carries retryAt (null when the row is deleted or the student is gone).
+   * service_role: the last step before the cookies of a student: locks him like issue_access_cards does and compares the version
+   * of his credential. With another version it deletes that session of auth.sessions and answers ok false.
    */
-  internal_claim_account: {
-    args: z.object({ p_provisioning_id: Id, p_holder: Id }).strict(),
-    result: z.discriminatedUnion("ok", [
-      z.object({ ok: z.literal(true), status: ProvisioningStatus, authUserId: Id.nullable(), leaseUntil: Timestamp }).strict(),
-      z.object({ ok: z.literal(false), retryAt: Timestamp.nullable() }).strict(),
-    ]),
+  internal_bind_student_session: {
+    args: z.object({ p_auth_user_id: Id, p_session_id: Id, p_version: Revision }).strict(),
+    result: z.object({ ok: z.boolean() }).strict(),
   },
-    internal_get_student_accounts: {
+  internal_get_student_accounts: {
     args: z.object({ p_student_ids: z.array(Id).min(1).max(60) }).strict(),
     result: z.object({ items: z.array(ProvisionedAccount) }).strict(),
   },
   internal_remember_student_account: {
-    args: z.object({ p_provisioning_id: Id, p_holder: Id, p_auth_user_id: Id }).strict(),
+    args: z.object({ p_provisioning_id: Id, p_auth_user_id: Id }).strict(),
     result: z.discriminatedUnion("ok", [z.object({ ok: z.literal(true), authUserId: Id }).strict(), z.object({ ok: z.literal(false) }).strict()]),
   },
   /** Stores a code (ReasonCode), never a message. */
   internal_fail_student_account: {
-    args: z.object({ p_provisioning_id: Id, p_holder: Id, p_error_code: ReasonCode }).strict(),
-    result: z.discriminatedUnion("ok", [
-      z.object({ ok: z.literal(true), status: ProvisioningStatus, attempts: z.int().min(0) }).strict(),
-      z.object({ ok: z.literal(false) }).strict(),
-    ]),
+    args: z.object({ p_provisioning_id: Id, p_error_code: ReasonCode }).strict(),
+    result: z.object({ status: ProvisioningStatus, attempts: z.int().min(0) }).strict(),
   },
   internal_list_unfinished_accounts: {
     args: z.object({ p_limit: Limit }).strict(),
@@ -159,9 +152,15 @@ export const ACCOUNT_RPCS = {
     args: z.object({ p_code: InstitutionCode }).strict(),
     result: z.object({ code: InstitutionCode, name: z.string() }).strict(),
   },
-  internal_resolve_student_login: {
+  /**
+   * service_role: the data to check a login. authUserId and passwordHash only come if the student exists, is not archived, has
+   * an active account and a credential (version is the one of the credential); otherwise null. The only RPC that returns a password hash, and only to service_role.
+   */
+  internal_get_student_login: {
     args: z.object({ p_code: InstitutionCode, p_username: Username }).strict(),
-    result: z.object({ institutionFound: z.boolean(), authEmail: z.string().nullable() }).strict(),
+    result: z
+      .object({ institutionFound: z.boolean(), authUserId: Id.nullable(), passwordHash: PasswordHash.nullable(), version: Revision.nullable() })
+      .strict(),
   },
   /** No student name: the card only completes the school and the username. */
   internal_resolve_access_card: {
