@@ -11,7 +11,8 @@ import { Username } from "../students/entities";
 /** A staff email as it is stored and compared: no spaces at the edges, lower case. */
 export const StaffEmail = z.string().trim().toLowerCase().pipe(z.email().max(254));
 /** A password the person chooses. 72 is the limit of bcrypt, which Auth uses. */
-export const NewPassword = z.string().min(8).max(72);
+// Staff passwords: at least 10 characters, like minimum_password_length in supabase/config.toml (docs/contratos/fase-2.md).
+export const NewPassword = z.string().min(10).max(72);
 /** A password being typed to enter: whatever it is, the check is Auth's. */
 export const LoginPassword = z.string().min(1).max(200);
 /** A token in the route: 32 random bytes in base64url. */
