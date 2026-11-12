@@ -5,6 +5,7 @@ import { PROFILES } from "@/lib/profiles";
 import { isSupport } from "@/lib/supports";
 import { cutShort, deadline } from "@/lib/agent/client";
 import { isRejectReason, REJECT_REASONS } from "@/lib/feedback/reasons";
+import { aiGate } from "@/lib/server/auth/ai-gate";
 
 // Validates GenerationRequest (lib/contract.ts) before spending an AI call.
 const RequestBody = z.object({
@@ -39,6 +40,10 @@ function error(message: string, status: number) {
 }
 
 export async function POST(request: Request) {
+  // Who is asking is decided before anything is read or any provider is called (F2-3).
+  const refused = await aiGate();
+  if (refused) return refused;
+
   const body = await request.json().catch(() => null);
   const parsed = RequestBody.safeParse(body);
   if (!parsed.success) {

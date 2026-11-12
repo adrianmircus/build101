@@ -3,6 +3,7 @@ import { z } from "zod";
 import { analyzeResults } from "@/lib/agent/analyze";
 import { AgentError } from "@/lib/agent/generate";
 import { cutShort, deadline } from "@/lib/agent/client";
+import { aiGate } from "@/lib/server/auth/ai-gate";
 
 // Validates ResultsAnalysisRequest (lib/contract.ts). Refs are pseudonyms like "E3": a name can't fit.
 const Mark = z
@@ -42,6 +43,10 @@ function error(message: string, status: number) {
 }
 
 export async function POST(request: Request) {
+  // Who is asking is decided before anything is read or any provider is called (F2-3).
+  const refused = await aiGate();
+  if (refused) return refused;
+
   const body = await request.json().catch(() => null);
   const parsed = RequestBody.safeParse(body);
   if (!parsed.success) return error("No hay resultados válidos para analizar.", 400);

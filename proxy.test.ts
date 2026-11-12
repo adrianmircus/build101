@@ -92,19 +92,14 @@ it("una cookie adulterada no sirve", async () => {
   expect((await outcome("/grupos", adulterada)).location).toEqual("/ingresar/profesor");
   expect(await status("/api/tts", adulterada)).toEqual(401);
 });
-it("los logins con sesión del mismo tipo mandan al inicio; /nueva nunca redirige", async () => {
-  supabase.kind = "staff";
-  expect(await outcome("/ingresar/profesor")).toEqual({ status: 307, location: "/grupos" });
-  expect(await outcome("/ingresar/profesor/olvide")).toEqual({ status: 307, location: "/grupos" });
-  expect(await status("/ingresar/profesor/nueva")).toEqual(null);
-  expect(await status("/invitacion")).toEqual(null);
-  // El login del otro tipo se muestra.
-  expect(await status("/ingresar/estudiante")).toEqual(null);
-  supabase.kind = "student";
-  for (const path of ["/ingresar/estudiante", "/ingresar/estudiante/escanear", "/t"]) {
-    expect(await outcome(path)).toEqual({ status: 307, location: "/estudiante" });
+it("ningún login se decide por los claims: con sesión de cualquier tipo, el proxy los deja pasar (F2-5)", async () => {
+  // Una tarjeta nueva cierra la sesión en la base pero el token sigue firmado: lo decide getActor() en la página.
+  for (const kind of ["staff", "student"] as const) {
+    supabase.kind = kind;
+    for (const path of ["/ingresar/profesor", "/ingresar/profesor/olvide", "/ingresar/profesor/nueva", "/ingresar/estudiante", "/ingresar/estudiante/escanear", "/t", "/invitacion"]) {
+      expect(await status(path)).toEqual(null);
+    }
   }
-  expect(await status("/ingresar/profesor")).toEqual(null);
 });
 it("los logins sin sesión, y con la demo, se muestran", async () => {
   for (const path of ["/ingresar/profesor", "/ingresar/estudiante", "/ingresar/profesor/nueva", "/t"]) {
