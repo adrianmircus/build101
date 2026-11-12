@@ -492,3 +492,68 @@ Mantengo las aceptaciones previas sobre cuentas huérfanas sin membresía, enume
 ### Qué se cambió
 
 Versión 6: trigger en auth.users que impide al estudiante cambiar contraseña o correo fuera de una reserva, con el caso en vuelo aceptado porque solo se perjudica a sí mismo (F2C-47); deleted final (F2C-48); primero getUserById y recién con 404 createUser (F2C-49); begin_access_cards toma las reservas en su transacción y devuelve busy (F2C-50, F2C-51); nextCardAt en list_group_accounts y others con outcome y retryAt (F2C-51); las tarjetas quedan en memoria mientras la página está abierta (F2C-52); authAdmin en la tabla de servicios (F2C-45).
+
+## Ronda 6
+
+1. **F2C-53 · Alta — La guardia puede rechazar un login válido que recifra la contraseña.**
+
+   **Dónde:** [guardia de `auth.users`](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:301) y criterios de T2.5a.
+
+   **Escenario:** vence la reserva del estudiante. Supabase activa el cifrado de contraseñas almacenadas o rota su clave. El estudiante ingresa con la contraseña correcta; GoTrue la verifica y escribe una nueva representación en `encrypted_password`. El trigger exige una reserva y rechaza esa escritura: falla el login aunque nadie esté cambiando la contraseña. Ese recorrido existe en [ResourceOwnerPasswordGrant](https://github.com/supabase/auth/blob/master/internal/api/token.go) y [ReEncryptPassword](https://github.com/supabase/auth/blob/master/internal/models/user.go).
+
+   Comparar `OLD` y `NEW` evita rechazar asignaciones sin cambios, pero **no resuelve el recifrado real**.
+
+   **Cambio propuesto:** definir cómo convive la guardia con ese mantenimiento de Auth. Como mínimo, agregar una compuerta sobre la versión y configuración efectivas que bloquee el despliegue si ese recorrido puede ejecutarse y sigue siendo rechazado. Exigir pruebas de login y refresh sin reserva, incluyendo recifrado. No exceptuar globalmente a `supabase_auth_admin`: también ejecuta los cambios pedidos por estudiantes.
+
+2. **F2C-54 · Alta — El nuevo control de credenciales no cubre la recreación mediante DML.**
+
+   **Dónde:** [«Suprimir gana»](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:141), guardias de `deleted` y de `auth.users`, líneas 300–301.
+
+   **Escenario:** la supresión deja el aprovisionamiento `deleted`, conserva su UUID y borra Auth. El dueño inserta una fila válida en `auth.users` con ese mismo UUID. No cambia el aprovisionamiento ni ejecuta ningún `UPDATE` de credenciales: ambas guardias nuevas quedan intactas y la cuenta suprimida vuelve a existir.
+
+   También puede recrearse así una cuenta borrada accidentalmente, fuera de cualquier reserva. Son operaciones DML incluidas en el modelo solicitado; no requieren desactivar triggers ni otro DDL.
+
+   **Cambio propuesto:** cubrir el nacimiento de una cuenta con UUID ya recordado: rechazarlo si el aprovisionamiento está `deleted` y exigir la reserva correspondiente en los estados recuperables. La comprobación debe coordinarse con `remember` y supresión bajo concurrencia. Agregar pruebas como dueño, incluyendo `DELETE` seguido de `INSERT`. La terminalidad de `deleted` por sí sola protege la fila de aprovisionamiento, no el nacimiento en Auth.
+
+3. **F2C-55 · Baja — T2.5a conserva dos resultados incompatibles para la misma carrera.**
+
+   **Dónde:** [criterios de T2.5a](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:574), frente al protocolo de `begin_access_cards`, líneas 151–152.
+
+   **Escenario:** dos emisiones con **distintos `op_key`** solicitan al mismo estudiante. El protocolo nuevo exige que la segunda devuelva `busy`; el criterio todavía exige `card_issue_running` con `retryAt`. Un implementador puede cumplir una exigencia y fallar la otra.
+
+   **Cambio propuesto:** separar los casos: reserva ajena con otra clave → `busy`; repetición del mismo `op_key` cuya emisión sigue ejecutándose → `CONFLICT card_issue_running`.
+
+Respecto de **F2C-47**, la razón del riesgo aceptado **no alcanza tal como está escrita**. No cuestiono meramente que exista una petición en vuelo; cuestiono la afirmación de que solo puede perjudicar a su propio dueño.
+
+El contrato ya contempla sesiones copiadas en computadoras compartidas. Con una de esas sesiones, un tercero puede iniciar el cambio de contraseña antes de la emisión y completarlo después de la rotación y revocación, mientras sigue vigente la reserva. La guardia lo permite. Después entra por colegio y usuario con la contraseña que eligió: `internal_resolve_student_login` resuelve el correo sintético nuevo por él. Rotar ese correo no impide recuperar acceso.
+
+Propondría exigir una autorización verificable de la operación administrativa, además de la vigencia temporal. Si se decide aceptar este riesgo, debe declararse como **posible recuperación de acceso por quien copió una sesión**, y ajustar la garantía de emisión. La justificación actual de «solo autodaño» no describe ese impacto.
+
+El estado de los hallazgos solicitados queda así:
+
+| Hallazgo | Estado en v6 | Evaluación |
+|---|---|---|
+| **F2C-4** | **Parcialmente cerrado** | Serializa las emisiones administrativas. La garantía completa conserva el caso de sesión copiada explicado en F2C-47. |
+| **F2C-7** | **Cerrado en su defecto concreto** | `fail` no degrada `active`; `deleted` es terminal y la supresión coordina los intentos reservados. |
+| **F2C-24** | **Parcialmente cerrado** | Cierra el trabajador administrativo atrasado, condicionado a la compuerta temporal de T2.5b. La escritura pública conserva el caso de F2C-47. |
+| **F2C-25** | **Cerrado para el recorrido de aprovisionamiento** | La reserva y la espera antes del borrado coordinan las llamadas del servicio. La recreación por DML queda señalada en F2C-54. |
+| **F2C-47** | **Parcialmente cerrado** | Impide actualizar credenciales fuera de reserva, pero la justificación del caso permitido omite al tercero con sesión copiada. Además abre F2C-53/54. |
+| **F2C-48** | **Cerrado** | La transición desde `deleted` queda prohibida también contra el dueño. |
+| **F2C-49** | **Cerrado** | Consulta primero el UUID; crea solo ante 404 confirmado y conserva el tratamiento de incertidumbre. |
+| **F2C-50** | **Cerrado en la carrera denunciada** | `begin` adquiere las reservas en su transacción. Queda corregir el criterio contradictorio de F2C-55. |
+| **F2C-51** | **Cerrado en el contrato público** | `busy`, `others.outcome`, `retryAt` y `nextCardAt` permiten comunicar resultado y disponibilidad, también después de recargar. |
+| **F2C-52** | **Cerrado** | Pantalla y ticket coinciden: memoria durante la página, reimpresión y borrado con «Listo» o al salir. |
+
+El trigger en `auth.users` **sí es viable en Supabase**. Supabase permite expresamente crearlo, incluso con las restricciones actuales sobre esquemas administrados. Debe instalarse mediante una migración propia, sin cambiar la propiedad de `auth.users` ni tocar `auth.schema_migrations`. [Restricciones oficiales de Supabase](https://github.com/orgs/supabase/discussions/34270).
+
+GoTrue opera como `supabase_auth_admin`, que no tiene por defecto acceso a las tablas privadas de la aplicación. Una función `SECURITY DEFINER` propiedad de `postgres`, con nombres calificados y `search_path = ''`, permite consultar la reserva sin abrir esas tablas al rol de Auth. [Guía oficial sobre permisos de triggers](https://supabase.com/kb/troubleshooting/dashboard-errors-when-managing-users-N1ls4A).
+
+Un `UPDATE` limitado a `last_sign_in_at` no dispara `UPDATE OF encrypted_password, email`. Tampoco corresponde rechazar automáticamente un refresh por actualizar otra columna. Sin embargo, `UPDATE OF` se activa cuando esas columnas aparecen en el `SET`, aunque conserven su valor; hacen falta comparación de valores y pruebas contra el recorrido efectivo. Eso no elimina el problema de recifrado de F2C-53. [Semántica de PostgreSQL](https://www.postgresql.org/docs/current/sql-createtrigger.html).
+
+Mantengo como suficientes las razones ya aceptadas para el alta exclusiva de profesores, la ejecución manual sin corte en local/staging y la conservación temporal de tarjetas en memoria. La justificación de quince minutos sigue siendo válida **condicionada a cumplir la verificación bloqueante de T2.5b**.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 7, un cambio de diseño: la contraseña del estudiante deja de vivir en Supabase Auth. Vive como hash scrypt en app.student_credentials y la verifica nuestro servidor; la sesión se abre con generateLink y verifyOtp del lado del servidor, sin correo. Emitir tarjetas es una sola transacción en la base, sin escrituras en Auth: desaparecen la reserva, los plazos, begin y finish, y los riesgos de escrituras atrasadas o inciertas sobre contraseñas (F2C-4, F2C-24, F2C-36, F2C-43, F2C-44, F2C-47, F2C-50, F2C-51). La cuenta de Auth del estudiante no tiene contraseña y un trigger impide ponérsela o cambiarle el correo, sin excepciones, así que no hay recifrado que rechazar (F2C-53) ni sesión copiada que se quede con una contraseña propia (F2C-47). Un trigger BEFORE INSERT con FOR SHARE impide que nazca la cuenta de un estudiante suprimido (F2C-54). El criterio contradictorio de T2.5a desaparece con begin (F2C-55). Sin contraseñas de estudiantes en Auth, el límite de intentos no tiene otra puerta: sale la cuenta señuelo de Auth y la rotación del correo.
