@@ -74,3 +74,47 @@ export async function stampede(steps: Step[]): Promise<Outcome[]> {
     await Promise.all(sessions.map((session) => session.close()));
   }
 }
+
+// heldPair: the same idea as heldRace for two sides that are not both RPCs (an INSERT in Auth, a mark of erasure, a lock held on
+// a row). The first side runs and its transaction stays open; the second starts on another connection; once it is blocked (or
+// done) the first commits. A side runs as the database owner ("owner") or as an actor, the way PostgREST would.
+
+export type Side<T> = { actor: Actor | "owner"; run: (session: Session) => Promise<T> };
+export type Settled<T> = { ok: true; value: T } | { ok: false; code: string };
+export type HeldPairResult<A, B> = { first: A; second: Settled<B>; waitedOn: string | null };
+
+/** The SQLSTATE of a failure of `pg`, or "unknown". */
+export function pgCode(thrown: unknown): string {
+  const code: unknown = typeof thrown === "object" && thrown !== null ? Reflect.get(thrown, "code") : undefined;
+  return typeof code === "string" ? code : "unknown";
+}
+
+async function openSide(session: Session, actor: Actor | "owner"): Promise<void> {
+  if (actor === "owner") await session.beginAsOwner();
+  else await session.begin(actor);
+}
+
+export async function heldPair<A, B>(first: Side<A>, second: Side<B>): Promise<HeldPairResult<A, B>> {
+  const [a, b, observer] = await Promise.all([openSession(), openSession(), openSession()]);
+  try {
+    await Promise.all([openSide(a, first.actor), openSide(b, second.actor)]);
+    const firstValue = await first.run(a);
+    let done = false;
+    const pending: Promise<Settled<B>> = second
+      .run(b)
+      .then(
+        (value): Settled<B> => ({ ok: true, value }),
+        (thrown: unknown): Settled<B> => ({ ok: false, code: pgCode(thrown) }),
+      )
+      .finally(() => {
+        done = true;
+      });
+    const waitedOn = await waitUntilBlocked(b, observer, () => done);
+    await a.commit();
+    const settled = await pending;
+    await (settled.ok ? b.commit() : b.rollback());
+    return { first: firstValue, second: settled, waitedOn };
+  } finally {
+    await Promise.all([a.close(), b.close(), observer.close()]);
+  }
+}

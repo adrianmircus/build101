@@ -33,3 +33,18 @@ export async function createMagicLinkClient(admin: AdminClient, email: string): 
   if (error) throw new Error(`No se pudo abrir la sesión de prueba (${error.code ?? "sin código"}).`);
   return client;
 }
+
+/** The `session_id` claim of an access token: the row of auth.sessions that the token lives on. */
+export function sessionIdOfToken(accessToken: string): string {
+  const claims: unknown = JSON.parse(Buffer.from(accessToken.split(".")[1] ?? "", "base64url").toString());
+  const id = typeof claims === "object" && claims !== null ? Reflect.get(claims, "session_id") : undefined;
+  if (typeof id !== "string") throw new Error("El token de prueba no trae session_id.");
+  return id;
+}
+
+/** The session id of a logged-in test client. */
+export async function sessionIdOf(client: TestClient): Promise<string> {
+  const token = (await client.auth.getSession()).data.session?.access_token;
+  if (token === undefined) throw new Error("El cliente de prueba no tiene sesión.");
+  return sessionIdOfToken(token);
+}

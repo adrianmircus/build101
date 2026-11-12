@@ -200,7 +200,7 @@ La contraseña de un estudiante: un hash scrypt, nunca la contraseña ni nada en
 
 Regla: `delete`.
 
-Las sesiones de un estudiante que nuestro servidor registró al abrirlas: el id de la sesión de Auth y la versión de su credencial. Nada en la fila cambia: se inserta al entrar, se borra al emitir una tarjeta nueva o con el estudiante.
+Las sesiones de un estudiante que nuestro servidor registró al abrirlas: el id de la sesión de Auth y la versión de su credencial. Nada en la fila cambia: se inserta al entrar (`internal_bind_student_session`), y se borra al emitir una tarjeta nueva, al salir o cerrarse la sesión (la clave foránea a `auth.sessions` es `ON DELETE CASCADE`) o con el estudiante. Una sesión de estudiante sin esta fila, o con otra versión de su credencial, no lee ningún dato.
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|

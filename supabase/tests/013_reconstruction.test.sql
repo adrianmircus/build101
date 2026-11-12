@@ -438,7 +438,11 @@ insert into elsewhere (sig) values
   ('api.revoke_invitation(uuid,integer)'::regprocedure::text), ('api.mark_invitation_sent(uuid,integer)'::regprocedure::text),
   ('api.list_invitations(uuid)'::regprocedure::text), ('api.list_institution_staff(uuid)'::regprocedure::text),
   ('api.get_institution_summary(uuid)'::regprocedure::text), ('api.list_enabled_subjects()'::regprocedure::text),
-  ('api.accept_invitation(bytea)'::regprocedure::text);
+  ('api.accept_invitation(bytea)'::regprocedure::text),
+  -- Phase 2 (T2.5a): the accounts of the students of a group. Names and usernames, no profile, no note and no audited data;
+  -- 043_student_accounts.test.sql checks their closed keys, their refusals for every role and what issuing writes (audit_log included).
+  ('api.list_taken_usernames(uuid,text[])'::regprocedure::text), ('api.list_group_accounts(uuid)'::regprocedure::text),
+  ('api.issue_access_cards(uuid,jsonb,uuid)'::regprocedure::text);
 select is((select string_agg(p.oid::regprocedure::text, ',' order by p.oid::regprocedure::text)
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'api' and has_function_privilege('authenticated', p.oid, 'execute')

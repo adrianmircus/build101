@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createStudent, createStudentAccount } from "../../factories/students";
 import { readRows } from "../support/db";
 import type { Scene } from "./fixtures";
 import type { CallsOf } from "./types";
@@ -62,6 +63,16 @@ async function pendingInvitation(s: Scene): Promise<string> {
   return id;
 }
 
+/**
+ * A new student of the group with an active account and no session: a card for him changes nothing of the logged-in students of the
+ * scene (a card closes the sessions of whoever gets it, and the matrix runs the cells at the same time).
+ */
+async function activeStudent(s: Scene): Promise<string> {
+  const student = await createStudent(s.owner.client, s.groupId);
+  await createStudentAccount(s.adminClient, student);
+  return student.id;
+}
+
 export const ACCOUNT_CALLS: CallsOf<AccountsRpc> = {
   internal_revoke_user_sessions: async (s) => ({ args: { p_user_id: s.owner.userId } }),
   internal_rate_limit_hit: async () => ({ args: { p_keys: [key("student_pair")], p_limits: ["10"], p_window_seconds: 900 } }),
@@ -79,7 +90,7 @@ export const ACCOUNT_CALLS: CallsOf<AccountsRpc> = {
   accept_invitation: async () => ({ args: { p_token_hash: bytea() } }),
   list_taken_usernames: async (s) => ({ args: { p_institution_id: s.institution.id, p_bases: ["luciaf"] }, listing: true }),
   list_group_accounts: async (s) => ({ args: { p_group_id: s.groupId }, listing: true, target: s.learner.studentId }),
-  issue_access_cards: async (s) => ({ args: { p_group_id: s.groupId, p_cards: JSON.stringify([{ studentId: s.learner.studentId, tokenHash: hash(), passwordHash: PASSWORD_HASH }]), p_op_key: randomUUID() } }),
+  issue_access_cards: async (s) => ({ args: { p_group_id: s.groupId, p_cards: JSON.stringify([{ studentId: await activeStudent(s), tokenHash: hash(), passwordHash: PASSWORD_HASH }]), p_op_key: randomUUID() } }),
   list_enabled_subjects: async () => ({ args: {}, listing: true }),
   internal_get_student_accounts: async (s) => ({ args: { p_student_ids: [s.learner.studentId] } }),
   internal_remember_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_auth_user_id: randomUUID() } }),

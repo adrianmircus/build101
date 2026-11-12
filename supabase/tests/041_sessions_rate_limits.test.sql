@@ -64,6 +64,13 @@ insert into ids (k, id) select 'student', (pg_temp.rpc(pg_temp.id('teach'), 'aut
   format('select api.create_student(%L, ''Estudiante 1'', ''est.1'', gen_random_uuid())', pg_temp.id('grp'))) ->> 'id')::uuid;
 select pg_temp.rpc(null, 'service_role', null, format('select api.internal_link_student_user(%L, %L)', pg_temp.id('student'), pg_temp.id('stu')));
 insert into ids (k, id) values ('s_teach', pg_temp.new_session(pg_temp.id('teach'))), ('s_stu', pg_temp.new_session(pg_temp.id('stu')));
+-- The student is registered like the login does (T2.5a): a credential and the bind of his session.
+insert into ids (k, id) values ('issue', gen_random_uuid());
+insert into app.access_card_issues (id, institution_id, group_id, op_key, op_identity)
+  values (pg_temp.id('issue'), pg_temp.id('inst'), pg_temp.id('grp'), gen_random_uuid(), repeat('a', 64));
+insert into app.student_credentials (institution_id, student_id, password_hash, issue_id)
+  values (pg_temp.id('inst'), pg_temp.id('student'), 'scrypt$15$8$1$AAAA$AAAA', pg_temp.id('issue'));
+select pg_temp.rpc(null, 'service_role', null, format('select api.internal_bind_student_session(%L, %L, 1)', pg_temp.id('stu'), pg_temp.id('s_stu')));
 
 -- 1. A staff RPC (list_my_institutions) and a student RPC (student_home, which runs as tiza_student).
 select is(pg_temp.err(pg_temp.rpc(pg_temp.id('teach'), 'authenticated', pg_temp.id('s_teach'), 'select api.list_my_institutions()')), null,
@@ -78,8 +85,8 @@ select is(pg_temp.err(pg_temp.rpc(pg_temp.id('teach'), 'authenticated', gen_rand
   'staff RPC: a session that does not exist is FORBIDDEN no_session');
 select is(pg_temp.err(pg_temp.rpc(pg_temp.id('stu'), 'authenticated', gen_random_uuid(), 'select api.student_home()')), 'FORBIDDEN no_session',
   'student RPC: a session that does not exist is FORBIDDEN no_session');
-select is(pg_temp.err(pg_temp.rpc(pg_temp.id('teach'), 'authenticated', pg_temp.id('s_stu'), 'select api.list_my_institutions()')), null,
-  'a session alive is enough: whose it is, the RPC decides by the sub (the check only asks if it exists)');
+select is(pg_temp.err(pg_temp.rpc(pg_temp.id('teach'), 'authenticated', pg_temp.id('s_stu'), 'select api.list_my_institutions()')), 'FORBIDDEN no_session',
+  'a session of another user is not the session of the sub: refused (T2.5a)');
 
 -- A session that is deleted stops working in the same transaction, and the others of the user are not touched.
 insert into ids (k, id) values ('s_teach2', pg_temp.new_session(pg_temp.id('teach')));
@@ -92,9 +99,9 @@ select is(
   (select app.session_alive()), true, 'session_alive as postgres with no claims is true');
 select set_config('request.jwt.claims', jsonb_build_object('session_id', 'no-es-un-uuid')::text, true);
 select is((select app.session_alive()), false, 'a session_id that is not a uuid is not a live session');
-select set_config('request.jwt.claims', jsonb_build_object('session_id', pg_temp.id('s_teach'))::text, true);
+select set_config('request.jwt.claims', jsonb_build_object('sub', pg_temp.id('teach'), 'session_id', pg_temp.id('s_teach'))::text, true);
 select is((select app.session_alive()), true, 'session_alive answers for the session of the claim: alive');
-select set_config('request.jwt.claims', jsonb_build_object('session_id', pg_temp.id('s_teach2'))::text, true);
+select set_config('request.jwt.claims', jsonb_build_object('sub', pg_temp.id('teach'), 'session_id', pg_temp.id('s_teach2'))::text, true);
 select is((select app.session_alive()), false, 'session_alive answers for the session of the claim: deleted');
 select set_config('request.jwt.claims', '', true);
 
