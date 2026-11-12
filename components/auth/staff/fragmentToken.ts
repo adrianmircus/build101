@@ -52,11 +52,17 @@ export function forgetFragmentToken(): void {
   held = "";
 }
 
-/** Calls `onChange` when a new link is put in the bar of this same page (a link pasted over the open page): a token, or one that does not work. An anchor is ignored. Returns how to stop. */
+/**
+ * Calls `onChange` when a new link is put in the bar of this same page (a link pasted over the open page): a token, one that does not work,
+ * or one that ends in a bare «#». An anchor is ignored. Returns how to stop.
+ * An empty fragment is nothing to read on the first load (the page itself cleans the bar with replaceState, which does not fire hashchange),
+ * but as a hashchange it is an explicit new link: the previous token is forgotten, so the old context cannot stay open.
+ */
 export function onFragmentChange(onChange: () => void): () => void {
   const listener = () => {
     const kind = fragmentKind(window.location.hash);
-    if (kind === "token" || kind === "invalid") onChange();
+    if (kind === "empty") forgetFragmentToken();
+    if (kind !== "anchor") onChange();
   };
   window.addEventListener("hashchange", listener);
   return () => window.removeEventListener("hashchange", listener);

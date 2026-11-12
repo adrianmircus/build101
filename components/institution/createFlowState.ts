@@ -25,6 +25,8 @@ export type CreateState = {
   attempt: Attempt | null;
   /** The same for createGroup: saved BEFORE the request goes out, so a lost answer is retried with the same opKey. */
   groupAttempt: Attempt | null;
+  /** The flags the rows had when the confirm began, to give them back if the group could not be made (nothing of the rows went out). */
+  beforeConfirm: Flags | null;
 };
 
 export type CreateAction =
@@ -34,12 +36,13 @@ export type CreateAction =
   | { type: "back" }
   | { type: "groupReady"; groupId: string }
   | { type: "groupAttempt"; attempt: Attempt }
+  | { type: "confirm"; begin: boolean }
   | { type: "started"; groupId: string; attempt: Attempt }
   | { type: "lost" }
   | { type: "results"; results: CreatedAccountRow[] };
 
 export function initialCreate(fields: Fields): CreateState {
-  return { step: "paste", fields, rows: [], flags: {}, groupId: null, createdIds: [], nextSlot: 0, attempt: null, groupAttempt: null };
+  return { step: "paste", fields, rows: [], flags: {}, groupId: null, createdIds: [], nextSlot: 0, attempt: null, groupAttempt: null, beforeConfirm: null };
 }
 
 function editRow(state: CreateState, key: string, value: string): CreateState {
@@ -81,6 +84,16 @@ export function createReducer(state: CreateState, action: CreateAction): CreateS
       return { ...state, groupId: action.groupId };
     case "groupAttempt":
       return { ...state, groupAttempt: action.attempt };
+    default:
+      return requestReducer(state, action);
+  }
+}
+
+/** The actions of the request itself (from the confirm to the answer), apart so each reducer stays small. */
+function requestReducer(state: CreateState, action: Extract<CreateAction, { type: "confirm" | "started" | "lost" | "results" }>): CreateState {
+  switch (action.type) {
+    case "confirm":
+      return action.begin ? confirming(state) : released(state);
     case "started":
       return started(state, action.groupId, action.attempt);
     case "lost":
@@ -96,13 +109,30 @@ export function hasUncertain(flags: Flags): boolean {
 }
 
 /**
+ * The confirm begins: from this very moment, before waiting for the group, the rows are «sending». Nobody edits them (their identity, username and slot,
+ * is the one the request will carry) or goes back to the names. A row that was already uncertain stays uncertain.
+ */
+function confirming(state: CreateState): CreateState {
+  if (state.beforeConfirm) return state;
+  const flags: Flags = {};
+  for (const row of state.rows) flags[row.key] = state.flags[row.key] === "uncertain" ? "uncertain" : "sending";
+  return { ...state, flags, beforeConfirm: state.flags };
+}
+
+/** The group could not be made: no row went out, so editing and going back are possible again. The group is retried with its own key, already saved. */
+function released(state: CreateState): CreateState {
+  if (!state.beforeConfirm) return state;
+  return { ...state, flags: state.beforeConfirm, beforeConfirm: null };
+}
+
+/**
  * The group exists now: its attempt is spent, so a later group with the same data is a new one. And the rows go out: from here until the
  * answer they are «sending», and nobody edits them or goes back.
  */
 function started(state: CreateState, groupId: string, attempt: Attempt): CreateState {
   const flags: Flags = {};
   for (const row of state.rows) flags[row.key] = "sending";
-  return { ...state, groupId, attempt, groupAttempt: null, flags };
+  return { ...state, groupId, attempt, groupAttempt: null, flags, beforeConfirm: null };
 }
 
 /** The whole request failed or its answer never came: any of the rows may exist. They keep their identity and only «Volver a crear» is left. */

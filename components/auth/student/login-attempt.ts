@@ -2,7 +2,7 @@ import { signOutAction } from "@/app/salir/actions";
 import { callAction } from "@/lib/client/callAction";
 import { rememberSchool } from "@/lib/client/remembered-school";
 import type { LoginAction } from "./login-state";
-import { beginLogin, type LoginTicket } from "./login-guard";
+import { beginLogin, markClosed, markUnclosed, type LoginTicket } from "./login-guard";
 import { runLogin, type LoginOutcome } from "./login-flow";
 
 type Attempt = {
@@ -13,8 +13,18 @@ type Attempt = {
 };
 
 // Another card was opened while this login was in the air. If it signed in, that session is closed: nobody ends up inside as the old card's student.
+// The new card only shows once the close is confirmed: if the signOut fails, the old session stays marked as not closed and the page offers to try again.
 async function discard(outcome: LoginOutcome): Promise<void> {
-  if (outcome.kind === "in") await callAction(signOutAction, {});
+  if (outcome.kind !== "in") return;
+  markUnclosed();
+  await closePreviousSession();
+}
+
+/** Closes the session of an old card. True only when the server confirmed it. */
+export async function closePreviousSession(): Promise<boolean> {
+  const closed = await callAction(signOutAction, {});
+  if (closed.ok) markClosed();
+  return closed.ok;
 }
 
 async function finish(outcome: LoginOutcome, attempt: Attempt, ticket: LoginTicket): Promise<void> {

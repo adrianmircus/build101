@@ -127,8 +127,18 @@ describe("un enlace cortado invalida el contexto anterior (F2-22)", () => {
     win.location.hash = `#${OTHER.slice(0, 20)}`;
     listeners[0]();
     expect(onChange).toHaveBeenCalledTimes(1);
-    win.location.hash = "";
+  });
+
+  it("F2-22: un hashchange hacia un fragmento vacío (enlace que termina en #) olvida el token anterior y avisa", () => {
+    stubWindow(`#${TOKEN}`);
+    expect(takeFragmentToken()).toBe(TOKEN);
+    const listeners: Array<() => void> = [];
+    const win = { location: { hash: "", pathname: "/ingresar/profesor/nueva", search: "" }, history: { replaceState: vi.fn() }, addEventListener: (_: string, fn: () => void) => listeners.push(fn), removeEventListener: vi.fn() };
+    vi.stubGlobal("window", win);
+    const onChange = vi.fn();
+    onFragmentChange(onChange);
     listeners[0]();
     expect(onChange).toHaveBeenCalledTimes(1);
+    expect(takeFragmentToken()).toBe("");
   });
 });
