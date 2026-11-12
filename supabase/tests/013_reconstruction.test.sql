@@ -1,4 +1,4 @@
--- T1.3a, widened in T1.3b and T1.4b: reconstruction. A teacher of the group calls every staff RPC that is not
+-- T1.3a, widened in T1.3b, T1.4b and T1.4c: reconstruction. A teacher of the group calls every staff RPC that is not
 -- an audited read and none of the answers may carry a profile, a support, an interest, a review date,
 -- the interface of a student, the configuration of a version, its recipients or the inputs of a
 -- generation: those come out only through the audited reads.
@@ -192,6 +192,12 @@ insert into specs (name, spec) values
   ('update_version_config', '{"id":"s","revision":"s"}'),
   ('set_version_recipients', '{"id":"s","revision":"s"}'),
   ('archive_version', '{"id":"s","revision":"s"}'),
+  ('update_version_instructions', '{"id":"s","instructionsRevision":"s","versionRevision":"s"}'),
+  ('update_version_exercise', '{"id":"s","revision":"s","versionRevision":"s"}'),
+  ('update_version_question', '{"id":"s","revision":"s","versionRevision":"s"}'),
+  ('set_question_key', '{"questionId":"s","revision":"s"}'),
+  ('approve_version', '{"id":"s","approvedRevision":"s"}'),
+  ('reject_version', '{"eventId":"s"}'),
   ('list_versions', '{"items":[{"approved":"s","exerciseCount":"s","id":"s","position":"s","readyCount":"s","revision":"s","stale":"s","status":"s"}]}'),
   ('get_assessment', '{"assessment":{"createdAt":"s","dueAt":"s","generalInstructions":"s","groupId":"s","id":"s","kind":"s","publishAt":"s","revision":"s","sourceFileId":"s","status":"s","subjectId":"s","topic":"s"},"exercises":[{"body":"s","id":"s","label":"s","position":"s","revision":"s","topicId":"s"}]}');
 
@@ -263,13 +269,28 @@ insert into pairs values (pg_temp.id('va')::text, pg_temp.id('s3')::text);
 select pg_temp.call('update_version_config', 'api.update_version_config(uuid,integer,jsonb,text)', format($$ select api.update_version_config(%L, 2, '{"profiles":["dyslexia"],"supports":[],"interests":["centinela-otro"]}', 'typed') $$, pg_temp.id('va')));
 select pg_temp.call('list_versions', 'api.list_versions(uuid)', format('select api.list_versions(%L)', pg_temp.id('aa')));
 select pg_temp.call('archive_version', 'api.archive_version(uuid,integer)', format('select api.archive_version(%L, 3)', pg_temp.id('va')));
+-- Content of a version and its approval (T1.4c): a version of its own with no recipients. Its question is written as
+-- the owner (T1.4d makes them). What comes out of each is only ids and revisions, never the text, the options
+-- or the correct option that went in.
+insert into ids (k, id) select 'vb', (pg_temp.as_user('teach', format($$ select api.create_version(%L, '{"profiles":[],"supports":[],"interests":[]}', 'gaze', gen_random_uuid(), null) $$, pg_temp.id('aa'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'xb', ve.id from app.version_exercises ve where ve.version_id = pg_temp.id('vb');
+insert into ids (k, id) values ('qb', gen_random_uuid());
+insert into app.version_questions (id, institution_id, version_id, version_exercise_id, position, stem, options)
+  select pg_temp.id('qb'), ve.institution_id, ve.version_id, ve.id, 0, 'Enunciado de la pregunta', '[{"id":"A","text":"Uno"},{"id":"B","text":"Dos"}]'::jsonb
+    from app.version_exercises ve where ve.id = pg_temp.id('xb');
+select pg_temp.call('update_version_exercise', 'api.update_version_exercise(uuid,integer,text,uuid)', format('select api.update_version_exercise(%L, 1, ''Texto adaptado'', gen_random_uuid())', pg_temp.id('xb')));
+select pg_temp.call('update_version_instructions', 'api.update_version_instructions(uuid,integer,text,uuid)', format('select api.update_version_instructions(%L, 1, ''Instrucciones de la versión'', gen_random_uuid())', pg_temp.id('vb')));
+select pg_temp.call('update_version_question', 'api.update_version_question(uuid,integer,text,jsonb,uuid)', format($$ select api.update_version_question(%L, 1, 'Otro enunciado', '[{"id":"A","text":"Uno"},{"id":"B","text":"Dos"}]', gen_random_uuid()) $$, pg_temp.id('qb')));
+select pg_temp.call('set_question_key', 'api.set_question_key(uuid,text,integer)', format('select api.set_question_key(%L, ''B'', null)', pg_temp.id('qb')));
+select pg_temp.call('approve_version', 'api.approve_version(uuid,integer,uuid)', format('select api.approve_version(%L, 5, gen_random_uuid())', pg_temp.id('vb')));
+select pg_temp.call('reject_version', 'api.reject_version(uuid,integer,text[],uuid)', format('select api.reject_version(%L, 5, ''{no_adapta}'', gen_random_uuid())', pg_temp.id('vb')));
 select pg_temp.call('archive_assessment','api.archive_assessment(uuid,integer)', format('select api.archive_assessment(%L, 3)', pg_temp.id('aa')));
 
 select is((select count(*) from answers where res ? 'error'), 0::bigint, 'every call worked: none answered an error (so each answer is a real one)');
 select is((select string_agg(a.name, ',' order by a.name) from answers a where pg_temp.verdict(a.res, (select sp.spec from specs sp where sp.name = a.name)) <> ''), null::text,
   'no answer carries a profile, a support, an interest, a review date, an interface, a configuration, inputs or a recipient, and each one conforms to its keys');
 select is((select count(*) from answers a join specs sp on sp.name = a.name), (select count(*) from answers), 'every answer has its spec of keys');
-select is((select count(*) from answers), 36::bigint, 'thirty-six RPCs were called');
+select is((select count(*) from answers), 42::bigint, 'forty-two RPCs were called');
 select is(jsonb_array_length((select res -> 'items' from answers where name = 'list_group_students')), 4,
   'and the roster answer did list the students that have needs (so there was something to leak)');
 select is((select string_agg(k, ',' order by k) from (select jsonb_object_keys(res -> 'items' -> 0) k from answers where name = 'list_group_students') t),
