@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signOutAction } from "@/app/salir/actions";
 import { callAction } from "@/lib/client/callAction";
@@ -23,7 +22,6 @@ type Props = {
 // Reusable «Salir»: it is mounted by the header of the teacher and the student (T2.8), and by the invitation screen
 // (to enter with another email). If it fails, it says so and the session stays as it was.
 export function SignOutButton({ label = "Salir", className = secondaryButton, onSignedOut, signOut = signOutAction }: Props) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(0);
 
@@ -35,7 +33,8 @@ export function SignOutButton({ label = "Salir", className = secondaryButton, on
       return setFailed((count) => count + 1);
     }
     if (onSignedOut) onSignedOut(result.data.next);
-    else router.replace(result.data.next);
+    // A full load, not the router: nothing of the person who just left (screens kept alive, form values) stays in memory.
+    else window.location.assign(result.data.next);
   }
 
   return (

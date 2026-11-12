@@ -19,6 +19,11 @@ function takeTokenFromAddress(): string | null {
   return token;
 }
 
+/** Is the fragment a card (and not an internal anchor like #main-content)? */
+function hashIsCard(): boolean {
+  return TOKEN_IN_HASH.test(location.hash);
+}
+
 const UNUSABLE: CardOutcome = { kind: "unusable" };
 
 /** /t#<token>: what the phone's camera opens when it reads the card. Same login, school and username already in. */
@@ -26,12 +31,33 @@ export function CardLanding() {
   const remembered = useRememberedSchool();
   const [view, setView] = useState<ScanView>({ kind: "reading" });
   const started = useRef(false);
+  // Which card is the one on screen. A new card (another QR in this same tab) takes a new number and every answer of the old ones is dropped.
+  const [generation, setGeneration] = useState(0);
+  const latest = useRef(0);
+
+  function open(token: string | null) {
+    latest.current += 1;
+    const mine = latest.current;
+    setGeneration(mine);
+    setView({ kind: "reading" });
+    void (token ? readCard(token) : Promise.resolve(UNUSABLE)).then((outcome) => {
+      if (latest.current === mine) setView(viewOfCard(outcome, Date.now()));
+    });
+  }
 
   useEffect(() => {
     if (started.current) return; // in development effects run twice, and the fragment is already gone
     started.current = true;
-    const token = takeTokenFromAddress();
-    void (token ? readCard(token) : Promise.resolve(UNUSABLE)).then((outcome) => setView(viewOfCard(outcome, Date.now())));
+    open(takeTokenFromAddress());
+  }, []);
+
+  // Another QR opened in this same tab changes only the fragment: the page does not load again, so it is read here.
+  useEffect(() => {
+    const onHashChange = () => {
+      if (hashIsCard()) open(takeTokenFromAddress());
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   const toLogin = () => setView({ kind: "idle" });
@@ -43,7 +69,7 @@ export function CardLanding() {
           <FocusHeading id="leyendo-titulo">Leyendo tu tarjeta…</FocusHeading>
         </div>
       )}
-      {view.kind === "card" && <StudentLogin remembered={remembered ?? null} card={view.card} />}
+      {view.kind === "card" && <StudentLogin key={generation} remembered={remembered ?? null} card={view.card} />}
       {view.kind === "pause" && <PauseView retryAt={view.retryAt} at={view.at} onBack={toLogin} />}
       {view.kind === "problem" && (
         <div className="grid gap-7">

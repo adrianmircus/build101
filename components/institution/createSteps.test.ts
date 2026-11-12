@@ -176,14 +176,17 @@ describe("una respuesta perdida al crear (F2-13)", () => {
     expect(f.state().step).toBe("done");
   });
 
-  it("solo la fila que el admin editó cambia de slot", async () => {
-    const f = flow([["uncertain", "uncertain", "created"], ["created", "created"]]);
+  it("una fila incierta no se puede editar: el reintento sale con el mismo usuario y el mismo slot", async () => {
+    const f = flow([["uncertain", "username_taken", "created"], ["created", "created"]]);
     await f.confirm();
+    f.dispatch({ type: "edit", key: "fila-0", value: "lucia.fernandez" });
     f.dispatch({ type: "edit", key: "fila-1", value: "mateo.silva" });
     await f.confirm();
-    const sent = f.create.mock.calls.map(([input]) => input as { opKey: string; rows: Array<{ slot: number }> });
+    const sent = f.create.mock.calls.map(([input]) => input as { opKey: string; rows: Array<{ slot: number; username: string }> });
     expect(sent[1]?.opKey).toBe(sent[0]?.opKey);
+    // Only the row that was not uncertain took another identity.
     expect(sent[1]?.rows.map((row) => row.slot)).toEqual([0, 3]);
+    expect(sent[1]?.rows.map((row) => row.username)).toEqual(["luciaf", "mateo.silva"]);
   });
 });
 

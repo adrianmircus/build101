@@ -72,6 +72,14 @@ describe("createReducer", () => {
     expect(state.attempt?.opKey).toBe("k");
   });
 
+  it("una fila incierta no cambia de usuario ni de identidad, y no se puede volver a los nombres (F2-13)", () => {
+    let state = createReducer(reviewing(), { type: "started", groupId: "g", attempt: { opKey: "k", signature: "s" } });
+    state = createReducer(state, { type: "results", results: [{ index: 0, outcome: "created", studentId: "a" }, { index: 1, outcome: "uncertain", studentId: null }, { index: 2, outcome: "created", studentId: "c" }] });
+    expect(createReducer(state, { type: "edit", key: "fila-1", value: "otro.usuario" })).toBe(state);
+    expect(createReducer(state, { type: "back" })).toBe(state);
+    expect(state.step).toBe("review");
+  });
+
   it("si se crearon todas, termina y cuenta las creadas", () => {
     const state = createReducer(reviewing(), {
       type: "results",

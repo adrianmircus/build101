@@ -111,21 +111,31 @@ export async function issueCards(page: Page): Promise<{ cards: PrintedCard[]; qr
 
 export type StudentWithCard = { card: PrintedCard; qrLink: string; name: string };
 
+/** The cards of a group of `count` students, made as the admin would; the admin session stays (the page is still on the cards). */
+export async function groupWithIssuedCards(page: Page, count: number): Promise<{ groupName: string; names: string[]; cards: PrintedCard[]; qrLinks: string[] }> {
+  await emulatePrint(page);
+  const names = Array.from({ length: count }, () => `${uniqueFirstName()} Fagúndez`);
+  await signInAsAdmin(page);
+  const { groupName } = await createGroupWithStudents(page, names, `Grupo ${uniqueFirstName()}`);
+  return { groupName, names, ...(await issueCards(page)) };
+}
+
+/** The pages of a PDF, counted without a library: every page object says `/Type /Page`, and the page tree says `/Type /Pages`. */
+export function pdfPages(pdf: Buffer): number {
+  return pdf.toString("latin1").match(/\/Type\s*\/Page(?![A-Za-z])/g)?.length ?? 0;
+}
+
 /**
  * A student with a card, made as the admin would (new group, one student, cards printed) and then the admin leaves the browser: what
  * the specs of the student start from. The printed data is what the student has in the hand.
  */
 export async function studentWithCard(page: Page): Promise<StudentWithCard> {
-  await emulatePrint(page);
-  const name = `${uniqueFirstName()} Fagúndez`;
-  await signInAsAdmin(page);
-  await createGroupWithStudents(page, [name], `Grupo ${uniqueFirstName()}`);
-  const { cards, qrLinks } = await issueCards(page);
+  const { cards, qrLinks, names } = await groupWithIssuedCards(page, 1);
   const card = cards[0];
   const qrLink = qrLinks[0];
   if (cards.length !== 1 || card === undefined || qrLink === undefined) throw new Error("No salió la tarjeta del estudiante de prueba.");
   await page.context().clearCookies();
-  return { card, qrLink, name };
+  return { card, qrLink, name: names[0] ?? "" };
 }
 
 /** The link of the QR as the phone opens it: this server, whatever host the link was built with. */

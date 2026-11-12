@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { NextStep } from "@/lib/domain/accounts/results";
 import { callAction } from "@/lib/client/callAction";
 import type { ActionFn } from "./actionFn";
@@ -19,6 +19,14 @@ export function StaffLoginForm({ signIn }: Props) {
   const [state, setState] = useState<LoginState>({ kind: "idle" });
   const [pending, setPending] = useState(false);
   const attempts = useRef(0);
+  // Remounting the form empties the fields (they are not controlled) and the «mostrar» of the password.
+  const [formKey, setFormKey] = useState(0);
+  const wipe = () => {
+    setPending(false);
+    setFormKey((n) => n + 1);
+  };
+  // Hidden or unmounted (Activity keeps form values): the password does not stay behind.
+  useEffect(() => wipe, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +38,10 @@ export function StaffLoginForm({ signIn }: Props) {
     if (problems.length > 0) return setState({ kind: "fields", problems, attempt: attempts.current });
     setPending(true);
     const next = stateFromResult(await callAction(signIn, { email, password }), attempts.current);
-    if (next.kind === "go") return router.replace(next.next);
+    if (next.kind === "go") {
+      wipe();
+      return router.replace(next.next);
+    }
     setPending(false);
     setState(next);
   }
@@ -46,7 +57,7 @@ export function StaffLoginForm({ signIn }: Props) {
   return (
     <>
       <SheetHeading title="Ingresá a Tiza.ai" lead="Con el correo y la contraseña de tu cuenta de profe." />
-      <StaffLoginView state={state} pending={pending} onSubmit={onSubmit} />
+      <StaffLoginView key={formKey} state={state} pending={pending} onSubmit={onSubmit} />
     </>
   );
 }

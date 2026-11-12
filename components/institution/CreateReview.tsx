@@ -7,6 +7,7 @@ import { primaryButton, textLink } from "@/components/ui/styles";
 import { FlowTop } from "./FlowTop";
 import { ReviewTable, type ReviewLine } from "./ReviewTable";
 import { UsernameInput } from "./UsernameInput";
+import { hasUncertain } from "./createFlowState";
 import { createLabel, noteFor, problemText, problemsTitle, rowProblems, type DraftRow, type Flags } from "./usernameReview";
 
 type Props = {
@@ -28,6 +29,8 @@ type Props = {
 
 export function CreateReview({ groupName, institutionName, homeHref, rows, flags, someCreated, pending, summary, notice, onBack, onEdit, onConfirm }: Props) {
   const problems = rowProblems(rows, flags);
+  // Some row may already exist on the server: nobody changes its username or goes back to the names until it is sure.
+  const unsure = hasUncertain(flags);
   const lines: ReviewLine[] = rows.map((row) => {
     const problem = problems[row.key];
     const id = `usr-${row.key}`;
@@ -35,7 +38,7 @@ export function CreateReview({ groupName, institutionName, homeHref, rows, flags
     return {
       key: row.key,
       first: row.displayName,
-      second: <UsernameInput id={id} studentName={row.displayName} value={row.username} error={problem ? text ?? undefined : undefined} onChange={(value) => onEdit(row.key, value)} />,
+      second: <UsernameInput id={id} studentName={row.displayName} value={row.username} error={problem ? text ?? undefined : undefined} locked={flags[row.key] === "uncertain"} onChange={(value) => onEdit(row.key, value)} />,
       note: text ? { text, kind: problem ? "problem" : "info", id: problem ? `${id}-error` : undefined } : null,
     };
   });
@@ -44,7 +47,7 @@ export function CreateReview({ groupName, institutionName, homeHref, rows, flags
       <FlowTop
         title="Revisá los usuarios"
         lead={`Así van a entrar en ${groupName}. El usuario es el nombre y la inicial del apellido, sin tildes. Podés cambiar el que quieras: no se crea nada hasta que confirmes.`}
-        back={someCreated ? { label: institutionName, href: homeHref } : { label: "Volver a los nombres", onClick: onBack }}
+        back={someCreated || unsure ? { label: institutionName, href: homeHref } : { label: "Volver a los nombres", onClick: onBack }}
         focus
       />
       {notice && (
@@ -56,7 +59,7 @@ export function CreateReview({ groupName, institutionName, homeHref, rows, flags
       <ReviewTable caption={`Cuentas a crear en ${groupName}`} heads={["Estudiante", "Usuario"]} lines={lines} />
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <button type="button" onClick={onConfirm} disabled={pending} className={primaryButton}>
-          {pending ? "Creando…" : createLabel(rows.length)}
+          {pending ? "Creando…" : unsure ? "Volver a crear" : createLabel(rows.length)}
         </button>
         <Link href={homeHref} className={textLink}>
           Cancelar

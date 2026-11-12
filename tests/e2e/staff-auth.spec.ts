@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { newTeacher } from "./support/accounts";
 import { expect, test } from "./support/fixtures";
 import { checkAccessibility } from "./support/a11y";
+import { PORT } from "./support/env";
 import { authSiteUrl, recoveryLink, waitForMail } from "./support/mail";
 import { world } from "./support/world";
 
@@ -64,6 +65,22 @@ test.describe("login del profe", () => {
     await expect(page.getByRole("link", { name: "Crear una contraseña nueva" })).toBeVisible();
   });
 
+  test("entra y sale sin recargar: el login vuelve vacío y con el botón habilitado (F2-17)", async ({ page }) => {
+    const teacher = await newTeacher();
+    await page.goto("/ingresar/profesor");
+    await page.getByLabel("Contraseña", { exact: true }).fill(teacher.password);
+    await page.getByRole("button", { name: "Mostrar contraseña" }).click();
+    await fillLogin(page, teacher.email, teacher.password);
+    await expect(page).toHaveURL(/\/grupos/);
+    await page.getByRole("button", { name: "Salir" }).click();
+    await expect(page).toHaveURL(/\/ingresar\/profesor/);
+    await expect(page.getByLabel("Correo")).toHaveValue("");
+    await expect(page.getByLabel("Contraseña", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("Contraseña", { exact: true })).toHaveAttribute("type", "password");
+    await expect(page.getByRole("button", { name: "Ingresar" })).toBeEnabled();
+    expect(await page.content()).not.toContain(teacher.password);
+  });
+
   test("entra, llega a /grupos y sale: sin sesión no vuelve a verlos", async ({ page }) => {
     const { teacher } = world();
     await page.goto("/ingresar/profesor");
@@ -96,15 +113,16 @@ test.describe("recuperar la contraseña", () => {
     await expect(page.getByRole("status")).toContainText("Si hay una cuenta con");
 
     // The link as it arrived: the origin is the site_url that Auth has configured and the token travels in the fragment, on the
-    // route of the recovery page. The mail points to the site_url (3000 in the config), the server under test listens on its own
-    // port, so the same route and fragment are opened there. A link to another origin or another route fails here.
+    // route of the recovery page. It is opened whole, as the mail has it: that only reaches the server under test when it listens on
+    // the port of the site_url (3000, the default of E2E_PORT). With another port this test is skipped, the others run.
+    test.skip(PORT !== Number(authSiteUrl().port), `El enlace del correo apunta a ${authSiteUrl().origin} y este servidor escucha en el puerto ${PORT}: corré sin E2E_PORT (puerto 3000) para probar el enlace tal como llega.`);
     const link = recoveryLink(await waitForMail(teacher.email));
     expect(link.origin).toBe(authSiteUrl().origin);
     expect(link.pathname).toBe("/ingresar/profesor/nueva");
     expect(link.search).toBe("");
     expect(link.hash).toMatch(/^#[A-Za-z0-9_-]{10,}$/);
     const token = link.hash.slice(1);
-    await page.goto(`${link.pathname}${link.hash}`);
+    await page.goto(link.href);
     await expect(page.getByRole("heading", { name: "Elegí tu contraseña nueva" })).toBeVisible();
     expect(new URL(page.url()).hash).toBe("");
     await checkAccessibility(page, "recuperar contraseña, elegir la nueva");
@@ -130,6 +148,29 @@ test.describe("recuperar la contraseña", () => {
     await fillLogin(page, teacher.email, teacher.password);
     await expect(alertBox(page)).toContainText("El correo o la contraseña no coinciden.");
     await fillLogin(page, teacher.email, fresh);
+    await expect(page).toHaveURL(/\/grupos/);
+  });
+
+  test("«Saltar al contenido» con teclado no pisa el token del enlace (F2-18)", async ({ page }) => {
+    const teacher = await newTeacher();
+    await page.goto("/ingresar/profesor/olvide");
+    await page.getByLabel("Correo").fill(teacher.email);
+    await page.getByRole("button", { name: "Mandarme el enlace" }).click();
+    await expect(page.getByRole("status")).toContainText("Si hay una cuenta con");
+    const link = recoveryLink(await waitForMail(teacher.email));
+    // The route and the fragment, in the server under test whatever its port.
+    await page.goto(`${link.pathname}${link.hash}`);
+    await expect(page.getByRole("heading", { name: "Elegí tu contraseña nueva" })).toBeVisible();
+    await page.getByRole("link", { name: "Saltar al contenido" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/#main-content$/);
+    await expect(page.getByRole("heading", { name: "Elegí tu contraseña nueva" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Este enlace ya no sirve" })).toHaveCount(0);
+    // The token is still good: the new password is saved.
+    const fresh = "otra frase para acordarme";
+    await page.getByLabel("Contraseña nueva").fill(fresh);
+    await page.getByLabel("Repetí la contraseña").fill(fresh);
+    await page.getByRole("button", { name: "Guardar y entrar" }).click();
     await expect(page).toHaveURL(/\/grupos/);
   });
 

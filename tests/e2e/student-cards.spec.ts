@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { checkAccessibility } from "./support/a11y";
 import { expect, test } from "./support/fixtures";
-import { createGroupWithStudents, emulatePrint, issueCards, panelPath, printCalls, qrPathFor, readPrintedCards, signInAsAdmin, uniqueFirstName } from "./support/panel";
+import { createGroupWithStudents, emulatePrint, groupWithIssuedCards, issueCards, panelPath, pdfPages, printCalls, qrPathFor, readPrintedCards, signInAsAdmin, uniqueFirstName } from "./support/panel";
 import { world } from "./support/world";
 
 // Recorridos del admin con las cuentas de los estudiantes (T2.9, T2.10): crear el grupo y las cuentas en el panel e imprimir las tarjetas.
@@ -109,3 +109,35 @@ test.describe("imprimir las tarjetas", () => {
   });
 });
 
+
+test.describe("las tarjetas no dejan rastro al salir", () => {
+  test("salir con «Volver al panel» y volver con el botón de atrás: sin contraseñas en la página y sin imprimir otra vez", async ({ page }) => {
+    const { cards } = await groupWithIssuedCards(page, 2);
+    expect(cards).toHaveLength(2);
+    expect(await printCalls(page)).toBe(1);
+    await page.getByRole("link", { name: "Volver al panel de la institución" }).click();
+    await expect(page).toHaveURL(new RegExp(`${panelPath()}$`));
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Tarjetas de acceso" })).toBeVisible();
+    // Neither the sheet nor any password is left in the page, in the text or in the markup.
+    await expect(page.locator("[data-print-sheets]")).toHaveCount(0);
+    const html = await page.content();
+    for (const card of cards) expect(html).not.toContain(card.password);
+    expect(await printCalls(page)).toBe(1);
+  });
+});
+
+// The sheet is A4 with four cards: four cards are one page, five are two (F2-7). The PDF is what the printer would get.
+test.describe("las hojas de impresión", () => {
+  for (const [count, pages] of [[4, 1], [5, 2]] as const) {
+    test(`${count} tarjetas salen en ${pages} ${pages === 1 ? "hoja A4" : "hojas A4"}`, async ({ page }) => {
+      const { cards } = await groupWithIssuedCards(page, count);
+      expect(cards).toHaveLength(count);
+      await page.emulateMedia({ media: "print" });
+      expect(await page.locator("[data-print-sheets] section").count()).toBe(pages);
+      const pdf = await page.pdf({ format: "A4", preferCSSPageSize: true, printBackground: true });
+      expect(pdfPages(pdf)).toBe(pages);
+      await page.emulateMedia({ media: "screen" });
+    });
+  }
+});

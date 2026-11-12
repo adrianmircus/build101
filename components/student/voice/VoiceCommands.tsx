@@ -51,7 +51,8 @@ export function VoiceCommands({ children }: { children: ReactNode }) {
       return;
     }
     const result = await callAction(signOutAction, {});
-    if (result.ok) router.replace(result.data.next);
+    // A full load, not the router: nothing of the student who just left stays in memory.
+    if (result.ok) window.location.assign(result.data.next);
     else setStatus({ reply: "No pudimos cerrar tu sesión ahora. Probá de nuevo en un rato.", tone: "error" });
   };
 

@@ -1,6 +1,6 @@
 import { checkAccessibility } from "./support/a11y";
 import { expect, test } from "./support/fixtures";
-import { qrAddress, studentWithCard } from "./support/panel";
+import { groupWithIssuedCards, qrAddress, qrPathFor, studentWithCard } from "./support/panel";
 import { expectNoProfileLabels } from "./support/student";
 import { world } from "./support/world";
 
@@ -30,6 +30,25 @@ test.describe("login del estudiante", () => {
     await expect(page).toHaveURL(/\/ingresar\/estudiante/);
     await page.goto("/estudiante");
     await expect(page).toHaveURL(/\/ingresar\/estudiante/);
+  });
+
+  test("entrar y salir sin recargar: el login vuelve vacío y con el botón habilitado (F2-17)", async ({ page }) => {
+    const { card } = await studentWithCard(page);
+    await page.goto("/ingresar/estudiante");
+    await page.getByLabel("Código del colegio").fill(card.schoolCode);
+    await page.getByLabel("Usuario").fill(card.username);
+    await page.getByLabel("Contraseña").fill(card.password);
+    await page.getByRole("button", { name: /Mostrar/ }).click();
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page).toHaveURL(/\/estudiante$/);
+    await page.getByRole("button", { name: "Salir" }).click();
+    await expect(page).toHaveURL(/\/ingresar\/estudiante/);
+    // Nothing of the one who left: the fields are empty, the password hidden and the button ready.
+    await expect(page.getByLabel("Usuario")).toHaveValue("");
+    await expect(page.getByLabel("Contraseña")).toHaveValue("");
+    await expect(page.getByLabel("Contraseña")).toHaveAttribute("type", "password");
+    await expect(page.getByRole("button", { name: "Entrar" })).toBeEnabled();
+    expect(await page.content()).not.toContain(card.password);
   });
 
   test("segunda vez: dos campos, con «Cambiar de colegio»", async ({ page }) => {
@@ -102,6 +121,28 @@ test.describe("login del estudiante", () => {
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page).toHaveURL(/\/estudiante$/);
     await expect(page.getByText("Todavía no tenés prácticos.")).toBeVisible();
+  });
+
+  test("otro QR en la misma pestaña reemplaza al anterior: /t#A y después /t#B sin recargar deja la tarjeta B (F2-19)", async ({ page }) => {
+    const { cards, qrLinks } = await groupWithIssuedCards(page, 2);
+    await page.context().clearCookies();
+    const cardOf = (link: string) => cards.find((one) => one.qrPath === qrPathFor(link));
+    const [a, b] = qrLinks.map((link) => ({ link, card: cardOf(link) }));
+    if (!a?.card || !b?.card) throw new Error("No se pudo emparejar cada QR con su tarjeta.");
+    await page.goto(qrAddress(a.link));
+    await expect(page.getByText(`Usuario ${a.card.username}`)).toBeVisible();
+    await page.getByLabel("Contraseña").fill("algo de la tarjeta A");
+    // The second card is put in the bar of the same page: only the fragment changes, the page does not load again.
+    await page.evaluate((hash) => {
+      location.hash = hash;
+    }, new URL(b.link).hash);
+    await expect(page.getByText(`Usuario ${b.card.username}`)).toBeVisible();
+    await expect(page.getByText(`Usuario ${a.card.username}`)).toHaveCount(0);
+    await expect(page.getByLabel("Contraseña")).toHaveValue("");
+    expect(page.url()).not.toContain(new URL(b.link).hash.slice(1));
+    await page.getByLabel("Contraseña").fill(b.card.password);
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page).toHaveURL(/\/estudiante$/);
   });
 
   test("/t con una tarjeta que no sirve: aviso neutro y el login normal", async ({ page }) => {
