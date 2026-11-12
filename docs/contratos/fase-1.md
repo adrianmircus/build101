@@ -2,7 +2,7 @@
 
 Este documento fija la base de datos de la fase 1: dónde viven las tablas, cómo se escriben las RPC, cómo se toman los locks y cómo se reparten los tickets. Lo escribió el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora las tres rondas de revisión de Codex del contrato (C1 a C22).
+Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora las cuatro rondas de revisión de Codex del contrato (C1 a C22).
 
 Archivos del contrato:
 
@@ -172,6 +172,7 @@ Un sandbox vencido cuenta como sin membresía: después de `expires_at` su visit
 - **Guardar el perfil no exige todavía el consentimiento `store_profile`.** El chequeo y sus efectos llegan con T9.3. Hasta la compuerta legal (T10.6) no entra ningún dato real.
 - **Las RPC viven en `api`, no en `public`.** El spec habla de «RPC en `public`». Se cambia por los privilegios por defecto de `supabase_admin` (ver «Tres esquemas»).
 - **Las instrucciones generales se copian a cada versión.** El spec las pone en `assessments`. La versión tiene su propia copia, que se aprueba y se publica con el resto (ver «Instrucciones generales»).
+- **La prueba de fugas garantiza solo lo estructural.** Si un texto aprobado dice la solución se trata como contenido, con un aviso al profe que no bloquea (ver «Prueba de fugas»).
 - **Los actores del historial no tienen FK.** En los eventos, las revisiones de la clave y las publicaciones, el id de quien actuó queda como dato histórico, como en `audit_log` (ver «Triggers»).
 
 ## Tablas
@@ -325,7 +326,7 @@ assessments -> assessment_exercises (por id) -> versions (por id) -> generations
 
 Lo hacen cumplir las funciones de `20261111130900_lock_order.sql`:
 
-- `app.rpc_begin()` es la primera línea de toda RPC de `api` (C18; `001_contract` falla si falta). Rechaza correr si el modo supresión está puesto, en cualquier forma, y después llama a `app.lock_begin()`, que reinicia los marcadores de locks.
+- `app.rpc_begin()` es la primera instrucción de toda RPC de `api`, justo después de `begin` (C18; `001_contract` falla si falta o si algo va antes). Rechaza correr si el modo supresión está puesto, en cualquier forma, y después llama a `app.lock_begin()`, que reinicia los marcadores de locks.
 - `app.lock_version_tree(versión, generación, ejercicios)` toma la versión, después la generación y después los ejercicios ordenados por id. Si ya bloqueó ejercicios, no deja bloquear una generación. Solo un árbol de versión por RPC.
 - `app.lock_versions(ids)` bloquea varias versiones por id («Aprobar todas», publicar), y después no deja bloquear el árbol de ninguna.
 - `app.lock_assignments(ids)` va después de cualquier versión.
@@ -507,12 +508,12 @@ Qué pasa con cada tabla (C9): `lib/domain/permissions/erasure.ts` da una regla 
 
 Cómo se redacta lo inmutable (C9). Las filas de una versión compartida (eventos, salidas de la IA, revisiones de la clave, la publicación y las entradas de la generación) rechazan `UPDATE`. La supresión no las esquiva: abre un modo propio.
 
-- `app.begin_erasure(<supresión>)` abre, solo para la transacción, el modo supresión. Exige que la fila de `erasures` exista en `marked`: la marca va siempre primero. Lo ata a esa supresión, a su institución y al id de la transacción (`txid_current()`): una marca copiada a otra transacción, o puesta a mano, no abre nada (C18).
+- `app.begin_erasure(<supresión>)` abre, solo para la transacción, el modo supresión. Exige que la fila de `erasures` exista en `marked`: la marca va siempre primero. Lo ata a esa supresión, a su institución y al id de la transacción (`txid_current()`), así una marca copiada a otra transacción no abre nada (C18). La marca da vínculo con la transacción, no autenticidad: SQL con privilegios de dueño podría fabricarla. Contra los usuarios de la API protegen los privilegios cerrados: no pueden ejecutar funciones de `app` ni llegar a SQL directo.
 - Con el modo abierto, `app.redaction_allowed` deja cambiar un solo campo por tabla, y solo en filas de la institución de la supresión: `version_events.data`, `generation_outputs.output`, `answer_key_revisions.content`, `publications.content` y `generations.inputs`. `audit_log` nunca. Cualquier otro cambio sigue rechazado: una generación terminada no se reabre y un evento no cambia de tipo.
 - Mientras el modo está abierto no corre ninguna RPC: `app.rpc_begin()` las rechaza. La RPC interna de supresión llama a `rpc_begin` primero y abre el modo después.
 - El modo se cierra con la transacción, y pasar la supresión a `done` lo cierra aunque la transacción siga.
 - Solo lo llama la RPC interna de supresión (T9.5, `service_role`). Ningún usuario puede fijar la marca de la transacción, y nadie tiene `EXECUTE` sobre las funciones de `app`.
-- `004_contract_redaction` lo prueba: fuera del modo no se reescribe nada; dentro, el evento compartido pierde al estudiante borrado y conserva al otro; una publicación solo cambia su contenido; un evento no cambia de tipo; `audit_log` no se toca; otra institución queda afuera; una RPC llamada como `authenticated` se niega a correr; `authenticated` no puede abrir el modo; una marca falsificada no abre nada; con la supresión terminada se vuelve a cerrar.
+- `004_contract_redaction` lo prueba: fuera del modo no se reescribe nada; dentro, el evento compartido pierde al estudiante borrado y conserva al otro; una publicación solo cambia su contenido; un evento no cambia de tipo; `audit_log` no se toca; otra institución queda afuera; una RPC llamada como `authenticated` se niega a correr; `authenticated` no puede abrir el modo; una marca con otra transacción no abre nada; con la supresión terminada se vuelve a cerrar.
 
 Lo que no garantiza:
 
@@ -522,16 +523,24 @@ Lo que no garantiza:
 
 ## Prueba de fugas (C10)
 
-`lib/domain/delivery/leaks.ts` tiene dos piezas:
+Decisión (cambia el spec, ver «Decisiones que cambian el spec»): la prueba automática de fugas garantiza solo lo estructural y demostrable. Si un texto libre aprobado por el profe dice la solución es una cuestión de contenido, y se trata con un aviso, no con la prueba. Perseguir frases («la respuesta correcta es la A», «**A**», «1/2») no tiene fin y da falsos positivos.
 
-- `findLeaks(valor, lista, { forbiddenIds, forbiddenWords, secrets })` recorre el JSON y reporta:
-  - una clave fuera de la lista, o una clave que no es un id dentro de `answers` o `choices`;
-  - un id prohibido (otro estudiante, un seudónimo, una versión) como valor, como clave o metido en cualquier texto («Referencia: <id>»), también en lo que escribió el estudiante (C10);
-  - una palabra prohibida (los nombres de los perfiles, `PROFILE_WORDS`, sin importar mayúsculas ni tildes) dentro de cualquier texto que escribió el servidor. Lo que escribió el estudiante (`ownContent`: sus respuestas) queda exento solo de esta búsqueda;
-  - un secreto (una opción correcta, una respuesta esperada) revelado en texto libre que escribió el servidor: una palabra que anuncia la solución (correcta, respuesta, solución, clave, pista), un separador («:», «=», «es», «era») y el valor, como en «Respuesta correcta: A» o «Solución: x = 1» (C10). Solo se miran los campos `revealable` de cada DTO (títulos, instrucciones, enunciados de ejercicios y preguntas). Nunca etiquetas, textos de opciones ni respuestas del estudiante, donde el mismo valor («1», «A») es legítimo. Un secreto en un campo de más ya es una clave fuera de la lista. La devolución de una nota no es `revealable`: después de corregir, hablar de la respuesta es legítimo.
-- `checkStudentDto(nombre, valor, opciones)` valida además la estructura completa con el esquema estricto del DTO, así un campo que falta o sobra también falla.
+Lo que la prueba garantiza, y con qué:
 
-La prueba de T1.5d usa `checkStudentDto` sobre los cuatro DTO, con dos estudiantes de perfiles distintos en el mismo grupo: los ids del otro estudiante, los seudónimos y los ids de versión como `forbiddenIds`; `PROFILE_WORDS` como palabras; y como `secrets` cada opción correcta y cada respuesta esperada.
+- La estructura: cada DTO valida contra su esquema estricto (`checkStudentDto`), así un campo que falta o sobra falla.
+- Ningún campo puede llevar la clave, la rúbrica ni una respuesta esperada: no existe un campo así en la lista de claves permitidas, y una clave fuera de la lista es fuga.
+- Un id prohibido (otro estudiante, un seudónimo, un perfil, una clave, una versión no asignada) no aparece en ningún lado: ni como valor, ni como clave, ni metido en un texto («Referencia: <id>»), tampoco en lo que escribió el estudiante (`forbiddenIds`).
+- Ninguna palabra de perfil (`PROFILE_WORDS`, sin importar mayúsculas ni tildes) aparece en texto que escribió el servidor. Lo que escribió el estudiante (`ownContent`) queda exento solo de esta búsqueda.
+- La opción correcta no aparece en ningún campo de id fuera de la lista de opciones (`questions.*.options.*.id`) y de la elección propia del estudiante (`draft.choices.*`) (`correctOptionIds`).
+- El SQL de las RPC del estudiante nunca lee la clave: `001_contract` falla si una RPC `student_*`, o una función de `app` que llame, nombra `question_keys`, `answer_keys` o `answer_key_revisions`.
+
+El aviso, aparte (`lib/domain/delivery/reveal.ts`):
+
+- `revealsSolution(texto, soluciones)` y `revealWarnings(textos, soluciones)` detectan un texto que parece decir la solución: una palabra que la anuncia (correcta, respuesta, solución, clave, pista), un «correcta» opcional, un separador («:», «=», «es», «era»), un artículo opcional («la», «el», «opción») y el valor. Ignora el énfasis de Markdown («**A**») y no toma parte de un número como el valor («1» en «1/2» o «1,5»).
+- Mira todo texto que va a leer el estudiante: títulos, instrucciones, enunciados, etiquetas y textos de opciones. Nunca las respuestas del propio estudiante.
+- Devuelve avisos, nunca fugas, y nunca bloquea. Cada texto libre lo aprueba un profe antes de publicar, y los prompts de generación prohíben decir las respuestas. El servicio que aprueba (T4.3) y el que publica (T4.7) corren `revealWarnings` sobre los textos de `get_version` con las soluciones de `get_answer_key`, y le muestran al profe los avisos junto con el resultado. Las RPC de T1.4c y T1.5a no cambian por esto: solo garantizan que esas lecturas traen todo lo que el aviso necesita.
+
+La prueba de T1.5d usa `checkStudentDto` sobre los cuatro DTO, con dos estudiantes de perfiles distintos en el mismo grupo: los ids del otro estudiante, los seudónimos y los ids de versión como `forbiddenIds`; `PROFILE_WORDS` como palabras; y las opciones correctas como `correctOptionIds`.
 
 ## Matriz de permisos
 
@@ -731,6 +740,8 @@ Criterios de aceptación:
     app.refresh_version_status.
   - approve_version exige p_revision = revision y el contenido completo (content_incomplete), y deja
     approved_revision; cualquier cambio posterior la deja atrás. reject_version escribe rejected con sus motivos.
+  - Un texto que parece decir la solución no bloquea la aprobación: es un aviso que calcula el servicio (T4.3)
+    con revealWarnings sobre get_version y get_answer_key (ver «Prueba de fugas»).
   - get_version devuelve keys (QuestionKey con su revisión).
 Pruebas obligatorias: 017_version_content.test.sql con las reglas comunes; aprobar una revisión vieja es
   CONFLICT; editar instrucciones, un ejercicio, una opción o la opción correcta después de aprobar deja la
@@ -807,7 +818,8 @@ Archivos que puede crear o cambiar: supabase/migrations/20261112190000_t1_5a_pub
 Contratos que usa (solo lectura): lib/domain/delivery/**, sección «Intentos y entrega».
 Criterios de aceptación: los puntos de «Publicar», cada uno con su error (not_approved, content_incomplete,
   missing_questions, stale_answer_key, missing_consent, not_enrolled); el op_key repetido devuelve la misma publicación; la copia
-  lleva las instrucciones de la versión y no lleva opción correcta, changes ni config; cada intento lleva la
+  lleva las instrucciones de la versión y no lleva opción correcta, changes ni config; los avisos de
+  revealWarnings no bloquean la publicación (los muestra el servicio, T4.7); cada intento lleva la
   revisión de la clave de su publicación.
 Pruebas obligatorias: 020_publish.test.sql con las reglas comunes; volver a publicar mueve solo intentos sin
   empezar, con la clave nueva; crear una versión typed, asignarle un destinatario y publicarla con ejercicios
@@ -868,9 +880,11 @@ Criterios de aceptación: interface, answer_mode y aids calculados en el servido
   consentimiento de dictado, voice pasa a typed en cada lectura; student_grades solo intentos corregidos.
 Pruebas obligatorias: en integración, un estudiante con perfil motor y otro con dislexia en el mismo grupo:
   checkStudentDto sobre cada DTO, con las opciones de «Prueba de fugas» (forbiddenIds, PROFILE_WORDS y las
-  opciones correctas y respuestas esperadas como secrets), devuelve vacío; y tres casos negativos plantados
-  fallan: una versión cuyo texto nombra el perfil, un título que incluye el id del otro estudiante y un
-  enunciado que dice «Respuesta correcta: A». 023_student_dto.test.sql prueba en SQL que un profe y otro
+  opciones correctas como correctOptionIds), devuelve vacío; y tres casos negativos plantados fallan:
+  una versión cuyo texto nombra el perfil, un título que incluye el id del otro estudiante y una opción
+  correcta en un campo de id que no es la lista de opciones. Un enunciado que dice «Respuesta correcta: A» no es
+  fuga: es un aviso de revealWarnings, que se prueba en lib/domain/delivery/reveal.test.ts.
+  023_student_dto.test.sql prueba en SQL que un profe y otro
   estudiante no pueden llamar a estas lecturas. No toca 013_reconstruction.test.sql: las lecturas del
   estudiante están exentas de ella (ver T1.3a).
 Inventario de datos: ninguna tabla nueva.

@@ -85,32 +85,23 @@ export type StudentGrades = z.infer<typeof StudentGrades>;
 /**
  * keys: every object key allowed at any depth. idKeyed: objects whose keys are ids, not names.
  * ownContent: subtrees the student wrote (their answers): exempt from the forbidden-words check.
- * revealable: keys whose value is free text the server wrote and where a solution could be given
- * away («Respuesta correcta: A»). Secrets are looked for only there; never in labels, option texts
- * or the student's own answers, where the same value («1», «A») appears legitimately.
  */
-export type DtoAllowlist = {
-  keys: ReadonlySet<string>;
-  idKeyed: ReadonlySet<string>;
-  ownContent: ReadonlySet<string>;
-  revealable: ReadonlySet<string>;
-};
+export type DtoAllowlist = { keys: ReadonlySet<string>; idKeyed: ReadonlySet<string>; ownContent: ReadonlySet<string> };
 
 const GRAPH_KEYS = ["graph", "functions", "expr", "label", "points", "x", "y", "window", "xMin", "xMax", "yMin", "yMax"];
 const ANSWER_KEYS = ["text", "mode", "transcript", "graph"];
 
-type AllowlistInput = { keys: string[]; idKeyed?: string[]; revealable?: string[] };
+type AllowlistInput = { keys: string[]; idKeyed?: string[] };
 
-function allowlist({ keys, idKeyed = [], revealable = [] }: AllowlistInput): DtoAllowlist {
+function allowlist({ keys, idKeyed = [] }: AllowlistInput): DtoAllowlist {
   // Whatever is keyed by id here is the student's own draft: answers and choices.
-  return { keys: new Set(keys), idKeyed: new Set(idKeyed), ownContent: new Set(idKeyed), revealable: new Set(revealable) };
+  return { keys: new Set(keys), idKeyed: new Set(idKeyed), ownContent: new Set(idKeyed) };
 }
 
 export const STUDENT_DTO_ALLOWLISTS = {
   student_home: allowlist({ keys: ["displayName", "interface", "groups", "id", "name", "subjectId"] }),
   student_task_list: allowlist({
     keys: ["tasks", "assignmentId", "attemptId", "title", "kind", "subjectId", "publishAt", "dueAt", "status", "late"],
-    revealable: ["title"],
   }),
   student_task: allowlist({
     keys: [
@@ -119,15 +110,12 @@ export const STUDENT_DTO_ALLOWLISTS = {
       "exerciseId", "stem", "options", "draft", "revision", "answers", "choices", ...ANSWER_KEYS, ...GRAPH_KEYS,
     ],
     idKeyed: ["answers", "choices"],
-    revealable: ["title", "generalInstructions", "body", "stem"],
   }),
-  // After grading, the teacher's feedback may discuss the right answer: it is not revealable.
   student_grades: allowlist({
     keys: [
       "grades", "assignmentId", "attemptId", "title", "kind", "subjectId", "score", "feedback", "gradedAt",
       "exercises", "exerciseId", "label", "status",
     ],
-    revealable: ["title"],
   }),
 } as const satisfies Record<string, DtoAllowlist>;
 

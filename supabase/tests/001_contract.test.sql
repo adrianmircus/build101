@@ -1,6 +1,6 @@
 -- The shape every contract table and RPC must keep, whatever later tickets add.
 begin;
-select plan(20);
+select plan(21);
 
 -- Tables: born closed.
 select is_empty($$
@@ -143,10 +143,27 @@ select is_empty($$
      and has_function_privilege('authenticated', p.oid, 'execute')
 $$, 'no internal_* RPC is executable by authenticated');
 
+-- The first statement after the body's begin is exactly perform app.rpc_begin(); (no comment or
+-- statement in between), so nothing runs before the erasure-mode check.
 select is_empty($$
   select p.oid::regprocedure::text from pg_proc p
-   where p.pronamespace = 'api'::regnamespace and position('app.rpc_begin()' in p.prosrc) = 0
-$$, 'every RPC starts with app.rpc_begin(): none runs inside erasure mode');
+   where p.pronamespace = 'api'::regnamespace
+     and coalesce(lower(regexp_replace(substring(p.prosrc from '(?i)\mbegin\M\s*([^;]*;)'), '\s+', ' ', 'g')), '')
+         <> 'perform app.rpc_begin();'
+$$, 'every RPC starts with perform app.rpc_begin(): none runs inside erasure mode');
+
+-- What a student reads never comes from the answer key: no student_* RPC, and no app helper it
+-- calls, names question_keys, answer_keys or answer_key_revisions.
+select is_empty($$
+  select p.proname::text from pg_proc p
+   where p.pronamespace = 'api'::regnamespace and starts_with(p.proname, 'student_')
+     and p.prosrc ~* '\m(question_keys|answer_keys|answer_key_revisions)\M'
+  union all
+  select s.proname || ' -> app.' || h.proname from pg_proc s
+    join pg_proc h on h.pronamespace = 'app'::regnamespace and s.prosrc ~* ('\mapp\.' || h.proname || '\M')
+   where s.pronamespace = 'api'::regnamespace and starts_with(s.proname, 'student_')
+     and h.prosrc ~* '\m(question_keys|answer_keys|answer_key_revisions)\M'
+$$, 'student RPCs never read the answer key tables, directly or through a helper');
 
 select * from finish();
 rollback;

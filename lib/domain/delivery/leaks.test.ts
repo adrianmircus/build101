@@ -79,27 +79,21 @@ describe("findLeaks", () => {
     expect(findLeaks(leaked, task, { forbiddenIds })).toEqual([`draft.answers.${OTHER}`]);
   });
 
-  // The example's correct option is "A" and an expected answer is "x = 1"; "1" is a short answer.
-  const secrets = ["A", "x = 1", "1"];
-  const withTitle = (title: string) => ({ ...examples.student_task, title });
+  // The example's correct option is "A": it is a visible option id and the student's own choice.
+  const correctOptionIds = new Set(["A"]);
 
-  it("reports a secret given away in free text the server wrote", () => {
-    expect(findLeaks(withTitle("Respuesta correcta: A"), task, { secrets })).toEqual(["title"]);
-    expect(findLeaks(withTitle("Solución: x = 1"), task, { secrets })).toEqual(["title"]);
-    const inBody = { ...examples.student_task, exercises: [{ id: ID, label: "1", body: "Pista: la clave es 1" }] };
-    expect(findLeaks(inBody, task, { secrets })).toEqual(["exercises.0.body"]);
+  it("lets the correct option id appear in the option list and in the student's own choice", () => {
+    expect(findLeaks(examples.student_task, task, { correctOptionIds })).toEqual([]);
   });
 
-  it("does not flag the same values where they are legitimate", () => {
-    // The fullest task has option ids "A", the student's own choice "A" and the answer "x = 1".
-    expect(findLeaks(examples.student_task, task, { secrets })).toEqual([]);
-    const coincidences = {
-      ...examples.student_task,
-      exercises: [{ id: ID, label: "1", body: "Calculá la respuesta a la pregunta 1" }],
-      questions: [{ id: ID, exerciseId: ID, stem: "¿Cuánto vale x?", options: [{ id: "A", text: "1" }, { id: "B", text: "2" }] }],
-      draft: { revision: 2, answers: { [ID]: { text: "A", mode: "typed" } }, choices: { [ID]: "A" } },
-    };
-    expect(findLeaks(coincidences, task, { secrets })).toEqual([]);
+  it("reports the correct option id in any other id-typed field", () => {
+    const leaked = { ...examples.student_task, questions: [{ id: ID, exerciseId: "A", stem: "¿x?", options: [{ id: "A", text: "1" }, { id: "B", text: "2" }] }] };
+    expect(findLeaks(leaked, task, { correctOptionIds })).toEqual(["questions.0.exerciseId"]);
+  });
+
+  it("leaves a solution stated in approved free text to the advisory check, not to the leak test", () => {
+    const stated = { ...examples.student_task, title: "Respuesta correcta: **A**" };
+    expect(findLeaks(stated, task, { correctOptionIds })).toEqual([]);
   });
 
   it("reports a profile word inside text the server wrote, whatever its case and accents", () => {

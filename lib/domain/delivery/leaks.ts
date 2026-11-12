@@ -1,29 +1,27 @@
 import { STUDENT_DTO_ALLOWLISTS, STUDENT_DTO_SCHEMAS, type DtoAllowlist, type StudentDtoName } from "./student-dto";
 
-// Walks a JSON value a student receives and reports every path that should not be there:
-// - a key outside the DTO's allowlist, or a non-id key inside an id-keyed object (answers, choices);
-// - a forbidden id (another student, a pseudonym, a version) anywhere: as a value, as a key or
-//   embedded in any text, the student's own writing included ("Referencia: <id>");
-// - a profile word inside any text the server produced (titles, instructions, bodies, options,
-//   feedback). The student's own writing (ownContent) is exempt from this check only;
-// - a secret given away in free text the server wrote: a correct option or an expected answer
-//   right after a reveal word («Respuesta correcta: A», «Solución: x = 1»). Only the allowlist's
-//   revealable fields are looked at, never labels, option texts or the student's own answers,
-//   where the same value («1», «A») is legitimate. A secret in an extra field is already a key
-//   outside the allowlist.
-// Pure, so the leak test of the RPCs (T1.5d) and of the RSC payload (T4.8) share it.
+// The automated leak test guarantees only what is structural and provable (docs/contratos/fase-1.md,
+// «Prueba de fugas»). It walks a JSON value a student receives and reports every path where:
+// - a key is outside the DTO's allowlist, or a non-id key sits inside an id-keyed object (answers,
+//   choices). No key, rubric or expected answer can travel: no such field exists in the allowlist;
+// - a forbidden id (another student, a pseudonym, a need, a key, a version not assigned) appears
+//   anywhere: as a value, as a key or embedded in any text, the student's own writing included;
+// - a profile word appears in text the server wrote (the student's own writing is exempt);
+// - a correct option id appears in an id-typed field other than the option list and the student's
+//   own choice.
+// Whether teacher-approved free text states a solution is a content question, not a leak: see
+// reveal.ts, which only warns. Pure, so the RPC test (T1.5d) and the RSC payload test (T4.8) share it.
 
 export type LeakOptions = {
   forbiddenIds?: ReadonlySet<string>;
   forbiddenWords?: readonly string[];
-  /** Correct options and expected answers of the task. */
-  secrets?: readonly string[];
+  /** The correct option ids of the task's questions. */
+  correctOptionIds?: ReadonlySet<string>;
 };
 
-/** Words that introduce a solution, then a separator («:», «=», «es», «era»), then the value. */
-const REVEAL = String.raw`(correct[ao]?|respuesta|solucion|clave|answer|pista)\s*(:|=|\bes\b|\bera\b|\bis\b)\s*`;
-
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Where an option id is legitimately visible: the options themselves and the student's own choice. */
+const OPTION_PLACES = [/^questions\.\d+\.options\.\d+\.id$/, /^draft\.choices\.[^.]+$/];
 
 type Walk = { allowlist: DtoAllowlist; options: Required<LeakOptions>; leaks: string[] };
 
@@ -49,16 +47,14 @@ function hasForbiddenId(text: string, ids: ReadonlySet<string>): boolean {
   return [...ids].some((id) => lower.includes(id.toLowerCase()));
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function isIdField(walk: Walk, place: Place): boolean {
+  const key = place.parentKey ?? "";
+  return key === "id" || key.endsWith("Id") || walk.allowlist.idKeyed.has(place.path.split(".").at(-2) ?? "");
 }
 
-/** True when the text reveals one of the secrets: a reveal word, a separator, then the value. */
-export function revealsSecret(text: string, secrets: readonly string[]): boolean {
-  const normalized = normalizeText(text);
-  return secrets.some((secret) =>
-    new RegExp(`${REVEAL}${escapeRegExp(normalizeText(secret))}(?![a-z0-9])`).test(normalized),
-  );
+function correctOptionLeaks(walk: Walk, value: string, place: Place): boolean {
+  if (!walk.options.correctOptionIds.has(value) || !isIdField(walk, place)) return false;
+  return !OPTION_PLACES.some((pattern) => pattern.test(place.path));
 }
 
 function keyLeaks(walk: Walk, key: string, place: Place): boolean {
@@ -68,10 +64,9 @@ function keyLeaks(walk: Walk, key: string, place: Place): boolean {
 }
 
 function stringLeaks(walk: Walk, value: string, place: Place): boolean {
-  const { forbiddenIds, forbiddenWords, secrets } = walk.options;
-  if (hasForbiddenId(value, forbiddenIds)) return true;
-  if (!place.own && hasWord(value, forbiddenWords)) return true;
-  return place.parentKey !== undefined && walk.allowlist.revealable.has(place.parentKey) && revealsSecret(value, secrets);
+  if (hasForbiddenId(value, walk.options.forbiddenIds)) return true;
+  if (!place.own && hasWord(value, walk.options.forbiddenWords)) return true;
+  return correctOptionLeaks(walk, value, place);
 }
 
 function visit(walk: Walk, value: unknown, place: Place): void {
@@ -95,7 +90,7 @@ export function findLeaks(value: unknown, allowlist: DtoAllowlist, options: Leak
   const full: Required<LeakOptions> = {
     forbiddenIds: options.forbiddenIds ?? new Set(),
     forbiddenWords: options.forbiddenWords ?? [],
-    secrets: options.secrets ?? [],
+    correctOptionIds: options.correctOptionIds ?? new Set(),
   };
   const walk: Walk = { allowlist, options: full, leaks: [] };
   visit(walk, value, { path: "", parentKey: undefined, own: false });
