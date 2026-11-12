@@ -71,3 +71,24 @@ Hay que conservar esa memoria asociada mientras exista S y rechazar la vinculaci
 Verificación exclusivamente `READ ONLY`: evalué las guardias vigentes con registros sintéticos y contrasté catálogo y fuentes —212 funciones coinciden—. No ejecuté escrituras ni repetí las suites informadas; worktree intacto.
 
 Veredicto: fase no lista
+
+## Ronda 6
+
+**F1-4 sigue abierta: queda un rodeo de severidad media mediante TRUNCATE**, bajo el mismo supuesto de escritura como propietario de las rondas anteriores.
+
+La [guardia nueva](supabase/migrations/20261113110000_t1_fix12.sql:52) cubre DELETE, pero TRUNCATE no la ejecuta. El catálogo confirma que tampoco hay trigger de TRUNCATE ni FK entrantes que lo impidan.
+
+Partiendo de S vinculado a A:
+
+1. Truncar `app.account_provisioning`.
+2. Insertar un aprovisionamiento nuevo para S, con `auth_user_id = NULL` y estado `pending`.
+3. Borrar Auth A: S queda con `user_id = NULL`.
+4. Ejecutar `internal_link_student_user(S, B)`: la fila existe y ya no recuerda A; las guardias permiten vincular B.
+
+**Hace falta rechazar TRUNCATE y agregar esta regresión completa.** Los roles de API no tienen ese privilegio.
+
+Los otros caminos revisados quedan cerrados: una fila de otro estudiante no sustituye la memoria, `institution_id` está congelado y el orden «marcar deleted → borrar Auth → borrar estudiante» sigue siendo compatible.
+
+Verificación exclusivamente `READ ONLY`: catálogo y evaluación sintética de las guardias; no ejecuté el recorrido con escrituras ni repetí las suites. Las 213 funciones coinciden con las migraciones. No encontré otra alta/media en el diff; worktree intacto.
+
+Veredicto: fase no lista
