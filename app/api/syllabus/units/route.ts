@@ -4,6 +4,7 @@ import { AgentError } from "@/lib/agent/generate";
 import { extractUnits } from "@/lib/agent/syllabus";
 import type { SyllabusUnitsResponse } from "@/lib/contract";
 import { cutShort, deadline } from "@/lib/agent/client";
+import { aiGate } from "@/lib/server/auth/ai-gate";
 
 // Validates SyllabusUnitsRequest (lib/contract.ts).
 const RequestBody = z.object({ fileId: z.string().trim().min(1).max(200) });
@@ -17,6 +18,10 @@ function error(message: string, status: number) {
 
 // The agent reads the syllabus PDF and proposes one unit per section. The teacher reviews and confirms them.
 export async function POST(request: Request) {
+  // Who is asking is decided before anything is read or any provider is called (F2-3).
+  const refused = await aiGate();
+  if (refused) return refused;
+
   const parsed = RequestBody.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return error("Falta el PDF del programa.", 400);
 

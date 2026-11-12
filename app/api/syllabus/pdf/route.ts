@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { cutShort, deadline, getClient } from "@/lib/agent/client";
 import type { SyllabusPdfResponse } from "@/lib/contract";
+import { aiGate } from "@/lib/server/auth/ai-gate";
 
 // Vercel cuts off bodies larger than 4.5 MB: leave some margin.
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -14,6 +15,10 @@ function error(message: string, status: number) {
 
 // Uploads the syllabus PDF to the Files API once. The browser only stores the id.
 export async function POST(request: Request) {
+  // Who is asking is decided before anything is read or any provider is called (F2-3).
+  const refused = await aiGate();
+  if (refused) return refused;
+
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
   if (!(file instanceof File)) return error("No llegó ningún archivo.", 400);

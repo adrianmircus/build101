@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AgentError } from "@/lib/agent/generate";
 import { transcribeAnswer } from "@/lib/agent/transcribe";
 import { cutShort, deadline } from "@/lib/agent/client";
+import { aiGate } from "@/lib/server/auth/ai-gate";
 
 // Validates TranscribeRequest (lib/contract.ts) before spending an AI call.
 const RequestBody = z.object({
@@ -18,6 +19,10 @@ function error(message: string, status: number) {
 }
 
 export async function POST(request: Request) {
+  // Who is asking is decided before anything is read or any provider is called (F2-3).
+  const refused = await aiGate();
+  if (refused) return refused;
+
   const body = await request.json().catch(() => null);
   const parsed = RequestBody.safeParse(body);
   if (!parsed.success) return error("No escuchamos nada para pasar a notación. Probá dictar de nuevo.", 400);

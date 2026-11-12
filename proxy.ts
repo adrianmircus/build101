@@ -5,19 +5,13 @@ import { applyRefresh, applyTokenPageHeaders, refreshSession, type SessionKind }
 
 // The optimistic rules of each area (T2.8): a session of Supabase (its claims, checked in session-proxy.ts) or the signed
 // cookie of the demo. The real check is getActor() and the database; this only picks the screen or the login. The cookie of
-// the demo opens the demo and nothing else: no page of the institution, no API with the AI.
+// the demo opens the demo and nothing else: no page of the institution, no API with the AI. The logins are NOT decided here: a
+// claim says nothing about a session that was closed since (a new card), so each login page asks getActor() (lib/server/auth/login-gate.ts).
 
 const STAFF_LOGIN = "/ingresar/profesor";
 const STUDENT_LOGIN = "/ingresar/estudiante";
-const STAFF_HOME = "/grupos";
-const STUDENT_HOME = "/estudiante";
 
 const inArea = (pathname: string, area: string) => pathname === area || pathname.startsWith(`${area}/`);
-
-// A login that a session of its own type has no use for: it goes home. /ingresar/profesor/nueva never does (the link of
-// a recovery must work with any session open) and neither does /invitacion.
-const STAFF_LOGINS = [STAFF_LOGIN, `${STAFF_LOGIN}/olvide`];
-const STUDENT_LOGINS = [STUDENT_LOGIN, `${STUDENT_LOGIN}/escanear`, "/t"];
 
 const redirectTo = (request: NextRequest, path: string) => NextResponse.redirect(new URL(path, request.url));
 
@@ -50,8 +44,6 @@ function pageRules(request: NextRequest, kind: SessionKind | null, demo: Session
     // The demo has no institution. Whether this staff is an admin of that one is decided by requireAdmin.
     return kind === "staff" ? undefined : redirectTo(request, STAFF_LOGIN);
   }
-  if (kind === "staff" && STAFF_LOGINS.includes(pathname)) return redirectTo(request, STAFF_HOME);
-  if (kind === "student" && STUDENT_LOGINS.includes(pathname)) return redirectTo(request, STUDENT_HOME);
 }
 
 export async function proxy(request: NextRequest) {
