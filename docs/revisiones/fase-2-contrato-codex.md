@@ -985,3 +985,59 @@ La reactivación de la guardia de enlace en toda la suite está asignada expresa
 ### Qué se cambió
 
 Versión 13: app.revoked_sessions con un trigger AFTER DELETE en auth.sessions, y rechazo de un id revocado al insertar en auth.sessions y en student_sessions (F2C-81); id y user_id de auth.sessions no cambian, y session_alive exige user_id = sub y el registro del mismo estudiante (F2C-82); not_applicable se muestra como none (F2C-83). Lo implementa T2.5a.
+
+## Ronda 13
+
+1. **F2C-84 · Alta · Bloqueante — Purgar la revocación al día permite resucitar la sesión mediante refresh.**
+
+   **Dónde:** [retención y rechazo de sesiones revocadas](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:67), [guardia de borrado](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:363) y [configuración de sesiones sin vencimiento absoluto](C:/Users/adrim/build101/.claude/worktrees/fase-1/supabase/config.toml:293).
+
+   **Escenario:** un profe tiene una sesión S y un refresh token R todavía sin consumir. Se conserva una copia del estado correspondiente de Auth. El profe sale: S desaparece y queda su marca en `revoked_sessions`. Después de un día, el dueño borra esa marca —la guardia lo permite— y restaura mediante DML la sesión y su estado de refresh. R vuelve a canjearse y obtiene un JWT nuevo para S. `session_alive()` lo acepta: coincide el titular y ya no existe la revocación.
+
+   Para estudiantes, después de un logout sin cambio de tarjeta, también puede restaurarse `student_sessions` con la versión todavía vigente.
+
+   El vencimiento del access token anterior no alcanza: por defecto las sesiones duran indefinidamente y los refresh tokens no tienen ese vencimiento de una hora. GoTrue genera un JWT nuevo conservando el `session_id`. [Sesiones de Supabase](https://supabase.com/docs/guides/auth/sessions), [implementación del refresh](https://github.com/supabase/auth/blob/v2.186.0/internal/tokens/service.go#L531-L569).
+
+   **Cambio propuesto:** conservar permanentemente la prohibición de reutilizar cada UUID revocado. Puede separarse esa memoria mínima de los datos auxiliares sujetos a retención. Una retención finita necesita otro mecanismo irreversible que impida restaurar el estado renovable de Auth; ampliar solamente el plazo no cierra el modelo indicado. Agregar la prueba de restauración y refresh después de la purga.
+
+2. **F2C-85 · Alta · Bloqueante — `now()` permite que una revocación recién hecha nazca con más de un día.**
+
+   **Dónde:** [`revoked_at default now()`](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:324) y [condición para borrar la marca](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:363).
+
+   **Escenario concreto, sin restaurar refresh tokens:**
+
+   - A abre una transacción READ COMMITTED y la mantiene abierta durante 25 horas, sin bloquear la sesión.
+   - Otra conexión inicia una sesión de staff S y recibe un JWT nuevo, válido por una hora.
+   - A elimina S. Si el trigger usa el default contractual, `revoked_at` queda con la fecha de inicio de A. A confirma.
+   - Otra transacción elimina la marca: aparenta tener más de un día. Restaura S con su titular original.
+   - El JWT recién emitido vuelve a pasar `session_alive()`.
+
+   PostgreSQL define `now()` como el inicio de la transacción, no como el instante de la eliminación. [Documentación de PostgreSQL 17](https://www.postgresql.org/docs/17/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT).
+
+   **Cambio propuesto:** si se conserva alguna purga temporal, exigir que la guardia fije `revoked_at` con `clock_timestamp()` al producirse la revocación, sin admitir fechas arbitrarias mediante INSERT del dueño. Cambiar únicamente el default no protege ese borde. Probar la transacción antigua y el intento de insertar una fecha retroactiva. Con memoria permanente de UUID revocados, desaparece este camino de purga anticipada.
+
+El estado de los abiertos queda así:
+
+| Hallazgo | Estado en v13 |
+|---|---|
+| **F2C-81** | **Parcialmente cerrado:** rechaza la restauración mientras existe la marca. Persisten F2C-84 y F2C-85. |
+| **F2C-82** | **Cerrado contractualmente:** identidad inmutable y correspondencia entre `sub`, titular y estudiante registrado. |
+| **F2C-83** | **Cerrado:** define expresamente `not_applicable → none` y trata la ausencia inesperada como error. |
+| **F2C-9** | **Parcialmente cerrado:** la revocación ordinaria funciona; la garantía frente al DML del dueño conserva los dos caminos anteriores. |
+| **F2C-78, F2C-79, F2C-80 y F2C-77** | Mantienen sus cierres contractuales específicos. |
+| **F2C-75 / F2C-11 / F2C-27** | Mantienen el cierre del bypass público estudiantil: el OTP directo no obtiene registro habilitado. |
+
+Respecto de GoTrue, no encontré otra incompatibilidad contractual en las operaciones ordinarias:
+
+- **Refresh:** conserva la identidad de la sesión y actualiza otras columnas; la guardia de `id` y `user_id` resulta compatible. [Modelo de sesiones](https://github.com/supabase/auth/blob/v2.186.0/internal/models/sessions.go#L145-L169).
+- **Logout:** elimina sesiones, por lo que ejecuta el `AFTER DELETE`. Una falla de ese trigger revierte también el logout; debe probarse con el rol real de Auth. [Implementación de logout](https://github.com/supabase/auth/blob/v2.186.0/internal/api/logout.go#L43-L64).
+- **Borrado duro de usuario:** la FK elimina las sesiones en cascada. `revoked_sessions` no referencia al usuario, por lo que su escritura puede sobrevivir al borrado. [FK de sesiones](https://github.com/supabase/auth/blob/v2.186.0/migrations/20220811173540_add_sessions_table.up.sql).
+- **TRUNCATE:** no ejecuta triggers DELETE, pero la FK hacia `student_sessions` y su `no_truncate` contractual bloquean el camino, incluido `CASCADE`. [Semántica de PostgreSQL](https://www.postgresql.org/docs/17/sql-truncate.html).
+
+No encontré otro bloqueo en la pasada final. No ejecuté integración: estos hallazgos corresponden al protocolo contractual y al código oficial consultado.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 14: revoked_sessions es permanente, solo se inserta desde el trigger y no se borra ni se trunca (F2C-84); revoked_at lo pone el trigger con clock_timestamp() y un INSERT con otra fecha da P0004 (F2C-85).

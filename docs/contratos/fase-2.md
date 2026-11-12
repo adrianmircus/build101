@@ -2,7 +2,7 @@
 
 Este documento fija cómo entran a Tiza los profes, los admins y los estudiantes con cuentas de verdad: las tablas y RPC nuevas, los servicios, las rutas, las pantallas y los tickets. Lo escribe el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 12 de Codex (F2C-1 a F2C-83, `docs/revisiones/fase-2-contrato-codex.md`).
+Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 13 de Codex (F2C-1 a F2C-85, `docs/revisiones/fase-2-contrato-codex.md`).
 
 Archivos del contrato (los escribe el orquestador, ningún ticket los edita):
 
@@ -64,7 +64,7 @@ Como en la fase 1: argumentos `p_snake_case`, salidas `jsonb` en camelCase. Las 
 - Salir (`signOut` con alcance `local`), cambiar la contraseña (`signOut` con alcance `others`) y emitir una tarjeta nueva (`issue_access_cards`, en su misma transacción) borran sesiones. Desde ese momento, ninguna RPC acepta el token viejo.
 - `jwt_expiry` queda en 3600: el chequeo en la base hace que no importe para los datos.
 - **Una sesión cerrada no vuelve (F2C-81, F2C-82).** Lo garantizan, también contra el DML del dueño:
-  - `app.revoked_sessions` (`session_id` como clave, `user_id`, `revoked_at`): un trigger `AFTER DELETE` en `auth.sessions` anota ahí toda sesión que se borra (salir, revocar, borrar la cuenta). Sus filas no cambian, y se borran solo cuando tienen más de un día (más que `jwt_expiry`), con una guardia;
+  - `app.revoked_sessions` (`session_id` como clave, `user_id`, `revoked_at`): un trigger `AFTER DELETE` en `auth.sessions` anota ahí toda sesión que se borra (salir, revocar, borrar la cuenta). Sus filas no cambian y **no se borran nunca** (F2C-84): un refresh token viejo puede volver a canjearse si alguien restaura la sesión, así que la marca tiene que durar lo mismo que la posibilidad de restaurarla. Son dos uuid y una fecha por sesión cerrada. `revoked_at` lo pone el trigger con `clock_timestamp()`, nunca un default ni quien inserta (F2C-85). La fase 9 decide si la supresión de una persona borra sus filas, sin perder esta garantía;
   - un trigger `BEFORE INSERT` en `auth.sessions` da P0004 si el `id` está en `revoked_sessions`, y `student_sessions` rechaza lo mismo. Así restaurar una sesión, o su registro de estudiante, no le devuelve el acceso a un JWT viejo;
   - un trigger `BEFORE UPDATE` en `auth.sessions` da P0004 si cambian `id` o `user_id`. GoTrue actualiza otras columnas en el refresh, y esas no se tocan;
   - `app.session_alive()` exige, además de que la sesión exista, que su `user_id` sea el `sub` del JWT y que no esté en `revoked_sessions`. Para una cuenta de estudiante exige también el registro en `student_sessions` de **ese** estudiante (el de `students.user_id = sub`) con la versión vigente;
@@ -321,11 +321,12 @@ create table app.student_sessions (
   foreign key (institution_id, student_id) references app.students (institution_id, id) on delete cascade
 );
 
--- Las sesiones que Auth borró: una sesión cerrada no se restaura (F2C-81). Se guardan un día, más que jwt_expiry.
+-- Las sesiones que Auth borró: una sesión cerrada no se restaura (F2C-81, F2C-84). Para siempre: no se borran.
 create table app.revoked_sessions (
   session_id uuid primary key,
   user_id uuid not null,
-  revoked_at timestamptz not null default now()
+  -- La pone el trigger con clock_timestamp() (F2C-85); un INSERT que trae otra da P0004.
+  revoked_at timestamptz not null
 );
 
 -- Registro de todo hash de invitación que existió alguna vez. Un hash entra una sola vez, por el índice único, y no
@@ -360,7 +361,7 @@ Guardias (P0004, como en la fase 1; entran DML y TRUNCATE de cualquier rol, incl
 - **La marca de supresión se conserva (F2C-59).** Una fila `deleted` de `account_provisioning` no se borra mientras exista su institución.
   
   Las cuentas de staff no se tocan. Supabase permite triggers propios en `auth.users` desde una migración, sin cambiar el dueño de la tabla.
-- **Sesiones revocadas.** `revoked_sessions` no cambia; una fila se borra solo si tiene más de un día. Sin datos personales más allá de ids de Auth; se borra sola.
+- **Sesiones revocadas.** `revoked_sessions` solo se inserta, desde el trigger de `auth.sessions`, con `revoked_at = clock_timestamp()`. No cambia, no se borra y no se trunca. Sin datos personales más allá de ids de Auth.
 - **Sesiones registradas.** En `student_sessions` no cambia nada: se inserta (el bind) o se borra (la emisión, la cascada del estudiante o la de `auth.sessions`). Una fila nueva exige que su `session_id` exista en `auth.sessions` (la FK) y que su versión sea la vigente de la credencial (guardia).
 - **Credenciales (F2C-61).** `student_credentials` solo se escribe dentro de `issue_access_cards`, y no se borra mientras exista su estudiante: se va con él por la cascada. `password_hash`, `issue_id` y `version` cambian juntos o no cambian: un UPDATE que cambia alguno tiene que cambiar `issue_id` a otra emisión y subir `version` exactamente en uno. `institution_id` y `student_id` no cambian.
 - **Memoria (F2C-19, F2C-28).** Mientras exista su institución, no se borran las invitaciones ni las filas de `invitation_tokens`, y esas filas no cambian. Las tarjetas no se borran mientras exista su estudiante: solo se van con él, por la cascada. Las emisiones no se borran mientras exista su institución, y un grupo con emisiones no se borra: se archiva (F2C-73). Así un hash revocado no vuelve a nacer vigente por `DELETE` e `INSERT`. La retención de la fase 9 borra el correo de una invitación vieja con una redacción, sin borrar la fila. Para eso la fase 9 suma, en una migración nueva, una excepción acotada a la guardia del correo de `invitations_frozen` (T1.F15): solo en modo de supresión o retención, solo para invitaciones `accepted`, `revoked` o `expired` con más de 90 días, y solo hacia un valor redactado; con su prueba (F2C-42).
@@ -651,7 +652,9 @@ Criterios: las RPC de «Cuentas de estudiantes» con las reglas comunes; dos emi
   cuenta viva; una sesión de estudiante sin fila en student_sessions, o con otra versión, da FORBIDDEN no_session en una
   RPC student_* y en list_my_institutions; registrar, salir, restaurar a mano solo la fila de auth.sessions: el JWT viejo
   sigue rechazado; el registro sobrevive a un refresh; canIssueCards falso en un sandbox; restaurar a mano la sesión y su registro de
-  estudiante no le devuelve el acceso al JWT viejo, y lo mismo para una sesión de staff; cambiar user_id o id de una
+  estudiante no le devuelve el acceso al JWT viejo, ni a un refresh, y lo mismo para una sesión de staff; borrar una
+  fila de revoked_sessions o insertarla con otra fecha da P0004; salir con el rol real de Auth (supabase_auth_admin)
+  anda con el trigger; cambiar user_id o id de una
   fila de auth.sessions da P0004; una sesión cuyo user_id no es el sub del JWT no pasa.
 ```
 
