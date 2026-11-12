@@ -19,7 +19,7 @@ type Props = InviteHandlers & {
 
 // Case «con cuenta, sin sesión» (invitacion-a, #entrar): the email is fixed, only the password is asked.
 export function InviteSignIn({ invitation, token, signInAndAccept, ...handlers }: Props) {
-  const { notice, pending, show, submit } = useInviteSubmit("signin", handlers);
+  const { notice, pending, show, submit, formKey } = useInviteSubmit("signin", handlers);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +30,7 @@ export function InviteSignIn({ invitation, token, signInAndAccept, ...handlers }
 
   const missing = notice?.problems[0]?.message;
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-6">
+    <form key={formKey} onSubmit={onSubmit} noValidate className="space-y-6">
       <TextField id="invite-email" name="email" type="email" label="Correo" autoComplete="username" defaultValue={invitation.email} readOnly />
       <PasswordField id={PASSWORD_FIELD} name="password" label="Contraseña" autoComplete="current-password" error={missing} />
       <InviteNotice notice={notice} />

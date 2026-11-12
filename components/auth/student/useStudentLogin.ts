@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useReducer, type FormEvent } from "react";
 import { findInstitutionAction } from "@/app/ingresar/estudiante/actions";
 import { callAction } from "@/lib/client/callAction";
-import { rememberSchool, type RememberedSchool } from "@/lib/client/remembered-school";
+import type { RememberedSchool } from "@/lib/client/remembered-school";
 import type { Field } from "./failure-view";
-import { runLogin } from "./login-flow";
+import { attemptLogin } from "./login-attempt";
 import { firstMissing, initialLoginState, loginReducer } from "./login-state";
 import { CODE_ID } from "./SchoolCodeField";
 import { useSchoolLookup } from "./useSchoolLookup";
@@ -40,13 +40,7 @@ export function useStudentLogin({ school, username }: Input) {
     if (missing) return dispatch({ type: "notice", notice: { kind: "missing", field: missing } });
     if (!school && lookup.state.kind === "missing") return document.getElementById(CODE_ID)?.focus();
     dispatch({ type: "start" });
-    const outcome = await runLogin({ code, username: state.username, password: state.password });
-    if (outcome.kind === "pause") return dispatch({ type: "pause", retryAt: outcome.retryAt, at: Date.now() });
-    if (outcome.kind === "notice") return dispatch({ type: "notice", notice: outcome.notice });
-    const name = await knownName();
-    if (name) rememberSchool({ code, name });
-    dispatch({ type: "wipe" });
-    router.push(outcome.next);
+    await attemptLogin({ values: { code, username: state.username, password: state.password }, knownName, dispatch, go: (next) => router.push(next) });
   }
 
   return {

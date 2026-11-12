@@ -30,7 +30,7 @@ function localProblems(name: string, password: string): FieldProblem[] {
 
 // Case «sin cuenta» (invitacion-a, #nueva-cuenta): name and password; the email is the one of the invitation.
 export function InviteNewAccount({ invitation, token, acceptAsNew, onSignIn, ...handlers }: Props) {
-  const { notice, pending, show, submit } = useInviteSubmit("new", handlers);
+  const { notice, pending, show, submit, formKey } = useInviteSubmit("new", handlers);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +44,7 @@ export function InviteNewAccount({ invitation, token, acceptAsNew, onSignIn, ...
 
   const problems = notice?.problems ?? [];
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-6">
+    <form key={formKey} onSubmit={onSubmit} noValidate className="space-y-6">
       <TextField id="invite-email" name="email" type="email" label="Correo" autoComplete="username" defaultValue={invitation.email} readOnly hint="Es el correo de la invitación, no se puede cambiar." />
       <TextField id={NAME_FIELD} name="name" label="Nombre y apellido" autoComplete="name" hint="Lo ven los demás profes del colegio. Tus estudiantes no." error={problemFor(problems, NAME_FIELD)} />
       <PasswordField id={PASSWORD_FIELD} name="password" label="Contraseña" autoComplete="new-password" hint={PASSWORD_HINT} error={problemFor(problems, PASSWORD_FIELD)} />

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FocusHeading } from "./FocusHeading";
 import { NeutralMessage } from "./NeutralMessage";
+import { supersedeLogins } from "./login-guard";
 import { PauseView } from "./PauseView";
 import { readCard, type CardOutcome } from "./read-card";
 import { viewOfCard, type ScanView } from "./scan-view";
@@ -40,9 +41,13 @@ export function CardLanding() {
     const mine = latest.current;
     setGeneration(mine);
     setView({ kind: "reading" });
-    void (token ? readCard(token) : Promise.resolve(UNUSABLE)).then((outcome) => {
-      if (latest.current === mine) setView(viewOfCard(outcome, Date.now()));
-    });
+    // A login of the card before this one may still be in the air: it is marked old and the new card waits until that one is over
+    // (and closed, if it did sign in). Without a login in flight this is immediate.
+    void supersedeLogins()
+      .then(() => (token ? readCard(token) : UNUSABLE))
+      .then((outcome) => {
+        if (latest.current === mine) setView(viewOfCard(outcome, Date.now()));
+      });
   }
 
   useEffect(() => {

@@ -79,5 +79,8 @@ export async function confirmCreate(ctx: Context, state: CreateState, dispatch: 
   if (!group.ok) return group;
   const attempt = nextAttempt(state, group.value);
   dispatch({ type: "started", groupId: group.value, attempt });
-  return createRows(ctx, { groupId: group.value, rows: state.rows, attempt });
+  const made = await createRows(ctx, { groupId: group.value, rows: state.rows, attempt });
+  // No answer for the whole request: any of the rows may exist, so they stay with their identity and only «Volver a crear» is left.
+  if (!made.ok) dispatch({ type: "lost" });
+  return made;
 }

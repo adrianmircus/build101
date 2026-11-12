@@ -31,7 +31,8 @@ export function draftRows(drafts: UsernameDraft[]): DraftRow[] {
   }));
 }
 
-export type Flags = Record<string, "taken" | "failed" | "uncertain">;
+/** `sending`: the row is in a request that has not answered yet. If the answer never comes it turns `uncertain`. It is not a problem to show. */
+export type Flags = Record<string, "taken" | "failed" | "uncertain" | "sending">;
 
 /** The problem of each row that has one, by key. Both rows of a repeated pair are marked, so neither is missed. */
 export function rowProblems(rows: DraftRow[], flags: Flags = {}): Record<string, RowProblem> {
@@ -43,13 +44,18 @@ export function rowProblems(rows: DraftRow[], flags: Flags = {}): Record<string,
   const problems: Record<string, RowProblem> = {};
   for (const row of rows) {
     const name = normalizeUsername(row.username);
-    const flag = flags[row.key];
-    if (name === "") problems[row.key] = "empty";
-    else if (!USERNAME_PATTERN.test(name)) problems[row.key] = "invalid";
-    else if ((counts.get(name) ?? 0) > 1) problems[row.key] = "repeated";
-    else if (flag) problems[row.key] = flag;
+    const problem = problemOf(name, counts.get(name) ?? 0, flags[row.key]);
+    if (problem) problems[row.key] = problem;
   }
   return problems;
+}
+
+function problemOf(name: string, count: number, flag: Flags[string] | undefined): RowProblem | null {
+  if (name === "") return "empty";
+  if (!USERNAME_PATTERN.test(name)) return "invalid";
+  if (count > 1) return "repeated";
+  // A row being sent is not a problem: it only waits for the answer.
+  return flag && flag !== "sending" ? flag : null;
 }
 
 export function problemText(problem: RowProblem): string {
