@@ -16,6 +16,8 @@ Lo que Codex encontró una y otra vez en los tickets de base (T1.2a, T1.2b). Tod
 - El mismo lock y el mismo orden en todas las operaciones que tocan ese par, también en los triggers.
 - Las carreras se prueban de verdad, con dos conexiones: pruebas de integración en `tests/integration/races/` con los helpers de `tests/integration/support/` (`pg`). La primera transacción queda abierta con sus locks, la segunda arranca en otra conexión, se espera a verla bloqueada en `pg_stat_activity` y recién ahí se confirma la primera. Una prueba con `pg_locks` dentro de pgTAP no alcanza: no demuestra que el lock se toma antes de leer.
 - Antes de dar por buena una prueba de carrera, se comprueba que falla sin el lock.
+- Una prueba de carrera que acepta cualquier espera (`waitedOn !== null`) no prueba el orden de los locks: la RPC puede esperar más abajo, en un hijo o una FK. Para el orden se usa el patrón de `tests/integration/races/question-key-locks.test.ts`: una conexión mantiene solo el padre (la versión, el práctico, la asignación), la RPC arranca en otra y queda esperando, y una tercera comprueba con `NOWAIT` que todavía no tomó los hijos. Se verifica en una base descartable que quitar o retrasar el lock del padre rompe la prueba.
+- Un validador de entrada siempre devuelve un booleano (`coalesce(…, false)`) y la condición que descarta usa `is not true`: en SQL un `NULL` no entra a `when not v_valid` y deja pasar una entrada incompleta.
 - Las fechas que se comparan con otras filas bajo lock usan `clock_timestamp()`, no `now()`: `now()` es la hora de inicio de la transacción, que puede ser anterior a la fila que se espera (pasó con `unenroll_student`).
 
 ## Errores
