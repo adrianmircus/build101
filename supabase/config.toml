@@ -262,6 +262,12 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# The only mail Auth sends is the recovery one (invitations go out through lib/server/mail). Its link carries the token in the
+# fragment, which the browser never sends to a server: docs/contratos/fase-2.md, «Tokens fuera de la URL que ve el servidor».
+[auth.email.template.recovery]
+subject = "Cambiá tu contraseña de Tiza"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"
