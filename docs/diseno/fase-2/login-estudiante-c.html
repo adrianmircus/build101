@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar · Tiza.ai · Login del estudiante, opción C</title>
+<style>
+/* Base compartida de las maquetas de la fase 2: la misma identidad que la app (Lexend, pizarrón indigo-950,
+   papel blanco y un solo acento ámbar). Sin bordes de contenedor, sin divisores y con pocos tonos. */
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("lexend-latin.woff2") format("woff2"); }
+:root {
+  --board: #1e1b4b;      /* indigo-950: el pizarrón */
+  --on-board: #e0e7ff;   /* indigo-100: texto secundario sobre el pizarrón (12:1) */
+  --ink: #0f172a;        /* slate-900 */
+  --muted: #475569;      /* slate-600: 7.6:1 sobre blanco */
+  --bg: #f8fafc;         /* slate-50 */
+  --paper: #ffffff;
+  --soft: #f1f5f9;       /* slate-100 */
+  --field: #64748b;      /* slate-500: borde de campo, 4.8:1 sobre blanco */
+  --primary: #4338ca;    /* indigo-700 */
+  --primary-hover: #3730a3;
+  --link: #3730a3;       /* indigo-800 */
+  --accent: #fcd34d;     /* amber-300, solo sobre el pizarrón */
+  --accent-ink: #b45309; /* amber-700, sobre papel */
+  --error: #991b1b;      /* red-800 */
+  --error-soft: #fef2f2; /* red-50 */
+  --radius: 14px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 18px; -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: "Lexend", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; line-height: 1.5; color: var(--ink); background: var(--bg); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; font-weight: 700; }
+p { margin: 0; text-wrap: pretty; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+img, svg { display: block; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--board); outline-offset: 3px; }
+.on-board :focus-visible { outline-color: var(--accent); }
+.pw-real { white-space: nowrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 1rem; top: -100px; z-index: 50; background: var(--paper); color: var(--ink); padding: .75rem 1rem; border-radius: 10px; font-weight: 600; }
+.skip:focus { top: 1rem; }
+
+.logo { display: inline-flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.35rem; color: var(--ink); text-decoration: none; }
+.logo .mark { width: 1.6em; height: 1.6em; flex: none; }
+.logo .ai { color: var(--accent-ink); }
+.logo-dark { color: #fff; }
+.logo-dark .ai { color: var(--accent); }
+a.logo-link { display: inline-flex; min-height: 44px; align-items: center; border-radius: 8px; text-decoration: none; }
+
+.icon { width: 1.35em; height: 1.35em; flex: none; }
+
+/* Campos: el borde es del control, no un contenedor (WCAG 1.4.11 pide 3:1 para identificarlo). */
+.field { display: grid; gap: .45rem; }
+.field + .field { margin-top: 1.4rem; }
+.label { font-weight: 600; font-size: 1rem; }
+.label-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .25rem 1rem; }
+.hint { color: var(--muted); font-size: .9rem; }
+.input { width: 100%; min-height: 54px; padding: .7rem 1rem; font: inherit; font-size: 1.05rem; color: var(--ink); background: var(--paper); border: 2px solid var(--field); border-radius: 12px; }
+.input:focus { border-color: var(--primary); }
+.input[aria-invalid="true"] { border-color: var(--error); }
+.input[readonly] { background: var(--soft); border-color: transparent; }
+.with-toggle { position: relative; }
+.with-toggle .input { padding-right: 6.5rem; }
+.toggle { position: absolute; right: 6px; top: 50%; translate: 0 -50%; min-height: 44px; min-width: 44px; padding: 0 .9rem; font: inherit; font-size: .95rem; font-weight: 600; color: var(--link); background: transparent; border: 0; border-radius: 9px; cursor: pointer; }
+.toggle:hover { background: var(--soft); }
+.field-error { display: flex; gap: .45rem; align-items: flex-start; color: var(--error); font-weight: 600; font-size: .95rem; }
+.field-error .icon { width: 1.2em; height: 1.2em; margin-top: .1em; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .55rem; min-height: 54px; padding: .75rem 1.4rem; font: inherit; font-size: 1.05rem; font-weight: 600; border: 0; border-radius: 12px; cursor: pointer; text-decoration: none; transition: background-color .15s; }
+.btn:active { translate: 0 1px; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-quiet { background: var(--soft); color: var(--ink); }
+.btn-quiet:hover { background: #e2e8f0; }
+.btn-on-board { background: var(--accent); color: var(--board); }
+.btn-block { width: 100%; }
+.link { display: inline-flex; align-items: center; gap: .35rem; min-height: 44px; color: var(--link); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; border-radius: 6px; }
+.link:hover { color: var(--board); }
+.inline-link { color: var(--link); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.on-board .link, .on-board .inline-link { color: #fff; }
+
+/* Mensajes: siempre ícono + texto, nunca solo color. */
+.msg { display: flex; gap: .75rem; align-items: flex-start; padding: 1rem 1.1rem; border-radius: 12px; font-size: 1rem; }
+.msg .icon { margin-top: .1em; }
+.msg-error { background: var(--error-soft); color: var(--error); }
+.msg-error strong, .msg-error a { color: var(--error); }
+.msg-neutral { background: var(--soft); color: var(--ink); }
+.msg-ok { background: var(--soft); color: var(--ink); }
+.msg-ok .icon { color: #047857; }
+.msg:focus { outline: none; }
+.msg:focus-visible { outline: 3px solid var(--board); outline-offset: 3px; }
+
+/* Barra de la maqueta (no es parte del diseño). Desaparece con ?captura. */
+.mock { position: fixed; z-index: 90; left: 50%; bottom: 12px; translate: -50% 0; display: flex; flex-wrap: wrap; gap: .25rem .4rem; align-items: center; justify-content: center; width: max-content; max-width: calc(100% - 24px); padding: .35rem .5rem .35rem .9rem; background: #0f172a; color: #cbd5e1; border-radius: 12px; font-size: .78rem; box-shadow: 0 8px 24px rgb(15 23 42 / .25); }
+.mock a { color: #fff; padding: .35rem .55rem; border-radius: 8px; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+.mock a[aria-current="true"] { background: #334155; }
+.mock :focus-visible { outline-color: var(--accent); }
+.captura .mock { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+@media print { .mock, .skip { display: none !important; } }
+
+/* Encabezado del área del profe (tarjetas y panel de la institución). Sin línea abajo: el papel blanco
+   contra el fondo gris alcanza para separarlo. */
+.app-top { background: var(--paper); }
+.app-top-in { max-width: 72rem; margin: 0 auto; padding: .7rem 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1.5rem; }
+.app-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .4rem; }
+.app-nav a { display: inline-flex; min-height: 44px; align-items: center; padding: 0 .8rem; border-radius: 10px; font-weight: 600; color: var(--link); text-decoration: none; white-space: nowrap; }
+.app-nav a:hover { background: var(--soft); text-decoration: underline; text-underline-offset: 4px; }
+.app-nav a[aria-current="page"] { background: var(--soft); color: var(--board); text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 8px; }
+.app-user { display: inline-flex; align-items: center; gap: .2rem; margin-left: .6rem; color: var(--muted); white-space: nowrap; }
+.app-main { max-width: 72rem; margin: 0 auto; padding: 2.25rem 1.5rem 7rem; }
+.back-link { margin-bottom: .5rem; }
+.page-title { font-size: 2.2rem; }
+.page-lead { margin-top: .6rem; color: var(--muted); font-size: 1.05rem; max-width: 44rem; }
+@media (max-width: 600px) { .app-top-in { padding: .6rem 1rem; } .app-main { padding: 1.5rem 1rem 7rem; } .page-title { font-size: 1.7rem; } .app-user { margin-left: 0; } }
+@media print { .app-top { display: none; } }
+
+/* Opción C: primero la tarjeta. El camino principal es escanear el código QR: la cámara completa el colegio
+   y el usuario, y queda solo la contraseña. Escribir los datos es la otra puerta, del mismo tamaño
+   visual en importancia y siempre a mano. La cámara se procesa en el dispositivo. */
+html { font-size: 19px; }
+body { background: var(--bg); }
+.top { max-width: 36rem; margin: 0 auto; padding: 1.25rem 1.5rem; }
+main { max-width: 36rem; margin: 0 auto; padding: 5vh 1.5rem 7rem; }
+h1 { font-size: 2.3rem; line-height: 1.15; }
+.lead { margin: .7rem 0 2rem; color: var(--muted); font-size: 1.1rem; }
+.doors { display: grid; gap: .9rem; }
+.door { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .3rem 1.1rem; min-height: 96px; padding: 1.15rem 1.4rem; border-radius: 18px; text-decoration: none; font: inherit; text-align: left; border: 0; cursor: pointer; }
+.door .icon { grid-row: span 2; width: 2rem; height: 2rem; }
+.door b { font-size: 1.25rem; }
+.door span { font-size: .98rem; }
+.door-main { background: var(--primary); color: #fff; }
+.door-main:hover { background: var(--primary-hover); }
+.door-main span { color: #e0e7ff; }
+.door-alt { background: #e2e8f0; color: var(--ink); }
+.door-alt:hover { background: #cbd5e1; }
+.door-alt span { color: #334155; }
+.cam { position: relative; aspect-ratio: 4 / 3; border-radius: 20px; background: var(--board); overflow: hidden; display: grid; place-items: center; }
+.cam .frame { width: 52%; aspect-ratio: 1; position: relative; }
+.cam .frame i { position: absolute; width: 28%; height: 28%; border: 6px solid var(--accent); }
+.cam .frame i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
+.cam .frame i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
+.cam .frame i:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
+.cam .frame i:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
+.status { margin-top: 1.1rem; font-weight: 600; font-size: 1.1rem; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin-top: 1.6rem; }
+.input { min-height: 60px; font-size: 1.3rem; letter-spacing: .03em; }
+.btn { min-height: 60px; font-size: 1.15rem; }
+.hello { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem 1rem; margin: .8rem 0 1.8rem; font-size: 1.05rem; color: var(--muted); }
+.msg { margin-top: 1.4rem; font-size: 1.05rem; }
+.foot { margin-top: 3rem; color: var(--muted); font-size: 1rem; }
+@media (max-width: 600px) { h1 { font-size: 1.8rem; } main { padding-top: 1.25rem; } .row .btn { width: 100%; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#contenido">Saltar al contenido</a>
+<header class="top"><a class="logo-link" href="#"><span class="logo logo-light"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1e1b4b"/><g stroke="#f8fafc" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M27 13V40Q27 49 36 49H38"/><path d="M17 25H39"/></g><circle cx="48" cy="48" r="5" fill="#fcd34d"/></svg><span>Tiza<span class="ai">.ai</span></span></span><span class="sr-only">, ir al inicio</span></a></header>
+
+<main id="contenido">
+
+  <!-- Inicio: dos puertas -->
+  <section data-state="inicio" aria-labelledby="in-t">
+    <h1 id="in-t">Entrá con tu tarjeta</h1>
+    <p class="lead">Elegí cómo.</p>
+    <div class="doors">
+      <a class="door door-main" href="#camara"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><b>Escanear la tarjeta</b><span>Con la cámara, sin escribir el usuario</span></a>
+      <a class="door door-alt" href="#escribir"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14h8"/></svg><b>Escribir mis datos</b><span>Código del colegio, usuario y contraseña</span></a>
+    </div>
+    <p class="foot">¿Perdiste tu tarjeta? Tu profe te da una nueva en un minuto.</p>
+  </section>
+
+  <!-- Cámara -->
+  <section data-state="camara" aria-labelledby="ca-t">
+    <h1 id="ca-t" tabindex="-1" data-focus>Mostrá tu tarjeta</h1>
+    <p class="lead">Poné el cuadrado con puntitos de la tarjeta adentro del marco.</p>
+    <div class="cam" role="img" aria-label="Vista de la cámara">
+      <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    </div>
+    <p class="status" role="status">Buscando el código…</p>
+    <div class="row"><a class="btn btn-quiet" href="#inicio">Cancelar</a><a class="link" href="#escribir">Prefiero escribir mis datos</a></div>
+  </section>
+
+  <!-- Después de escanear: solo la contraseña -->
+  <section data-state="clave" aria-labelledby="cl-t">
+    <div role="status"><h1 id="cl-t" tabindex="-1" data-focus>¡Hola, Lucía!</h1></div>
+    <p class="hello">Colegio San José, usuario luciaf <a class="link" href="#camara">No soy yo</a></p>
+    <form data-go="error" novalidate>
+      <input type="text" autocomplete="username" value="luciaf" hidden>
+      <div class="field">
+        <label class="label" for="cl-in">Contraseña</label>
+        <div class="with-toggle">
+          <input class="input" id="cl-in" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" aria-describedby="cl-h" required>
+          <button class="toggle" type="button" data-toggle aria-controls="cl-in">Mostrar</button>
+        </div>
+        <p id="cl-h" class="hint">Está en la tarjeta, abajo de tu usuario.</p>
+      </div>
+      <div class="row"><button class="btn btn-primary" type="submit">Entrar</button></div>
+    </form>
+  </section>
+
+  <!-- Error de contraseña -->
+  <section data-state="error" aria-labelledby="er-t">
+    <h1 id="er-t">¡Hola, Lucía!</h1>
+    <p class="hello">Colegio San José, usuario luciaf <a class="link" href="#camara">No soy yo</a></p>
+    <form data-go="clave" novalidate>
+      <input type="text" autocomplete="username" value="luciaf" hidden>
+      <div class="field">
+        <label class="label" for="er-in">Contraseña</label>
+        <div class="with-toggle">
+          <input class="input" id="er-in" type="text" autocomplete="current-password" autocapitalize="none" spellcheck="false" value="nube tigre 47" aria-describedby="er-msg" required>
+          <button class="toggle" type="button" data-toggle aria-controls="er-in">Ocultar</button>
+        </div>
+      </div>
+      <div id="er-msg" class="msg msg-neutral" role="alert" tabindex="-1" data-focus>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></svg>
+        <p><strong>Probemos de nuevo.</strong> Esa no es la contraseña. En la tarjeta las palabras van unidas con guiones, como <strong>sol-mesa-24</strong>.</p>
+      </div>
+      <div class="row"><button class="btn btn-primary" type="submit">Probar de nuevo</button></div>
+    </form>
+  </section>
+
+  <!-- Sin cámara o sin permiso -->
+  <section data-state="sin-camara" aria-labelledby="sc-t">
+    <h1 id="sc-t">No pudimos usar la cámara</h1>
+    <div class="msg msg-neutral" role="alert">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></svg>
+      <p>Puede que esta compu no tenga cámara o que no tenga permiso. No pasa nada: escribí los datos de la tarjeta.</p>
+    </div>
+    <div class="row"><a class="btn btn-primary" href="#escribir">Escribir mis datos</a></div>
+  </section>
+
+  <!-- Escribir los datos -->
+  <section data-state="escribir" aria-labelledby="es-t">
+    <p style="margin-bottom:.75rem"><a class="link" href="#inicio"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Volver</a></p>
+    <h1 id="es-t" tabindex="-1" data-focus>Escribí tus datos</h1>
+    <p class="lead">Copialos tal como están en la tarjeta.</p>
+    <form data-go="error" novalidate>
+      <div class="field">
+        <label class="label" for="es-cod">Código del colegio</label>
+        <input class="input" id="es-cod" autocomplete="organization" autocapitalize="none" spellcheck="false" value="sanjose" required>
+      </div>
+      <div class="field">
+        <label class="label" for="es-usr">Usuario</label>
+        <input class="input" id="es-usr" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label class="label" for="es-pass">Contraseña</label>
+        <div class="with-toggle">
+          <input class="input" id="es-pass" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" required>
+          <button class="toggle" type="button" data-toggle aria-controls="es-pass">Mostrar</button>
+        </div>
+      </div>
+      <div class="row"><button class="btn btn-primary" type="submit">Entrar</button></div>
+    </form>
+  </section>
+</main>
+
+<nav class="mock" aria-label="Estados de esta maqueta">
+  <span>Opción C</span>
+  <a href="#inicio">Inicio</a><a href="#camara">Cámara</a><a href="#clave">Escaneada</a><a href="#error">Error</a><a href="#sin-camara">Sin cámara</a><a href="#escribir">Escribir</a>
+</nav>
+<script>// Maqueta: cada estado es un bloque [data-state]; el hash elige cuál se ve. ?captura esconde la barra de estados.
+(function () {
+  var root = document.documentElement;
+  if (new URLSearchParams(location.search).has("captura")) root.classList.add("captura");
+  var states = Array.prototype.slice.call(document.querySelectorAll("[data-state]"));
+  function show() {
+    var id = location.hash.slice(1);
+    var match = states.filter(function (s) { return s.dataset.state === id; })[0];
+    if (!match && id && document.getElementById(id)) return; // enlace a un campo dentro del estado actual
+    var current = match || states[0];
+    states.forEach(function (s) { s.hidden = s !== current; });
+    root.dataset.state = current.dataset.state;
+    document.querySelectorAll(".mock a").forEach(function (a) {
+      a.setAttribute("aria-current", a.getAttribute("href") === "#" + current.dataset.state ? "true" : "false");
+    });
+    var focus = current.querySelector("[data-focus]");
+    if (focus && location.hash && !root.classList.contains("captura")) focus.focus();
+  }
+  if (states.length) { addEventListener("hashchange", show); show(); }
+  // Mostrar u ocultar la contraseña: el botón cambia de texto y el campo de tipo.
+  document.querySelectorAll("[data-toggle]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var input = document.getElementById(b.getAttribute("aria-controls"));
+      var visible = input.type === "password";
+      input.type = visible ? "text" : "password";
+      b.textContent = visible ? "Ocultar" : "Mostrar";
+    });
+  });
+  // Enviar un formulario de la maqueta lleva al estado que dice data-go.
+  document.querySelectorAll("form[data-go]").forEach(function (f) {
+    f.addEventListener("submit", function (e) { e.preventDefault(); location.hash = f.dataset.go; });
+  });
+})();
+</script>
+</body>
+</html>
