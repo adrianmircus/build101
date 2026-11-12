@@ -9,7 +9,14 @@ import { callRpc, type RpcDb } from "./rpc";
 
 export type Page<T> = { items: T[]; total: number };
 
-export type NewGroup = { institutionId: string; name: string; subjectId: string; schoolYear: number };
+export type NewGroup = {
+  institutionId: string;
+  name: string;
+  subjectId: string;
+  schoolYear: number;
+  /** One per attempt, kept on a retry: the same key never creates the group twice. */
+  opKey: string;
+};
 
 /** The creator becomes the owner of the group. */
 export async function createGroup(db: RpcDb, input: NewGroup): Promise<Written> {
@@ -18,6 +25,7 @@ export async function createGroup(db: RpcDb, input: NewGroup): Promise<Written> 
     p_name: input.name,
     p_subject_id: input.subjectId,
     p_school_year: input.schoolYear,
+    p_op_key: input.opKey,
   });
 }
 

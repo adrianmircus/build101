@@ -2,7 +2,7 @@
 -- Everything is created here with its own institutions (through the internal RPCs, the same way the
 -- factories will) and rolled back, so the file depends on no other test and clobbers none.
 begin;
-select plan(146);
+select plan(162);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched
 -- with SET LOCAL ROLE. Returns the jsonb result, or {"error": "<sqlstate> <message> <detail>"}.
@@ -261,7 +261,7 @@ select is(left(pg_temp.rpc(null, 'anon', 'select api.list_my_institutions()') ->
 -- create_group
 -- ---------------------------------------------------------------------------------------------
 create function pg_temp.new_group(p_user text, p_inst text, p_name text default '3.º A') returns jsonb language sql as $$
-  select pg_temp.as_user(p_user, format('select api.create_group(%L, %L, ''math'', 2026)', pg_temp.id(p_inst), p_name))
+  select pg_temp.as_user(p_user, format('select api.create_group(%L, %L, ''math'', 2026, gen_random_uuid())', pg_temp.id(p_inst), p_name))
 $$;
 insert into ids (k, id) select 'g', (pg_temp.new_group('owner', 'instA') ->> 'id')::uuid;
 select is((select g.name || ':' || g.revision || ':' || (g.created_by = pg_temp.id('owner'))::text from app.groups g where g.id = pg_temp.id('g')),
@@ -277,16 +277,53 @@ select is(pg_temp.new_group('incl', 'instA') ->> 'error', 'P0001 FORBIDDEN forbi
 select is(pg_temp.new_group('stud', 'instA') ->> 'error', 'P0001 FORBIDDEN forbidden', 'a student cannot create groups');
 select is(pg_temp.new_group('userb', 'instA') ->> 'error', 'P0001 NOT_FOUND not_found',
   'a user of another institution gets NOT_FOUND: the institution is not revealed');
-select is(pg_temp.as_user('owner', format($$ select api.create_group(%L, 'Física', 'physics', 2026) $$, pg_temp.id('instA'))) ->> 'error',
+select is(pg_temp.as_user('owner', format($$ select api.create_group(%L, 'Física', 'physics', 2026, gen_random_uuid()) $$, pg_temp.id('instA'))) ->> 'error',
   'P0001 NOT_FOUND not_found', 'a subject that is not enabled is NOT_FOUND');
-select is(pg_temp.rpc(pg_temp.id('ghost'), 'authenticated', 'select api.create_group(gen_random_uuid(), ''x'', ''math'', 2026)') ->> 'error',
+select is(pg_temp.rpc(pg_temp.id('ghost'), 'authenticated', 'select api.create_group(gen_random_uuid(), ''x'', ''math'', 2026, gen_random_uuid())') ->> 'error',
   'P0001 FORBIDDEN no_session', 'no app user, no group');
 select is(pg_temp.new_group('visitor', 'instS', 'Grupo demo') ->> 'revision', '1', 'a sandbox visitor creates groups in their sandbox');
 update app.institutions set expires_at = now() - interval '1 minute' where id = pg_temp.id('instS');
 select is(pg_temp.new_group('visitor', 'instS') ->> 'error', 'P0001 NOT_FOUND not_found', 'an expired sandbox is as good as gone');
 update app.institutions set expires_at = now() + interval '1 day' where id = pg_temp.id('instS');
-select is(left(pg_temp.rpc(null, 'anon', 'select api.create_group(gen_random_uuid(), ''x'', ''math'', 2026)') ->> 'error', 5), '42501',
+select is(left(pg_temp.rpc(null, 'anon', 'select api.create_group(gen_random_uuid(), ''x'', ''math'', 2026, gen_random_uuid())') ->> 'error', 5), '42501',
   'anon cannot execute create_group');
+
+-- create_group is idempotent by op_key (T1.F3): one group per key, compared with the identity stored
+-- at creation (institution, subject, year and trimmed name), never with the row as it is now.
+insert into ids (k, id) values ('gkey', gen_random_uuid());
+create function pg_temp.keyed_group(p_user text, p_name text, p_year int default 2026) returns jsonb language sql as $$
+  select pg_temp.as_user(p_user, format('select api.create_group(%L, %L, ''math'', %s, %L)', pg_temp.id('instA'), p_name, p_year, pg_temp.id('gkey')))
+$$;
+insert into ids (k, id) select 'gk', (pg_temp.keyed_group('owner', 'Con clave') ->> 'id')::uuid;
+select is(pg_temp.keyed_group('owner', '  Con clave '), jsonb_build_object('id', pg_temp.id('gk'), 'revision', 1),
+  'the same op_key with the same data answers the same group (the name is compared trimmed)');
+select is((select count(*) from app.groups g where g.institution_id = pg_temp.id('instA') and g.name = 'Con clave'), 1::bigint,
+  'and there is still one group, with one owner row');
+select is(pg_temp.as_user('owner', format('select api.update_group(%L, 1, ''Renombrado con clave'', 2026)', pg_temp.id('gk'))) ->> 'revision', '2',
+  'the group is renamed afterwards');
+select is(pg_temp.keyed_group('owner', 'Con clave'), jsonb_build_object('id', pg_temp.id('gk'), 'revision', 1),
+  'a late retry still answers the original result: the identity is the stored one, not the current name');
+select is(pg_temp.keyed_group('admin', 'Con clave'), jsonb_build_object('id', pg_temp.id('gk'), 'revision', 1),
+  'the key is per institution: another staff member with the same request gets the same group');
+select is(pg_temp.keyed_group('owner', 'Otro nombre') ->> 'error', 'P0001 CONFLICT op_key_reused', 'the same op_key with another name is CONFLICT op_key_reused');
+select is(pg_temp.keyed_group('owner', 'Con clave', 2027) ->> 'error', 'P0001 CONFLICT op_key_reused', 'and with another year too');
+select is(pg_temp.as_user('owner', format('select api.create_group(%L, ''Sin clave'', ''math'', 2026, null)', pg_temp.id('instA'))) ->> 'error',
+  'P0001 INVALID invalid_op_key', 'a null op_key is INVALID invalid_op_key');
+select is(pg_temp.as_user('owner', format('select api.create_group(%L, ''   '', ''math'', 2026, gen_random_uuid())', pg_temp.id('instA'))) ->> 'error',
+  'P0001 INVALID invalid_name', 'a blank name is INVALID invalid_name, not a raw 23514');
+select is(pg_temp.as_user('owner', format('select api.create_group(%L, null, ''math'', 2026, gen_random_uuid())', pg_temp.id('instA'))) ->> 'error',
+  'P0001 INVALID invalid_name', 'a null name too');
+select is(pg_temp.as_user('owner', format('select api.create_group(%L, ''x'', ''math'', 1999, gen_random_uuid())', pg_temp.id('instA'))) ->> 'error',
+  'P0001 INVALID invalid_school_year', 'a school year out of range is INVALID invalid_school_year');
+select is(pg_temp.as_user('owner', format('select api.create_group(%L, ''x'', ''math'', null, gen_random_uuid())', pg_temp.id('instA'))) ->> 'error',
+  'P0001 INVALID invalid_school_year', 'a null one too');
+select is((select count(*) from app.groups g where g.institution_id = pg_temp.id('instA') and g.name in ('Sin clave', 'Otro nombre', 'x')), 0::bigint,
+  'no refusal created a group');
+-- The guard, as the owner of the table (P0004, not 42501).
+select throws_ok(format('update app.groups set op_key = gen_random_uuid() where id = %L', pg_temp.id('gk')), 'P0004', null, 'the op_key of a group never changes');
+select throws_ok(format('update app.groups set op_identity = repeat(''0'', 64) where id = %L', pg_temp.id('gk')), 'P0004', null, 'nor its identity');
+select throws_ok(format('update app.groups set op_key = null, op_identity = null where id = %L', pg_temp.id('gk')), 'P0004', null,
+  'nor are they cleared: a group has no student data, no erasure forgets its operation');
 
 -- ---------------------------------------------------------------------------------------------
 -- update_group / archive_group / restore_group

@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { countRows, readRows, runRpc } from "../support/db";
+import { original, pick, type Original } from "../support/assessments";
+import { countRows, readRows } from "../support/db";
 import { heldRace, stampede, type Step } from "../support/race";
 import { describeOutcome, idOf } from "../support/session";
-import { createWorld, teacherOf, type World } from "../support/world";
+import { teacherOf } from "../support/world";
 
 // The original of an assessment under concurrent edits (T1.4a). Every write of an exercise takes the
 // assessment row first, so reorder compares the exact set of live exercises and two edits of one
@@ -12,45 +14,11 @@ import { createWorld, teacherOf, type World } from "../support/world";
 const MISMATCH = "P0001 INVALID exercises_mismatch";
 const STALE_EDIT = "P0001 CONFLICT revision_mismatch";
 
-type Original = { world: World; assessmentId: string; exercises: string[] };
-
-async function original(count: number): Promise<Original> {
-  const world = await createWorld();
-  const created = await runRpc(teacherOf(world), "create_assessment", {
-    p_group_id: world.groupId,
-    p_kind: "worksheet",
-    p_topic: "Repaso",
-    p_general_instructions: "Instrucciones",
-  });
-  const assessmentId = idOf(created);
-  const exercises: string[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const added = await runRpc(teacherOf(world), "add_exercise", {
-      p_assessment_id: assessmentId,
-      p_label: String(index + 1),
-      p_body: `Enunciado ${index + 1}`,
-      p_topic_id: null,
-    });
-    exercises.push(idOf(added));
-  }
-  return { world, assessmentId, exercises };
-}
-
-/** The exercises as a tuple the test can destructure without an undefined. */
-function pick(o: Original, count: 1): [string];
-function pick(o: Original, count: 2): [string, string];
-function pick(o: Original, count: 3): [string, string, string];
-function pick(o: Original, count: number): string[] {
-  const found = o.exercises.slice(0, count);
-  if (found.length !== count) throw new Error("Faltan ejercicios.");
-  return found;
-}
-
 function addExercise(o: Original, label: string): Step {
   return {
     actor: teacherOf(o.world),
     rpc: "add_exercise",
-    args: { p_assessment_id: o.assessmentId, p_label: label, p_body: "Enunciado nuevo", p_topic_id: null },
+    args: { p_assessment_id: o.assessmentId, p_label: label, p_body: "Enunciado nuevo", p_op_key: randomUUID(), p_topic_id: null },
   };
 }
 function removeExercise(o: Original, id: string, revision: number): Step {
@@ -225,3 +193,4 @@ describe("race: marking versions stale takes the locks in order", () => {
     }
   });
 });
+

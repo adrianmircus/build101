@@ -68,6 +68,14 @@ export class Session {
     await this.client.query(actor.role === "authenticated" ? "set local role authenticated" : "set local role service_role");
   }
 
+  /**
+   * Starts a transaction as the database owner, for a test that plays another writer of the tables
+   * (one that takes row locks with SQL through rows()). It stays open until commit() or rollback().
+   */
+  async beginAsOwner(): Promise<void> {
+    await this.client.query("begin");
+  }
+
   /** One RPC inside the open transaction. A failure aborts the transaction: roll it back. */
   async call(name: string, args: RpcArgs): Promise<Outcome> {
     const { sql, values } = callSql(name, args);
@@ -98,7 +106,7 @@ export class Session {
     return rows[0]?.wait_event ?? null;
   }
 
-  /** A read-only query as the database owner, to check what the RPCs left behind. */
+  /** A query as the database owner: to check what the RPCs left behind or, after beginAsOwner(), to take row locks. */
   async rows<T extends Record<string, unknown>>(sql: string, values: string[] = []): Promise<T[]> {
     return (await this.client.query<T>(sql, values)).rows;
   }

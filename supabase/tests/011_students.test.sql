@@ -79,8 +79,8 @@ begin
   perform pg_temp.as_service(format('select api.internal_add_membership(%L, %L, %L)', v_inst, pg_temp.id(u.k), u.role))
      from (values ('admin', 'admin'), ('teach', 'teacher'), ('other', 'teacher'), ('incl', 'inclusion')) as u(k, role);
   insert into ids (k, id) values
-    ('g_' || p, (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026)', v_inst)) ->> 'id')::uuid),
-    ('go_' || p, (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026)', v_inst)) ->> 'id')::uuid);
+    ('g_' || p, (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026, gen_random_uuid())', v_inst)) ->> 'id')::uuid),
+    ('go_' || p, (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026, gen_random_uuid())', v_inst)) ->> 'id')::uuid);
 end
 $$;
 
@@ -159,7 +159,7 @@ insert into ids (k, id) select 'i_s', (pg_temp.as_service(format(
 do $$ begin
   perform pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''teacher'')', pg_temp.id('i_s'), pg_temp.id('visitor')));
 end $$;
-insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select api.create_group(%L, ''Demo'', ''math'', 2026)', pg_temp.id('i_s'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select api.create_group(%L, ''Demo'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_s'))) ->> 'id')::uuid;
 insert into ids (k, id) select 'ss1', (pg_temp.new_student('visitor', 'g_s', 'Demo Uno', 'demo.uno') ->> 'id')::uuid;
 select is(pg_temp.new_student('visitor', 'g_s', 'Demo Dos', 'demo.dos') -> 'provisioningId', 'null'::jsonb,
   'in a sandbox provisioningId is null');
@@ -387,7 +387,7 @@ do $$ begin
     from ids i_p, ids sp1 where i_p.k = 'i_p' and sp1.k = 'sp1';
 end $$;
 select pg_temp.mk('q');  -- a second institution for the teacher, to be sure listings do not mix them
-insert into ids (k, id) select 'ga_p', (pg_temp.as_user('teach', format('select api.create_group(%L, ''Archivado'', ''math'', 2025)', pg_temp.id('i_p'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'ga_p', (pg_temp.as_user('teach', format('select api.create_group(%L, ''Archivado'', ''math'', 2025, gen_random_uuid())', pg_temp.id('i_p'))) ->> 'id')::uuid;
 do $$ begin perform pg_temp.as_user('teach', format('select api.archive_group(%L, 1)', pg_temp.id('ga_p'))); end $$;
 
 create function pg_temp.mine(p_user text, p_args text default '') returns jsonb language sql as $$

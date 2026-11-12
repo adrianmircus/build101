@@ -62,7 +62,8 @@ export const VERSION_RPCS = {
   },
   create_version: {
     args: z
-      .object({ p_assessment_id: Id, p_config: VersionConfig, p_answer_mode: AnswerMode, p_base_version_id: Id.optional() })
+      // p_op_key: one per attempt to create, reused on a retry (T1.F3).
+      .object({ p_assessment_id: Id, p_config: VersionConfig, p_answer_mode: AnswerMode, p_op_key: Id, p_base_version_id: Id.optional() })
       .strict(),
     result: z.object({ id: Id, revision: Revision, position: z.int().min(1) }).strict(),
   },

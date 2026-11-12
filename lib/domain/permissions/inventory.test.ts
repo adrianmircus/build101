@@ -59,6 +59,13 @@ const CHANGED: Record<string, string> = {
   "assessment_exercises.label": "redacta",
   "assessments.topic": "redacta",
   "assessments.general_instructions": "redacta",
+  // T1.F3: the identity of a creation is derived from the text it redacts; both go to null with it.
+  "assessments.op_key": "redacta",
+  "assessments.op_identity": "redacta",
+  "assessment_exercises.op_key": "redacta",
+  "assessment_exercises.op_identity": "redacta",
+  "versions.op_key": "redacta",
+  "versions.op_identity": "redacta",
   "presets.name": "redacta",
   "presets.config": "redacta",
   "import_runs.id_map": "redacta",
@@ -164,6 +171,17 @@ describe("privacy inventory: fields", () => {
     const kept = swap(sections, { table: "account_provisioning", field: "op_identity", action: "conserva" });
     expect(changedFields(kept)["account_provisioning.op_identity"]).toBeUndefined();
     expect(changedFields(kept)).not.toEqual(CHANGED);
+  });
+
+  it("forgets the identity of a creation together with the text it was derived from (T1.F3)", () => {
+    for (const table of ["assessments", "assessment_exercises"]) {
+      const row = byTable.get(table)?.rows.find((item) => item.fields.includes("op_identity"));
+      expect(row, table).toMatchObject({ action: "redacta" });
+      expect(row?.fields, table).toContain("op_key");
+      const kept = swap(sections, { table, field: "op_identity", action: "conserva" });
+      expect(changedFields(kept), table).not.toEqual(CHANGED);
+    }
+    expect(byTable.get("versions")?.rows.find((item) => item.fields.includes("op_identity"))?.action).toBe("individual: borra; compartida: redacta");
   });
 
   it("matches each rule with what its fields do", () => {

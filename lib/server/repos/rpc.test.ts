@@ -5,7 +5,7 @@ import { callRpc, UnexpectedRpcError, withRequestId, type RpcBuilder, type RpcDb
 type Reply = { data: unknown; error: { code?: string; message?: string; details?: string } | null };
 
 const GROUP_ID = "11111111-1111-4111-8111-111111111111";
-const ARGS = { p_institution_id: GROUP_ID, p_name: "3A", p_subject_id: "math", p_school_year: 2027 };
+const ARGS = { p_institution_id: GROUP_ID, p_name: "3A", p_subject_id: "math", p_school_year: 2027, p_op_key: GROUP_ID };
 
 function fakeDb(reply: Reply) {
   const calls: { name: string; args: Record<string, unknown>; headers: Record<string, string> }[] = [];

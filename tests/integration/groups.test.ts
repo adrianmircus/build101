@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import * as identity from "@/lib/server/repos/admin/identity";
 import {
@@ -24,7 +25,7 @@ describe("repos of institutions and groups", () => {
 
   it("creates, reads, updates, archives and restores a group", async () => {
     const { institution, teacher } = await createSchool();
-    const created = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP });
+    const created = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP, opKey: randomUUID() });
     expect(created.revision).toBe(1);
 
     const detail = await getGroup(teacher.client, created.id);
@@ -46,7 +47,7 @@ describe("repos of institutions and groups", () => {
 
   it("rejects a stale revision and a change to an archived group, with Spanish messages", async () => {
     const { institution, teacher } = await createSchool();
-    const { id } = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP });
+    const { id } = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP, opKey: randomUUID() });
     const stale = updateGroup(teacher.client, id, { revision: 7, name: "X", schoolYear: 2027 });
     await expect(stale).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("Recargá") });
 
@@ -58,7 +59,7 @@ describe("repos of institutions and groups", () => {
   it("adds and removes a co-teacher", async () => {
     const { admin, institution, teacher } = await createSchool();
     const other = await createLoggedInUser(admin, institution, "teacher");
-    const { id } = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP });
+    const { id } = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP, opKey: randomUUID() });
 
     const staff = await addGroupStaff(teacher.client, id, { userId: other.id, role: "co_teacher" });
     expect((await getGroup(other.client, id)).myRole).toBe("co_teacher");

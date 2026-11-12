@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   addGroupStaff,
@@ -17,14 +18,14 @@ describe("isolation between institutions", () => {
   it("answers NOT_FOUND to a user of another institution in every read and write", async () => {
     const mine = await createSchool();
     const theirs = await createSchool();
-    const created = await createGroup(mine.teacher.client, { institutionId: mine.institution.id, ...NEW_GROUP });
+    const created = await createGroup(mine.teacher.client, { institutionId: mine.institution.id, ...NEW_GROUP, opKey: randomUUID() });
     const { id, revision } = created;
     const outsider = theirs.teacher.client;
     const notFound = { code: "NOT_FOUND" };
 
     await expect(getGroup(outsider, id)).rejects.toMatchObject(notFound);
     await expect(listMyGroups(outsider, mine.institution.id)).rejects.toMatchObject(notFound);
-    const intruder = { institutionId: mine.institution.id, ...NEW_GROUP };
+    const intruder = { institutionId: mine.institution.id, ...NEW_GROUP, opKey: randomUUID() };
     await expect(createGroup(outsider, intruder)).rejects.toMatchObject(notFound);
     const changes = { revision, name: "X", schoolYear: 2027 };
     await expect(updateGroup(outsider, id, changes)).rejects.toMatchObject(notFound);
@@ -43,7 +44,7 @@ describe("isolation between institutions", () => {
     const { admin, institution, teacher } = await createSchool();
     const colleague = await createLoggedInUser(admin, institution, "teacher");
     const boss = await createLoggedInUser(admin, institution, "admin");
-    const { id } = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP });
+    const { id } = await createGroup(teacher.client, { institutionId: institution.id, ...NEW_GROUP, opKey: randomUUID() });
 
     expect((await listMyGroups(colleague.client, institution.id)).items).toEqual([]);
     await expect(getGroup(colleague.client, id)).rejects.toMatchObject({ code: "NOT_FOUND" });

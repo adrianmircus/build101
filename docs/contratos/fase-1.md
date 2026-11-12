@@ -181,6 +181,8 @@ Un sandbox vencido cuenta como sin membresía: después de `expires_at` su visit
 - **`source_id` de `assessments` se llama `source_file_id`.** Es el documento del que se leyó. Duplicar un práctico (T7.8) suma su propia columna cuando llegue.
 - **La publicación mínima pasa a la fase 1 (T1.5a).** El spec la pone en T4.7. Las pruebas de intentos, de los DTO y de fugas necesitan publicaciones hechas por el camino real, y una publicación sembrada a mano no prueba nada. T4.7 queda para el servicio y la acción de publicar.
 - **`create_student_note` recibe `p_op_key` (T1.F2).** Cambio aditivo aprobado: una firma nueva, `create_student_note(p_student_id, p_body, p_op_key)`, obligatoria (un nulo es `INVALID`, `invalid_op_key`; no hay valor por defecto porque un envío sin identidad es justo el doble envío que se quiere evitar). La firma vieja se borra. `student_notes` suma `op_key` y `op_identity` (sha256 de estudiante y texto de la creación, que no se reconstruye desde la fila porque el texto se puede editar). El `op_key` es por autor: el mismo `op_key` y la misma identidad responden la nota original (`id`, revisión 1), aunque después se haya editado o archivado; el mismo `op_key` con otro estudiante u otro texto es `CONFLICT` (`op_key_reused`). Las dos columnas se borran con la fila. El front manda un `crypto.randomUUID()` por intento de guardar y lo reusa al reintentar.
+- **Toda alta lleva su identidad de operación (T1.F3).** Cambio aditivo aprobado, con el mismo protocolo que `create_student_note`. Firmas nuevas, con `p_op_key` obligatorio (nulo: `INVALID invalid_op_key`); las viejas se borran: `create_group(p_institution_id, p_name, p_subject_id, p_school_year, p_op_key)`, `create_assessment(p_group_id, p_kind, p_topic, p_general_instructions, p_op_key)`, `add_exercise(p_assessment_id, p_label, p_body, p_op_key, p_topic_id = null)` y el stub `create_version(p_assessment_id, p_config, p_answer_mode, p_op_key, p_base_version_id = null)`. `p_op_key` va antes de los parámetros con valor por defecto. `groups`, `assessments`, `assessment_exercises` y `versions` suman `op_key` y `op_identity`; `publications` suma además `op_attempts`, porque `publish_version` ya recibía `p_op_key` y no tenía dónde guardarlo. El detalle, con el inventario de todas las RPC que crean filas, está en «Idempotencia de las altas». `create_group` valida además nombre y año (`invalid_name`, `invalid_school_year`), que antes llegaban como `23514` crudo. El front manda un `crypto.randomUUID()` por intento de guardar y lo reusa al reintentar. Los nombres de migración que dicen los tickets T1.4b a T1.5d ya no están libres (`20261112180000` es la de T1.F3): cada uno usa un timestamp posterior al de la última migración aplicada.
+- **Un práctico archivado tiene su propia razón (T1.F3, revisión de T1.4a).** Escribir en un práctico archivado es `INVALID assessment_archived` («ya no se puede cambiar»: un práctico no se restaura); en un grupo archivado sigue siendo `INVALID archived`. Cambiar el tema de un ejercicio adaptado marca `stale` sus versiones, igual que el texto.
 - **`unenroll_student` toma la hora después del lock (T1.F2).** Usa `clock_timestamp()` y no `now()`, que podía ser anterior al `started_at` de una inscripción hecha mientras esperaba (`23514` crudo). Sin cambio de contrato.
 - **T1.1 no dejó `tests/factories/`.** Las crea T1.6a, sobre las RPC internas de T1.2a.
 - **Se parten también T1.2, T1.3 y T1.5**, no solo T1.4. Cada uno pasaba las 400 líneas con sus pruebas.
@@ -254,7 +256,8 @@ Reglas de unicidad que pide el spec, ya en el esquema:
 - un usuario único por institución;
 - un consentimiento vigente por estudiante y finalidad;
 - una versión por práctico y estudiante a la vez (`version_recipients_one_per_assessment_key`);
-- `op_key` único por institución en `generations`, `operations`, `account_provisioning` e `import_runs`;
+- `op_key` único por institución en `generations`, `operations`, `account_provisioning`, `import_runs`, `groups`, `assessments`, `assessment_exercises`, `versions` y `publications` (las cinco últimas desde T1.F3), y por autor en `student_notes` (T1.F2);
+- una revisión de la clave por generación (`answer_key_revisions_generation_key`, T1.F3);
 - una generación `running` por recurso y tipo;
 - un solo evento `generated` por generación;
 - `op_id` único por institución en `version_events` y `student_need_events`;
@@ -272,7 +275,7 @@ Todas en el esquema `api`, `SECURITY DEFINER`, con `search_path = ''`, devuelven
 | `internal_add_membership(p_institution_id, p_user_id, p_role)` | T1.2a |
 | `internal_revoke_membership(p_membership_id)` | T1.2a |
 | `list_my_institutions()` | T1.2a |
-| `create_group(p_institution_id, p_name, p_subject_id, p_school_year)` | T1.2a |
+| `create_group(p_institution_id, p_name, p_subject_id, p_school_year, p_op_key)` | T1.2a, T1.F3 |
 | `update_group(p_group_id, p_revision, p_name, p_school_year)` | T1.2a |
 | `archive_group(p_group_id, p_revision)` y `restore_group(p_group_id, p_revision)` | T1.2a |
 | `add_group_staff(p_group_id, p_user_id, p_role)` y `remove_group_staff(p_group_id, p_user_id)` | T1.2a |
@@ -294,16 +297,16 @@ Todas en el esquema `api`, `SECURITY DEFINER`, con `search_path = ''`, devuelven
 | `list_student_consents(p_student_id)` (auditada) | T1.3b |
 | `record_consent(p_student_id, p_purpose, p_text_version, p_valid_until = null, p_file_id = null)` | T1.3b |
 | `revoke_consent(p_consent_id, p_revision)` | T1.3b |
-| `create_assessment(p_group_id, p_kind, p_topic, p_general_instructions)` | T1.4a |
+| `create_assessment(p_group_id, p_kind, p_topic, p_general_instructions, p_op_key)` | T1.4a, T1.F3 |
 | `update_assessment(p_assessment_id, p_revision, p_kind, p_topic, p_general_instructions)` | T1.4a |
 | `archive_assessment(p_assessment_id, p_revision)` | T1.4a |
 | `list_assessments(p_group_id, p_include_archived = false, p_limit = 50, p_offset = 0)` | T1.4a |
 | `get_assessment(p_assessment_id)` | T1.4a |
-| `add_exercise(p_assessment_id, p_label, p_body, p_topic_id = null)` | T1.4a |
+| `add_exercise(p_assessment_id, p_label, p_body, p_op_key, p_topic_id = null)` | T1.4a, T1.F3 |
 | `update_exercise(p_exercise_id, p_revision, p_label, p_body, p_topic_id = null)` | T1.4a |
 | `remove_exercise(p_exercise_id, p_revision)` | T1.4a |
 | `reorder_exercises(p_assessment_id, p_revision, p_exercise_ids)` | T1.4a |
-| `create_version(p_assessment_id, p_config, p_answer_mode, p_base_version_id = null)` | T1.4b |
+| `create_version(p_assessment_id, p_config, p_answer_mode, p_op_key, p_base_version_id = null)` | T1.4b (firma de T1.F3) |
 | `update_version_config(p_version_id, p_revision, p_config, p_answer_mode)` | T1.4b |
 | `set_version_recipients(p_version_id, p_revision, p_student_ids, p_op_id)` | T1.4b |
 | `archive_version(p_version_id, p_revision)` | T1.4b |
@@ -404,7 +407,48 @@ end;
 return v_result;
 ```
 
-La misma regla vale para `student_need_events` (bajo el lock de la fila del estudiante) y para todo `op_key` de `generations`, `operations`, `account_provisioning` e `import_runs`: se busca bajo el lock del recurso, se compara la identidad (recurso y tipo de operación) y el índice único es el respaldo.
+La misma regla vale para `student_need_events` (bajo el lock de la fila del estudiante) y para todo `op_key` de `generations`, `operations`, `account_provisioning`, `import_runs` y las altas de «Idempotencia de las altas»: se busca bajo el lock del recurso, se compara la identidad (recurso y tipo de operación) y el índice único es el respaldo.
+
+### Idempotencia de las altas (T1.F3)
+
+Toda RPC que crea una fila que una persona puede disparar dos veces (doble clic, reintento después de un corte) tiene una identidad de operación, o una razón para no necesitarla. Inventario de las RPC de la fase 1 que insertan filas, implementadas o stubs:
+
+| RPC | Inserta en | Antes de T1.F3 | Ahora |
+|---|---|---|---|
+| `internal_create_institution` | `institutions` | clave natural `code` | Excluida: interna; el mismo `code` con los mismos datos devuelve la misma, con otros es `op_key_reused`. |
+| `internal_upsert_app_user` | `app_users` | clave natural (id de Auth) | Excluida: interna, upsert por id. |
+| `internal_add_membership`, `internal_link_student_user` | `memberships` | clave natural (institución, usuario, rol vigente) | Excluidas: internas; repetir devuelve la membresía vigente. |
+| `create_group` | `groups`, `group_staff` | nada | `p_op_key` (T1.F3). |
+| `add_group_staff` | `group_staff` | clave natural (grupo, persona vigente) | Excluida: repetir con el mismo rol devuelve la misma fila. |
+| `create_student` | `students`, `enrollments`, `student_pseudonyms`, `account_provisioning` | `op_key` (T1.2b) | Sin cambios. |
+| `enroll_student` | `enrollments` | clave natural (una inscripción vigente por par) | Excluida: repetir devuelve la vigente. |
+| `set_student_needs` | `student_needs`, `student_need_events` | `op_id` (T1.3a) | Sin cambios. |
+| `create_student_note` | `student_notes` | `op_key` (T1.F2) | Sin cambios. |
+| `record_consent` | `consents` | idempotente por contenido | Excluida: el consentimiento vigente con la misma finalidad, versión del texto, vencimiento y formulario se devuelve tal cual. |
+| `create_assessment` | `assessments` | nada | `p_op_key` (T1.F3). |
+| `add_exercise` | `assessment_exercises` | nada | `p_op_key` (T1.F3). |
+| `create_version` (stub) | `versions`, `version_exercises` | nada | Firma con `p_op_key` y columnas (T1.F3); lo implementa T1.4b. |
+| `set_version_recipients` (stub) | `version_recipients`, `version_events` | `op_id` | Sin cambios. |
+| `update_version_instructions`, `update_version_exercise`, `update_version_question`, `approve_version`, `reject_version` (stubs) | `version_events` | `op_id` | Sin cambios. |
+| `set_question_key` (stub) | `question_keys` | clave natural (una por pregunta) y revisión | Excluida: la segunda copia encuentra la clave; T1.4c responde lo mismo si la opción es la misma y `revision_mismatch` si no. |
+| `internal_create_generation` (stub) | `generations` | `op_key` | Sin cambios. |
+| `internal_record_generation_output` (stub) | `generation_outputs` | clave natural (generación, tipo, ejercicio) | Excluida: interna; un reintento devuelve la salida guardada. |
+| `internal_finish_generation` (stub) | `version_events` | clave natural (un `generated` por generación, `op_id` = id de la generación) | Excluida: interna. |
+| `edit_answer_key`, `confirm_answer_key` (stubs) | `answer_keys`, `answer_key_revisions` | revisión base (`p_base_revision_id`) | Excluidas: como toda edición con revisión, la segunda copia encuentra que su base ya no es la vigente y responde `CONFLICT`; nunca hay dos revisiones. |
+| `internal_record_answer_key_revision` (stub) | `answer_key_revisions` | nada | Clave natural nueva: una revisión por generación (índice único, T1.F3); T1.4e devuelve la guardada en un reintento. |
+| `publish_version` (stub) | `publications`, `assignments`, `assignment_attempts` | `p_op_key` sin dónde guardarlo | Columnas `op_key`, `op_identity` y `op_attempts` (T1.F3); lo implementa T1.5a. |
+| `student_start_attempt` (stub) | `submissions` | clave natural (`attempt_id` único) | Excluida: si ya empezó, devuelve lo mismo. |
+| `grade_attempt` (stub) | `grades` | clave natural (`attempt_id` único) y revisión (nula la primera vez) | Excluida: la segunda copia encuentra la nota; T1.5c responde lo mismo si es idéntica y `revision_mismatch` si no. |
+
+Las demás RPC no insertan filas (ediciones, archivos, restauraciones y bajas con revisión, lecturas, `student_open_attempt` y `student_submit_attempt`, que solo cambian estado).
+
+El protocolo, igual en todas las altas con `op_key`:
+
+- La fila guarda `op_key` y `op_identity`: el sha256 del texto de un `jsonb_build_array` con el nombre de la RPC y lo que define el alta, tal como era al crearla (un arreglo JSON, así ningún separador hace chocar dos entradas). Nunca se reconstruye desde la fila, que se puede editar después. Un `CHECK` exige las dos o ninguna.
+- `op_key` es único por institución (`<tabla>_op_key_key`). Reusarlo en otro recurso, o con otros datos, es `CONFLICT op_key_reused`; nunca una segunda fila.
+- La RPC autoriza y valida primero. Después toma `pg_advisory_xact_lock` de (RPC, institución, `op_key`), antes de cualquier lock de fila y antes de buscar, y busca bajo ese lock. La misma identidad devuelve el resultado original (`{ id, revision: 1 }`, o lo que diga la RPC), aunque la fila se haya editado, archivado o sacado después. Recién si no existe toma los locks de fila y escribe.
+- `app.op_key_frozen()` congela las dos columnas (`P0004`). Donde la identidad sale de texto libre que una supresión puede redactar (`assessments`, `assessment_exercises`, `versions`), la supresión en curso de esa institución puede ponerlas en nulo juntas al redactar ese texto; `groups` nunca. `publications_guard` ya congela las de una publicación, también dentro de una supresión.
+- La prueba de carrera, con dos conexiones, comprueba que la segunda copia espera en el lock (`advisory`) y responde lo mismo. Sin el lock la segunda no espera, no ve la fila sin confirmar, inserta y choca con el índice: `23505` crudo.
 
 ### Una salida de la IA (C3)
 
@@ -738,7 +782,13 @@ Archivos que puede crear o cambiar: supabase/migrations/20261112150000_t1_4b_ver
 Contratos que usa (solo lectura): lib/domain/assessments/versions.ts, lib/domain/assessments/rpc-versions.ts.
 Criterios de aceptación:
   - create_version asigna la posición siguiente, copia las instrucciones generales del práctico y crea un
-    version_exercise pending por cada ejercicio conservado (config.keep, o todos).
+    version_exercise pending por cada ejercicio conservado (config.keep, o todos). Toma la fila del práctico
+    antes de copiar ejercicios (si no, una versión hecha en el medio no recibe la marca stale).
+  - create_version(p_assessment_id, p_config, p_answer_mode, p_op_key, p_base_version_id) es idempotente
+    según «Idempotencia de las altas» (T1.F3): op_identity es el sha256 de jsonb_build_array('create_version',
+    práctico, config, answer_mode, versión base), guardado en versions.op_key y versions.op_identity en el
+    mismo insert; la repetición responde { id, revision: 1, position } de la versión creada; p_op_key nulo es
+    INVALID invalid_op_key. La guardia de versions que escriba congela position.
   - set_version_recipients cierra las filas vigentes (valid_to) y abre las nuevas, sube la revisión, escribe
     recipients_changed con op_id (bajo el lock) y exige, con un trigger, que cada destinatario esté inscripto.
     Quién se sumó o salió va solo en data; el result que se guarda es { id, revision } de la versión.
@@ -767,6 +817,8 @@ Criterios de aceptación:
   - update_version_question y set_question_key suben la revisión de la pregunta, la de su ejercicio y la de la
     versión; la opción correcta tiene que existir (unknown_option) y no se puede sacar con una edición
     (correct_option_removed).
+  - set_question_key sin clave previa (p_revision nulo) repetido con la misma opción responde lo mismo; con
+    otra, revision_mismatch (no lleva op_key: ver «Idempotencia de las altas»).
   - claim_version_op con la RPC y el destino concreto (la pregunta, el ejercicio o la versión); el evento guarda
     operation, target_id y el resultado, que se devuelve tal cual en una repetición.
   - Una edición manual con texto pasa el ejercicio a ready (vacía, a pending), y toda edición termina con
@@ -830,7 +882,8 @@ Criterios de aceptación:
   - edit y confirm agregan una revisión numerada con las revisiones de hoy; CAS con p_base_revision_id.
     confirm toma las opciones correctas de question_keys y en mirada exige una para cada pregunta.
   - internal_record_answer_key_revision guarda el snapshot de las entradas de su generación y solo la vuelve
-    actual si la generación sigue vigente y el snapshot corresponde.
+    actual si la generación sigue vigente y el snapshot corresponde. Una revisión por generación
+    (answer_key_revisions_generation_key, T1.F3): un reintento del mismo trabajo devuelve la guardada.
   - get_answer_key solo staff del grupo; nunca un estudiante.
 Pruebas obligatorias: 019_answer_keys.test.sql con las reglas comunes; intercambiar dos opciones o cambiar la
   correcta, o cambiar las instrucciones, deja la clave sin corresponder hasta confirmarla; una clave generada
@@ -850,7 +903,11 @@ Archivos que puede crear o cambiar: supabase/migrations/20261112190000_t1_5a_pub
   supabase/tests/020_publish.test.sql.
 Contratos que usa (solo lectura): lib/domain/delivery/**, sección «Intentos y entrega».
 Criterios de aceptación: los puntos de «Publicar», cada uno con su error (not_approved, content_incomplete,
-  missing_questions, stale_answer_key, missing_consent, not_enrolled); el op_key repetido devuelve la misma publicación; la copia
+  missing_questions, stale_answer_key, missing_consent, not_enrolled); el op_key repetido devuelve la misma
+  publicación según «Idempotencia de las altas» (T1.F3): op_identity es el sha256 de
+  jsonb_build_array('publish_version', versión, p_revision, p_answer_key_revision_id), y publications guarda
+  op_key, op_identity y op_attempts (los intentos que creó o movió) en el mismo insert, para repetir
+  { publicationId, attempts } tal cual aunque una publicación posterior mueva esos intentos; la copia
   lleva las instrucciones de la versión y no lleva opción correcta, changes ni config; los avisos de
   revealWarnings no bloquean la publicación (los muestra el servicio, T4.7); cada intento lleva la
   revisión de la clave de su publicación.
@@ -896,7 +953,9 @@ Archivos que puede crear o cambiar: supabase/migrations/20261112210000_t1_5c_gra
 Contratos que usa (solo lectura): lib/domain/delivery/rpc.ts.
 Criterios de aceptación: list_assessment_attempts no dice qué versión recibió cada uno; get_attempt_for_grading
   auditada; grade_attempt toma lock_attempt_tree y después la nota, con revisión, solo con entrega
-  (not_submitted), resultados por id de ejercicio de la publicación.
+  (not_submitted), resultados por id de ejercicio de la publicación. La primera nota (p_revision nulo) repetida
+  con el mismo contenido responde la misma nota; con otro, revision_mismatch (no lleva op_key: ver
+  «Idempotencia de las altas»).
 Pruebas obligatorias: 022_grading.test.sql con las reglas comunes.
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: análisis del grupo (T3.5).
@@ -977,7 +1036,8 @@ Agente: backend          Tanda: 7        Depende de: T1.4b, T1.6c
 Turno de base: no
 Archivos que puede crear o cambiar: lib/server/repos/assessments.ts, lib/server/repos/versions.ts,
   tests/factories/assessments.ts, tests/integration/assessments.test.ts, tests/integration/versions.test.ts.
-Objetivo, criterios y pruebas: como T1.6b, para sus RPC, con aislamiento.
+Objetivo, criterios y pruebas: como T1.6b, para sus RPC, con aislamiento. createAssessment, addExercise y
+  createVersion reciben un opKey (uno por intento de guardar, reusado al reintentar), como createStudentNote.
 ```
 
 ```

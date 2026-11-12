@@ -6,7 +6,7 @@
 -- the UPDATE would fail first on privileges (42501) and the test would pass without the guard.
 -- The whole file is rolled back.
 begin;
-select plan(172);
+select plan(214);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -62,9 +62,9 @@ insert into ids (k, id) select 'i_n', (pg_temp.as_service($$ select api.internal
 select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, %L)', pg_temp.id('i_n'), pg_temp.id(u.k), u.role))
   from (values ('admin', 'admin'), ('teach', 'teacher'), ('other', 'teacher'), ('co', 'teacher'), ('adm2', 'admin'), ('incl', 'inclusion')) as u(k, role);
 insert into ids (k, id) values
-  ('g_n', (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026)', pg_temp.id('i_n'))) ->> 'id')::uuid),
-  ('go_n', (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026)', pg_temp.id('i_n'))) ->> 'id')::uuid),
-  ('g_arch', (pg_temp.as_user('teach', format('select api.create_group(%L, ''Archivado'', ''math'', 2026)', pg_temp.id('i_n'))) ->> 'id')::uuid);
+  ('g_n', (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_n'))) ->> 'id')::uuid),
+  ('go_n', (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_n'))) ->> 'id')::uuid),
+  ('g_arch', (pg_temp.as_user('teach', format('select api.create_group(%L, ''Archivado'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_n'))) ->> 'id')::uuid);
 select pg_temp.as_user('teach', format('select api.add_group_staff(%L, %L, ''co_teacher'')', pg_temp.id('g_n'), pg_temp.id('co')));
 select pg_temp.as_user('other', format('select api.add_group_staff(%L, %L, ''co_teacher'')', pg_temp.id('go_n'), pg_temp.id('adm2')));
 insert into ids (k, id) values
@@ -81,7 +81,7 @@ insert into app.syllabi (institution_id, group_id, units)
 
 -- The calls under test. Raw arguments (revisions, topics) are SQL: 'null' or a value.
 create function pg_temp.ca(p_user text, p_group text, p_kind text, p_topic text, p_instr text) returns jsonb language sql as $$
-  select pg_temp.as_user(p_user, format('select api.create_assessment(%L, %L, %L, %L)', pg_temp.id(p_group), p_kind, p_topic, p_instr))
+  select pg_temp.as_user(p_user, format('select api.create_assessment(%L, %L, %L, %L, gen_random_uuid())', pg_temp.id(p_group), p_kind, p_topic, p_instr))
 $$;
 create function pg_temp.upa(p_user text, p_asm text, p_rev text, p_kind text, p_topic text, p_instr text) returns jsonb language sql as $$
   select pg_temp.as_user(p_user, format('select api.update_assessment(%L, %s, %L, %L, %L)', pg_temp.id(p_asm), p_rev, p_kind, p_topic, p_instr))
@@ -96,7 +96,7 @@ create function pg_temp.get(p_user text, p_asm text) returns jsonb language sql 
   select pg_temp.as_user(p_user, format('select api.get_assessment(%L)', pg_temp.id(p_asm)))
 $$;
 create function pg_temp.adx(p_user text, p_asm text, p_label text, p_body text, p_topic text default 'null') returns jsonb language sql as $$
-  select pg_temp.as_user(p_user, format('select api.add_exercise(%L, %L, %L, %s)', pg_temp.id(p_asm), p_label, p_body, p_topic))
+  select pg_temp.as_user(p_user, format('select api.add_exercise(%L, %L, %L, gen_random_uuid(), %s)', pg_temp.id(p_asm), p_label, p_body, p_topic))
 $$;
 create function pg_temp.upx(p_user text, p_ex text, p_rev text, p_label text, p_body text, p_topic text default 'null') returns jsonb language sql as $$
   select pg_temp.as_user(p_user, format('select api.update_exercise(%L, %s, %L, %L, %s)', pg_temp.id(p_ex), p_rev, p_label, p_body, p_topic))
@@ -143,13 +143,13 @@ select is(pg_temp.keep('a2', pg_temp.ca('co', 'g_n', 'exam', '', '')) ->> 'revis
 select is(pg_temp.ca('teach', 'g_n', 'exam', repeat('t', 200), repeat('i', 5000)) ->> 'revision', '1', 'the limits are fine: a topic of 200 and instructions of 5000');
 select pg_temp.mark();
 select is(pg_temp.ca('teach', 'g_n', 'quiz', 'x', 'x') ->> 'error', 'P0001 INVALID invalid_kind', 'a kind outside the list is INVALID invalid_kind');
-select is(pg_temp.as_user('teach', format('select api.create_assessment(%L, null, ''x'', ''x'')', pg_temp.id('g_n'))) ->> 'error', 'P0001 INVALID invalid_kind', 'a null kind too');
+select is(pg_temp.as_user('teach', format('select api.create_assessment(%L, null, ''x'', ''x'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'error', 'P0001 INVALID invalid_kind', 'a null kind too');
 select is(pg_temp.ca('teach', 'g_n', 'exam', repeat('t', 201), 'x') ->> 'error', 'P0001 INVALID invalid_topic', 'a topic of 201 is INVALID invalid_topic');
-select is(pg_temp.as_user('teach', format('select api.create_assessment(%L, ''exam'', null, ''x'')', pg_temp.id('g_n'))) ->> 'error', 'P0001 INVALID invalid_topic', 'a null topic too');
+select is(pg_temp.as_user('teach', format('select api.create_assessment(%L, ''exam'', null, ''x'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'error', 'P0001 INVALID invalid_topic', 'a null topic too');
 select is(pg_temp.ca('teach', 'g_n', 'exam', 'x', repeat('i', 5001)) ->> 'error', 'P0001 INVALID invalid_instructions', 'instructions of 5001 are INVALID invalid_instructions');
-select is(pg_temp.as_user('teach', format('select api.create_assessment(%L, ''exam'', ''x'', null)', pg_temp.id('g_n'))) ->> 'error', 'P0001 INVALID invalid_instructions', 'null instructions too');
-select is(pg_temp.as_user('teach', 'select api.create_assessment(null, ''exam'', ''x'', ''x'')') ->> 'error', 'P0001 NOT_FOUND not_found', 'a null group is NOT_FOUND');
-select is(pg_temp.as_user('teach', 'select api.create_assessment(gen_random_uuid(), ''exam'', ''x'', ''x'')') ->> 'error', 'P0001 NOT_FOUND not_found', 'a group that does not exist too');
+select is(pg_temp.as_user('teach', format('select api.create_assessment(%L, ''exam'', ''x'', null, gen_random_uuid())', pg_temp.id('g_n'))) ->> 'error', 'P0001 INVALID invalid_instructions', 'null instructions too');
+select is(pg_temp.as_user('teach', 'select api.create_assessment(null, ''exam'', ''x'', ''x'', gen_random_uuid())') ->> 'error', 'P0001 NOT_FOUND not_found', 'a null group is NOT_FOUND');
+select is(pg_temp.as_user('teach', 'select api.create_assessment(gen_random_uuid(), ''exam'', ''x'', ''x'', gen_random_uuid())') ->> 'error', 'P0001 NOT_FOUND not_found', 'a group that does not exist too');
 select ok(pg_temp.unchanged(), 'and no refusal changed anything');
 select pg_temp.as_user('teach', format('select api.archive_group(%L, 1)', pg_temp.id('g_arch')));
 select is(pg_temp.ca('teach', 'g_arch', 'exam', 'x', 'x') ->> 'error', 'P0001 INVALID archived', 'an archived group takes no new assessment');
@@ -171,11 +171,11 @@ select pg_temp.mark();
 select is(pg_temp.adx('teach', 'a1', '', 'x') ->> 'error', 'P0001 INVALID invalid_label', 'an empty label is INVALID invalid_label');
 select is(pg_temp.adx('teach', 'a1', E' \t ', 'x') ->> 'error', 'P0001 INVALID invalid_label', 'a blank one too');
 select is(pg_temp.adx('teach', 'a1', repeat('l', 21), 'x') ->> 'error', 'P0001 INVALID invalid_label', 'one of 21 characters too');
-select is(pg_temp.as_user('teach', format('select api.add_exercise(%L, null, ''x'', null)', pg_temp.id('a1'))) ->> 'error', 'P0001 INVALID invalid_label', 'a null label too');
+select is(pg_temp.as_user('teach', format('select api.add_exercise(%L, null, ''x'', gen_random_uuid(), null)', pg_temp.id('a1'))) ->> 'error', 'P0001 INVALID invalid_label', 'a null label too');
 select is(pg_temp.adx('teach', 'a1', '4', '') ->> 'error', 'P0001 INVALID invalid_body', 'an empty body is INVALID invalid_body');
 select is(pg_temp.adx('teach', 'a1', '4', E' \n ') ->> 'error', 'P0001 INVALID invalid_body', 'a blank one too');
 select is(pg_temp.adx('teach', 'a1', '4', repeat('b', 20001)) ->> 'error', 'P0001 INVALID invalid_body', 'one of 20001 too');
-select is(pg_temp.as_user('teach', format('select api.add_exercise(%L, ''4'', null, null)', pg_temp.id('a1'))) ->> 'error', 'P0001 INVALID invalid_body', 'a null body too');
+select is(pg_temp.as_user('teach', format('select api.add_exercise(%L, ''4'', null, gen_random_uuid(), null)', pg_temp.id('a1'))) ->> 'error', 'P0001 INVALID invalid_body', 'a null body too');
 select is(pg_temp.adx('teach', 'a1', '4', 'x', quote_literal(gen_random_uuid())) ->> 'error', 'P0001 INVALID unknown_topic', 'a topic that is not a unit of the syllabus is INVALID unknown_topic');
 select is(pg_temp.adx('teach', 'a1', '4', repeat('b', 20000)) ->> 'revision', '1', 'a body of exactly 20000 is fine');
 select is(pg_temp.adx('teach', 'a1', repeat('l', 20), 'x') ->> 'revision', '1', 'and a label of exactly 20');
@@ -310,7 +310,8 @@ select is(pg_temp.keys(pg_temp.lst('teach', 'g_n')), 'items,total', 'list_assess
 select is(pg_temp.keys(pg_temp.lst('teach', 'g_n') -> 'items' -> 0), 'createdAt,dueAt,exerciseCount,id,kind,publishAt,revision,status,subjectId,topic,versionCount', 'each item has exactly the keys of AssessmentSummary: no configuration, answer mode or recipient');
 select is((select i ->> 'exerciseCount' || '/' || (i ->> 'versionCount') from jsonb_array_elements(pg_temp.lst('teach', 'g_n') -> 'items') i where i ->> 'id' = pg_temp.id('a1')::text), '3/2', 'the counts: live exercises (not the removed one) and live versions (not the archived one)');
 select is((pg_temp.lst('teach', 'g_n') ->> 'total')::int, 4, 'the group has four assessments');
-select is((select count(*) from jsonb_array_elements(pg_temp.lst('teach', 'go_n') -> 'items')), 0::bigint, 'another group of the institution has none (and its teacher sees that, not the other one''s)');
+-- As the teacher of go_n, who can read it: an empty page is an answer, not a refusal (T14a-3).
+select is(pg_temp.lst('other', 'go_n'), jsonb_build_object('items', '[]'::jsonb, 'total', 0), 'another group of the institution has none: its teacher reads an empty list with total 0, and no error');
 select is(jsonb_array_length(pg_temp.lst('teach', 'g_n', 'false, 2, 0') -> 'items') || '/' || (pg_temp.lst('teach', 'g_n', 'false, 2, 0') ->> 'total'), '2/4', 'a page of two says the total');
 select is(jsonb_array_length(pg_temp.lst('teach', 'g_n', 'false, 2, 3') -> 'items') || '/' || (pg_temp.lst('teach', 'g_n', 'false, 2, 3') ->> 'total'), '1/4', 'the last page has one');
 select is(jsonb_array_length(pg_temp.lst('teach', 'g_n', 'false, 2, 50') -> 'items') || '/' || (pg_temp.lst('teach', 'g_n', 'false, 2, 50') ->> 'total'), '0/4', 'a page past the end is empty and keeps the total');
@@ -333,6 +334,58 @@ select is(pg_temp.get('co', 'a1') -> 'assessment' ->> 'id', pg_temp.id('a1')::te
 select is((select count(*) from app.audit_log a where a.institution_id = pg_temp.id('i_n') and a.action in ('list_assessments', 'get_assessment')), 0::bigint, 'neither read writes an audit row: nothing sensitive was disclosed');
 
 -- ---------------------------------------------------------------------------------------------
+-- The topic of an adapted exercise is part of what its versions were made from (T14a-1). e1 is in
+-- v1 (live) and v3 (archived); v2 did not adapt it.
+-- ---------------------------------------------------------------------------------------------
+select pg_temp.reset_stale();
+select is(pg_temp.upx('teach', 'e1', '3', '1a', 'Resolvé 2x + 1 = 7.', quote_literal(pg_temp.id('unit'))), jsonb_build_object('id', pg_temp.id('e1'), 'revision', 4),
+  'only the topic of an adapted exercise changes: revision 4 ...');
+select is(pg_temp.stale(), 'v1=true,v2=false,v3=false', '... and the live version that adapted it is stale (not v2, not the archived v3)');
+select is(pg_temp.copies(), (select d from copy_before), 'its copy is untouched');
+select pg_temp.reset_stale();
+select is(pg_temp.upx('teach', 'e1', '4', '1a', 'Resolvé 2x + 1 = 7.', quote_literal(pg_temp.id('unit'))) ->> 'revision', '5', 'the same topic again bumps the revision');
+select is(pg_temp.stale(), 'v1=false,v2=false,v3=false', 'but marks nothing stale');
+select is(pg_temp.upx('teach', 'e1', '5', '1a', 'Resolvé 2x + 1 = 7.') ->> 'revision', '6', 'taking the topic away is a change too');
+select is(pg_temp.stale(), 'v1=true,v2=false,v3=false', 'and marks v1 stale again');
+select pg_temp.reset_stale();
+
+-- ---------------------------------------------------------------------------------------------
+-- Idempotency by op_key (T1.F3): one row per key and institution, compared with the identity stored
+-- at creation; the replay answers the original result even after the row changed.
+-- ---------------------------------------------------------------------------------------------
+insert into ids (k, id) select k, gen_random_uuid() from unnest(array['ka', 'kx', 'kx2']) k;
+create function pg_temp.ca_key(p_user text, p_key text, p_topic text, p_group text default 'g_n') returns jsonb language sql as $$
+  select pg_temp.as_user(p_user, format('select api.create_assessment(%L, ''worksheet'', %L, ''Instrucciones'', %L)', pg_temp.id(p_group), p_topic, pg_temp.id(p_key)))
+$$;
+create function pg_temp.adx_key(p_user text, p_asm text, p_key text, p_body text) returns jsonb language sql as $$
+  select pg_temp.as_user(p_user, format('select api.add_exercise(%L, ''1'', %L, %L, null)', pg_temp.id(p_asm), p_body, pg_temp.id(p_key)))
+$$;
+select pg_temp.keep('ak', pg_temp.ca_key('teach', 'ka', ' Con clave '));
+select is(pg_temp.ca_key('teach', 'ka', 'Con clave'), jsonb_build_object('id', pg_temp.id('ak'), 'revision', 1), 'create_assessment: the same op_key and data answer the same assessment (topic compared trimmed)');
+select is(pg_temp.ca_key('co', 'ka', 'Con clave'), jsonb_build_object('id', pg_temp.id('ak'), 'revision', 1), 'also for a co-teacher of the group: the key is per institution');
+select is((select count(*) from app.assessments a where a.op_key = pg_temp.id('ka')), 1::bigint, 'one row');
+select is(pg_temp.upa('teach', 'ak', '1', 'exam', 'Cambiado', 'Otras') ->> 'revision', '2', 'the assessment is edited afterwards');
+select is(pg_temp.ca_key('teach', 'ka', 'Con clave'), jsonb_build_object('id', pg_temp.id('ak'), 'revision', 1), 'a late retry still answers the original result: the stored identity, not the row');
+select pg_temp.mark();
+select is(pg_temp.ca_key('teach', 'ka', 'Otro tema') ->> 'error', 'P0001 CONFLICT op_key_reused', 'the same op_key with another topic is CONFLICT op_key_reused');
+select is(pg_temp.ca_key('adm2', 'ka', 'Con clave', 'go_n') ->> 'error', 'P0001 CONFLICT op_key_reused', 'in another group of the institution it is CONFLICT op_key_reused, never a second assessment');
+select is(pg_temp.as_user('teach', format('select api.create_assessment(%L, ''exam'', ''x'', ''x'', null)', pg_temp.id('g_n'))) ->> 'error', 'P0001 INVALID invalid_op_key', 'a null op_key is INVALID invalid_op_key');
+select ok(pg_temp.unchanged(), 'no refusal changed anything');
+
+select pg_temp.keep('xk', pg_temp.adx_key('teach', 'ak', 'kx', 'Enunciado con clave'));
+select is(pg_temp.adx_key('teach', 'ak', 'kx', 'Enunciado con clave'), jsonb_build_object('id', pg_temp.id('xk'), 'revision', 1), 'add_exercise: the same op_key and data answer the same exercise');
+select is((select count(*) from app.assessment_exercises e where e.assessment_id = pg_temp.id('ak') and e.removed_at is null), 1::bigint, 'one row');
+select is(pg_temp.rmx('teach', 'xk', '1') ->> 'revision', '2', 'the exercise is removed afterwards');
+select pg_temp.arc('teach', 'ak', '2');
+select is(pg_temp.adx_key('teach', 'ak', 'kx', 'Enunciado con clave'), jsonb_build_object('id', pg_temp.id('xk'), 'revision', 1), 'a late retry answers the original result, even with the exercise removed and the assessment archived');
+select pg_temp.mark();
+select is(pg_temp.adx_key('teach', 'ak', 'kx', 'Otro enunciado') ->> 'error', 'P0001 CONFLICT op_key_reused', 'the same op_key with another text is CONFLICT op_key_reused');
+select is(pg_temp.adx_key('teach', 'a1', 'kx', 'Enunciado con clave') ->> 'error', 'P0001 CONFLICT op_key_reused', 'and on another assessment too');
+select is(pg_temp.adx_key('teach', 'ak', 'kx2', 'Nuevo') ->> 'error', 'P0001 INVALID assessment_archived', 'a new key on the archived assessment is refused as before');
+select is(pg_temp.as_user('teach', format('select api.add_exercise(%L, ''1'', ''x'', null, null)', pg_temp.id('a1'))) ->> 'error', 'P0001 INVALID invalid_op_key', 'a null op_key is INVALID invalid_op_key');
+select ok(pg_temp.unchanged(), 'no refusal changed anything');
+
+-- ---------------------------------------------------------------------------------------------
 -- archive_assessment, and what an archived assessment (or group) refuses in both directions
 -- ---------------------------------------------------------------------------------------------
 select pg_temp.keep('a3', pg_temp.ca('teach', 'g_n', 'worksheet', 'Para archivar', ''));
@@ -347,11 +400,11 @@ select is((select count(*) from jsonb_array_elements(pg_temp.lst('teach', 'g_n')
 select is((select count(*) from jsonb_array_elements(pg_temp.lst('teach', 'g_n', 'true, 50, 0') -> 'items') i where i ->> 'id' = pg_temp.id('a3')::text), 1::bigint, '... unless archived ones are asked for');
 select is(pg_temp.get('teach', 'a3') -> 'assessment' ->> 'status', 'archived', 'and get_assessment still reads it');
 select pg_temp.mark();
-select is(pg_temp.upa('teach', 'a3', '2', 'exam', 'x', 'x') ->> 'error', 'P0001 INVALID archived', 'an archived assessment takes no update');
-select is(pg_temp.adx('teach', 'a3', '3', 'x') ->> 'error', 'P0001 INVALID archived', 'no new exercise');
-select is(pg_temp.upx('teach', 'x1', '1', '1', 'otro') ->> 'error', 'P0001 INVALID archived', 'no edit of an exercise');
-select is(pg_temp.rmx('teach', 'x1', '1') ->> 'error', 'P0001 INVALID archived', 'no removal either: archived is frozen in both directions');
-select is(pg_temp.reo('teach', 'a3', '2', array['x2', 'x1']) ->> 'error', 'P0001 INVALID archived', 'and no reorder');
+select is(pg_temp.upa('teach', 'a3', '2', 'exam', 'x', 'x') ->> 'error', 'P0001 INVALID assessment_archived', 'an archived assessment takes no update');
+select is(pg_temp.adx('teach', 'a3', '3', 'x') ->> 'error', 'P0001 INVALID assessment_archived', 'no new exercise');
+select is(pg_temp.upx('teach', 'x1', '1', '1', 'otro') ->> 'error', 'P0001 INVALID assessment_archived', 'no edit of an exercise');
+select is(pg_temp.rmx('teach', 'x1', '1') ->> 'error', 'P0001 INVALID assessment_archived', 'no removal either: archived is frozen in both directions');
+select is(pg_temp.reo('teach', 'a3', '2', array['x2', 'x1']) ->> 'error', 'P0001 INVALID assessment_archived', 'and no reorder');
 select ok(pg_temp.unchanged(), 'none of them changed anything');
 -- An archived group: the same, through its live assessment; archiving the assessment stays possible.
 select pg_temp.keep('a4', pg_temp.ca('teach', 'g_n', 'exam', 'En grupo que se archiva', ''));
@@ -385,6 +438,37 @@ select throws_ok(format('update app.assessment_exercises set removed_at = null w
 select throws_ok(format('update app.assessment_exercises set position = 9 where id = %L', pg_temp.id('e2')), 'P0004', null, 'nor move');
 select lives_ok(format('update app.assessment_exercises set body = ''x'' where id = %L', pg_temp.id('e1')), 'a live one is edited by the RPCs (the owner here), the guard only protects the removed');
 
+-- The operation stored with a row (T1.F3), as the owner: P0004 from app.op_key_frozen.
+select throws_ok(format('update app.assessments set op_key = gen_random_uuid() where id = %L', pg_temp.id('ak')), 'P0004', null, 'the op_key of an assessment never changes');
+select throws_ok(format('update app.assessments set op_identity = repeat(''0'', 64) where id = %L', pg_temp.id('ak')), 'P0004', null, 'nor its identity');
+select throws_ok(format('update app.assessments set op_key = null, op_identity = null where id = %L', pg_temp.id('ak')), 'P0004', null, 'nor are both cleared outside an erasure');
+select throws_ok(format('update app.assessment_exercises set op_key = gen_random_uuid() where id = %L', pg_temp.id('xk')), 'P0004', null, 'the op_key of an exercise never changes, removed or not');
+select throws_ok(format('update app.assessment_exercises set op_identity = repeat(''0'', 64) where id = %L', pg_temp.id('e1')), 'P0004', null, 'nor its identity');
+select throws_ok(format('update app.versions set op_key = gen_random_uuid(), op_identity = repeat(''0'', 64) where id = %L', pg_temp.id('v1')), 'P0004', null, 'a version gets no operation after its creation (T1.4b writes it in the insert)');
+select throws_ok(format('insert into app.versions (institution_id, assessment_id, position, op_key) values (%L, %L, 9, gen_random_uuid())', pg_temp.id('i_n'), pg_temp.id('a1')), '23514', null, 'and a version with an op_key needs its identity (both or neither)');
+insert into ids (k, id) values ('pub', gen_random_uuid());
+insert into app.publications (id, institution_id, assessment_id, version_id, version_revision, content, answer_mode, op_key, op_identity, op_attempts)
+  values (pg_temp.id('pub'), pg_temp.id('i_n'), pg_temp.id('a1'), pg_temp.id('v2'), 1, '{}', 'typed', gen_random_uuid(), repeat('a', 64), 2);
+select throws_ok(format('update app.publications set op_attempts = 3 where id = %L', pg_temp.id('pub')), 'P0004', null, 'the operation of a publication never changes (publications_guard), not even its attempts count');
+select throws_ok(format('update app.publications set op_key = null, op_identity = null, op_attempts = null where id = %L', pg_temp.id('pub')), 'P0004', null, 'nor is it cleared');
+select throws_ok(format('insert into app.publications (institution_id, assessment_id, version_id, version_revision, content, answer_mode, op_key, op_identity) values (%L, %L, %L, 1, ''{}'', ''typed'', gen_random_uuid(), repeat(''a'', 64))', pg_temp.id('i_n'), pg_temp.id('a1'), pg_temp.id('v2')),
+  '23514', null, 'a publication with an op_key stores the attempts count it answered');
+select has_index('app', 'answer_key_revisions', 'answer_key_revisions_generation_key', 'one key revision per generation: a retried job writes it once (T1.4e)');
+-- Inside an erasure of the institution the identity of a redacted text can be forgotten, both
+-- columns together; never in a group, and never once the erasure is done.
+insert into ids (k, id) values ('era', gen_random_uuid());
+insert into app.erasures (id, institution_id, kind) values (pg_temp.id('era'), pg_temp.id('i_n'), 'institution');
+select app.begin_erasure(pg_temp.id('era'));
+select throws_ok(format('update app.assessments set op_key = null where id = %L', pg_temp.id('ak')), 'P0004', null, 'inside an erasure the key alone is not cleared');
+select lives_ok(format('update app.assessments set op_key = null, op_identity = null where id = %L', pg_temp.id('ak')), 'inside an erasure both are cleared on an assessment');
+select lives_ok(format('update app.assessment_exercises set op_key = null, op_identity = null where id = %L', pg_temp.id('e1')), 'and on an exercise');
+select throws_ok(format('update app.assessment_exercises set op_key = gen_random_uuid(), op_identity = repeat(''0'', 64) where id = %L', pg_temp.id('e3')), 'P0004', null, 'but never rewritten');
+select throws_ok(format('update app.groups set op_key = null, op_identity = null where id = %L', pg_temp.id('g_n')), 'P0004', null, 'a group never forgets its operation, not even in an erasure');
+update app.erasures set status = 'done', completed_at = now() where id = pg_temp.id('era');
+select throws_ok(format('update app.assessments set op_key = null, op_identity = null where id = %L', pg_temp.id('a2')), 'P0004', null, 'once the erasure is done, nothing is cleared');
+-- The RPCs below refuse to run while the marker is set at all; the test removes it.
+select set_config('tiza.erasure', '', true);
+
 -- ---------------------------------------------------------------------------------------------
 -- The permission matrix by RPC: each role that must be denied, with code and reason, and the proof
 -- that nothing changed (assessments, exercises, versions and audit rows of the institution).
@@ -406,7 +490,7 @@ create function pg_temp.expect(p_users text[], p_codes text) returns text langua
     from unnest(p_users) with ordinality as u(k, n)
 $$;
 -- g_n is restored; a1 and e1 belong to it. adm2 is an admin who teaches go_n, not g_n.
-select is(pg_temp.denied(format('select api.create_assessment(%L, ''exam'', ''x'', ''x'')', pg_temp.id('g_n')), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
+select is(pg_temp.denied(format('select api.create_assessment(%L, ''exam'', ''x'', ''x'', gen_random_uuid())', pg_temp.id('g_n')), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'create_assessment: an admin who does not teach the group, inclusion and a student are FORBIDDEN; other group, other institution and no membership NOT_FOUND; no session FORBIDDEN');
 select is(pg_temp.denied(format('select api.update_assessment(%L, 4, ''exam'', ''x'', ''x'')', pg_temp.id('a1')), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'update_assessment: same');
@@ -416,7 +500,7 @@ select is(pg_temp.denied(format('select api.list_assessments(%L)', pg_temp.id('g
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'list_assessments: same');
 select is(pg_temp.denied(format('select api.get_assessment(%L)', pg_temp.id('a1')), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'get_assessment: same, and nothing leaks to who cannot read');
-select is(pg_temp.denied(format('select api.add_exercise(%L, ''9'', ''x'', null)', pg_temp.id('a1')), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
+select is(pg_temp.denied(format('select api.add_exercise(%L, ''9'', ''x'', gen_random_uuid(), null)', pg_temp.id('a1')), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'add_exercise: same');
 select is(pg_temp.denied(format('select api.update_exercise(%L, 4, ''1'', ''x'', null)', pg_temp.id('e1')), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'update_exercise: same');
@@ -424,12 +508,12 @@ select is(pg_temp.denied(format('select api.remove_exercise(%L, 4)', pg_temp.id(
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'remove_exercise: same');
 select is(pg_temp.denied(format('select api.reorder_exercises(%L, 3, %s)', pg_temp.id('a1'), pg_temp.idarr(array['e1', 'e3', 'e4'])), array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'adm2', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFFNNNNS'), 'reorder_exercises: same');
-select is(pg_temp.as_anon(format('select api.create_assessment(%L, ''exam'', ''x'', ''x'')', pg_temp.id('g_n'))) ->> 'error' like '42501%'
+select is(pg_temp.as_anon(format('select api.create_assessment(%L, ''exam'', ''x'', ''x'', gen_random_uuid())', pg_temp.id('g_n'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.update_assessment(%L, 1, ''exam'', ''x'', ''x'')', pg_temp.id('a1'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.archive_assessment(%L, 1)', pg_temp.id('a1'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.list_assessments(%L)', pg_temp.id('g_n'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.get_assessment(%L)', pg_temp.id('a1'))) ->> 'error' like '42501%'
-          and pg_temp.as_anon(format('select api.add_exercise(%L, ''1'', ''x'', null)', pg_temp.id('a1'))) ->> 'error' like '42501%'
+          and pg_temp.as_anon(format('select api.add_exercise(%L, ''1'', ''x'', gen_random_uuid(), null)', pg_temp.id('a1'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.update_exercise(%L, 1, ''1'', ''x'', null)', pg_temp.id('e1'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.remove_exercise(%L, 1)', pg_temp.id('e1'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.reorder_exercises(%L, 1, %s)', pg_temp.id('a1'), pg_temp.idarr(array['e1']))) ->> 'error' like '42501%', true,
@@ -440,7 +524,7 @@ select is(pg_temp.adx('adm2', 'a5', '1', 'Texto') ->> 'revision', '1', 'and adds
 select is(pg_temp.get('other', 'a5') -> 'assessment' ->> 'id', pg_temp.id('a5')::text, 'the owner of go_n reads it');
 select is(pg_temp.get('teach', 'a5') ->> 'error', 'P0001 NOT_FOUND not_found', 'a teacher of another group of the same institution cannot');
 -- No refusal above created a stray row.
-select is((select count(*) from app.assessments a where a.institution_id = pg_temp.id('i_n')), 7::bigint, 'seven assessments exist: none came from a refusal');
+select is((select count(*) from app.assessments a where a.institution_id = pg_temp.id('i_n')), 8::bigint, 'eight assessments exist: none came from a refusal or a replay');
 
 select * from finish();
 rollback;

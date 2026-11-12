@@ -57,8 +57,8 @@ begin
   perform pg_temp.as_service(format('select api.internal_add_membership(%L, %L, %L)', v_inst, pg_temp.id(u.k), u.role))
      from (values ('admin', 'admin'), ('teach', 'teacher'), ('other', 'teacher'), ('co', 'teacher'), ('tmp', 'teacher'), ('incl', 'inclusion')) as u(k, role);
   insert into ids (k, id) values
-    ('g_' || p, (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026)', v_inst)) ->> 'id')::uuid),
-    ('go_' || p, (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026)', v_inst)) ->> 'id')::uuid);
+    ('g_' || p, (pg_temp.as_user('teach', format('select api.create_group(%L, ''3.º A'', ''math'', 2026, gen_random_uuid())', v_inst)) ->> 'id')::uuid),
+    ('go_' || p, (pg_temp.as_user('other', format('select api.create_group(%L, ''3.º B'', ''math'', 2026, gen_random_uuid())', v_inst)) ->> 'id')::uuid);
 end
 $$;
 create function pg_temp.new_student(p_key text, p_user text, p_group text) returns void language plpgsql as $$
@@ -402,7 +402,7 @@ select throws_ok(format('update app.consents set status = ''revoked'', revoked_a
 insert into ids (k, id) select 'i_s', (pg_temp.as_service(format(
   $$ select api.internal_create_institution('Demo', 't1-3b-demo', 'sandbox', now() + interval '1 day', %L) $$, pg_temp.id('visitor'))) ->> 'id')::uuid;
 select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''teacher'')', pg_temp.id('i_s'), pg_temp.id('visitor')));
-insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select api.create_group(%L, ''Demo'', ''math'', 2026)', pg_temp.id('i_s'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select api.create_group(%L, ''Demo'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_s'))) ->> 'id')::uuid;
 select pg_temp.new_student('ss1', 'visitor', 'g_s');
 select is(pg_temp.keep('ns', pg_temp.addn('visitor', 'ss1', 'En la demo')) ->> 'revision', '1', 'the visitor writes a note in their sandbox');
 select is(pg_temp.rec('visitor', 'ss1', 'ai_adaptation', 'v1') ->> 'revision', '1', 'and records a consent');

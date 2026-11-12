@@ -37,7 +37,8 @@ const groupRevision = z.object({ p_group_id: Id, p_revision: Revision }).strict(
 export const GROUP_RPCS = {
   create_group: {
     args: z
-      .object({ p_institution_id: Id, p_name: GroupName, p_subject_id: SubjectId, p_school_year: SchoolYear })
+      // p_op_key: one per attempt to create, reused on a retry (T1.F3).
+      .object({ p_institution_id: Id, p_name: GroupName, p_subject_id: SubjectId, p_school_year: SchoolYear, p_op_key: Id })
       .strict(),
     result: Written,
   },
