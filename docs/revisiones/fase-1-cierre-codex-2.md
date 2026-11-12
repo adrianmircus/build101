@@ -92,3 +92,23 @@ Los otros caminos revisados quedan cerrados: una fila de otro estudiante no sust
 Verificación exclusivamente `READ ONLY`: catálogo y evaluación sintética de las guardias; no ejecuté el recorrido con escrituras ni repetí las suites. Las 213 funciones coinciden con las migraciones. No encontré otra alta/media en el diff; worktree intacto.
 
 Veredicto: fase no lista
+
+## Ronda 7
+
+**F1-4 sigue abierta: queda un rodeo de severidad media mediante INSERT**, dentro del modelo indicado.
+
+Como propietario, con cuentas A y B libres:
+
+1. Insertar S en `app.students` con `user_id = A`, sin aprovisionamiento. La memoria solo se registra [después de UPDATE](supabase/migrations/20261113100000_t1_fix11.sql:43).
+2. Borrar Auth A: la FK deja `S.user_id = NULL`.
+3. Insertar su aprovisionamiento con `auth_user_id = NULL`. La [guardia nueva](supabase/migrations/20261113120000_t1_fix13.sql:41) lo acepta porque S ya está desvinculado.
+4. Ejecutar `internal_link_student_user(S, B)`: acepta B y la registra como primera cuenta, olvidando A.
+
+S permanece existente durante todo el recorrido. No requiere DDL ni desactivar triggers. Hay que rechazar el INSERT de estudiantes ya vinculados, o garantizar que ese INSERT registre obligatoriamente la primera cuenta, y agregar la regresión.
+
+**El rodeo de TRUNCATE queda cerrado:** confirmé las 45 tablas con el trigger correcto habilitado. No identifiqué otra alta/media en el diff.
+
+Verificación en PostgreSQL `READ ONLY`, mediante catálogo y guardias instaladas sobre registros sintéticos; no ejecuté el recorrido con escrituras ni repetí las suites informadas. Worktree intacto.
+
+Veredicto: fase no lista
+
