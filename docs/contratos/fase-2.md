@@ -176,7 +176,7 @@ Emitir una tarjeta cambia la contraseña y el correo en Auth, fuera de la transa
 
 - `proxy.ts` refresca la sesión de Supabase en cada pedido de página y de API, salvo `/api/jobs/*` (fase 3), los archivos estáticos y `/_next`. Usa `@supabase/ssr` con `getClaims()` y escribe las cookies en la respuesta.
 - `proxy.ts` hace solo el chequeo optimista (hay sesión, y de qué tipo). La autorización real está en `getActor()` y en la base, que además confirma que la sesión sigue viva.
-- `getActor()` (`lib/server/auth/actor.ts`) devuelve el actor del pedido: `null`, un staff con sus instituciones y roles (`list_my_institutions`), o un estudiante con su institución. Usa `'use cache: private'` como dice la guía de Next 16 (`node_modules/next/dist/docs/`, autenticación con Cache Components). Si la guía dice otra cosa, manda la guía y el ticket lo anota.
+- `getActor()` (`lib/server/auth/actor.ts`) devuelve el actor del pedido: `null`, un staff con sus instituciones y roles (`list_my_institutions`), o un estudiante con su institución (sin el id del estudiante: las RPC `student_*` lo sacan de la sesión). Usa `'use cache: private'` como dice la guía de Next 16 (`node_modules/next/dist/docs/`, autenticación con Cache Components). Si la guía dice otra cosa, manda la guía y el ticket lo anota.
 - La cookie firmada de la demo (`lib/auth/signing.ts`, `session.ts`) sigue hasta T4.15, pero desde T2.8 solo abre la demo: `getActor()` la ignora, y ninguna RPC ni servicio la mira.
 - Salir: `signOutAction` hace `signOut({ scope: 'local' })` y vuelve al login de su tipo. Está en la cabecera del profe y en la del estudiante.
 
