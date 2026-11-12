@@ -158,3 +158,19 @@ Verificación exclusivamente **READ ONLY**: las **216 funciones instaladas coinc
 
 Veredicto: fase no lista
 
+
+## Ronda 9
+
+Sí: **los tres caminos de ronda 8 quedan cerrados**.
+
+- **Primera cuenta:** el lock del aprovisionamiento y la comprobación posterior impiden confirmar un vínculo con memoria distinta. La regresión cubre ambos órdenes y reproduce el fallo anterior.
+- **`accepted_by` y `revoked_by`:** nacen nulos; las guardias de transición impiden precargarlos, reemplazarlos o reasignarlos tras vaciarlos.
+- **Locks:** no identifiqué ciclos nuevos entre RPC y triggers. Comparten estudiante → aprovisionamiento; la nueva consulta inversa al estudiante no toma locks. Tampoco hay FK entrantes al aprovisionamiento que añadan conflictos.
+- **REPEATABLE READ:** una modificación concurrente posterior al snapshot provoca `40001`, sin permitir confirmar la inconsistencia; requiere reintentar la transacción completa. [Comportamiento documentado por PostgreSQL](https://www.postgresql.org/docs/17/transaction-iso.html#XACT-REPEATABLE-READ).
+
+Revisé nuevamente la matriz de ronda 8: **no quedan altas/medias abiertas ni encontré nuevas en el diff**. Confirmé en catálogo las 218 funciones contra las migraciones y las 45 tablas con protección de TRUNCATE habilitada.
+
+Verificación exclusivamente de lectura; no repetí las suites informadas. Worktree limpio.
+
+Veredicto: fase lista para push
+

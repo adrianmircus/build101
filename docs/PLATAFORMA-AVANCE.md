@@ -85,9 +85,11 @@ Además, en esta fase:
 
 ### Cierre
 
-Desde cero (`db:reset`) aplican las 23 migraciones y pasan 2554 pruebas pgTAP. Pasan también tipos, lint, 550 pruebas de unidad, 379 de integración (carreras incluidas), build y 26 de punta a punta. Recorrido en el navegador: demo a 1280×720 y en celular, sin errores de consola.
+Revisión de cierre de Codex en nueve rondas (`docs/revisiones/fase-1-cierre-codex-1.md` y `fase-1-cierre-codex-2.md`), con los arreglos T1.F8 a T1.F15: razones alineadas con el front, guardias de pertenencia e identidad en las 45 tablas, ninguna tabla se trunca y la primera cuenta de un estudiante no se cambia por otra (ni de a pasos ni con dos escrituras a la vez). Veredicto de la novena ronda: «fase lista para push».
+
+Desde cero (`db:reset`) aplican las 44 migraciones y pasan 2806 pruebas pgTAP. Pasan también tipos, lint, 554 pruebas de unidad y 383 de integración (carreras incluidas), build y 26 de punta a punta. Recorrido en el navegador: demo a 1280×720 y en celular, sin errores de consola.
 
 ### Decisiones para confirmar con el usuario
 
-- **`students.interface` es un modo de accesibilidad, no una etiqueta de perfil.** El estudiante que responde con la mirada sabe que usa la mirada; lo que no ve nunca es la etiqueta (motor, TDAH…) ni nada del perfil de otros. Hoy se deriva del perfil; un ajuste manual queda para la fase 6.
+- **`students.interface` es un ajuste de accesibilidad que elige el staff (T1.F8).** Dice qué herramientas ofrece la pantalla: estándar, mirada o voz. Ya no se deriva del perfil, porque leerlo dejaba deducir el perfil. Lo cambia `set_student_interface`; la UI de la fase 6 puede sugerir la mirada al marcar motriz, siempre como acción del staff.
 - **Lectura en voz alta para todos.** `aids.readAloud` es verdadero en toda publicación, como la app de hoy, que muestra «Escuchar» sin mirar el perfil.
