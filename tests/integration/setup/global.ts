@@ -1,7 +1,5 @@
 import { execSync } from "node:child_process";
-import { Client } from "pg";
 import { z } from "zod";
-import { databaseUrl } from "../support/db";
 
 // Variables the app reads, filled from `supabase status` when they are not already set (CI and
 // local both get them from the running stack, so no key lives in the repository).
@@ -37,22 +35,6 @@ async function assertApiResponds(url: string): Promise<void> {
   }
 }
 
-/**
- * The shape guard of phase 2 on account_provisioning (app.student_auth_link_guard) refuses to remember the id of an ordinary Auth
- * account. Phase 1 links ordinary accounts (createPerson) in many integration tests, so the guard is off for the run, as the
- * pgTAP files of phase 1 turn it off; pgTAP 040 covers it. TIZA_LINK_GUARD=1 keeps it on, to run the tests that need it
- * (tests/integration/races/student-auth-lock.test.ts) on their own. T2.5a decides how to convert the phase 1 tests.
- */
-async function setLinkGuard(enabled: boolean): Promise<void> {
-  const client = new Client({ connectionString: databaseUrl() });
-  await client.connect();
-  try {
-    await client.query(`alter table app.account_provisioning ${enabled ? "enable" : "disable"} trigger student_auth_link_guard`);
-  } finally {
-    await client.end();
-  }
-}
-
 export async function setup(): Promise<() => Promise<void>> {
   const hasEnv =
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -65,7 +47,5 @@ export async function setup(): Promise<() => Promise<void>> {
     process.env.SUPABASE_SECRET_KEY = status.SECRET_KEY;
   }
   await assertApiResponds(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
-  if (process.env.TIZA_LINK_GUARD === "1") return async () => {};
-  await setLinkGuard(false);
-  return async () => setLinkGuard(true);
+  return async () => {};
 }

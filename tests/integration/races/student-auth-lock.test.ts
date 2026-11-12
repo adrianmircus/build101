@@ -8,8 +8,6 @@ import { createStudent, createWorld } from "../support/world";
 // F2C-67: the triggers on auth.users take the same advisory lock on the id first (app.student_auth_lock), and refuse (40001)
 // outside READ COMMITTED, where the next query would not see what the other end committed.
 
-// The tests that need the shape guard of account_provisioning run only with TIZA_LINK_GUARD=1 (the default run turns it off for phase 1).
-const GUARD = process.env.TIZA_LINK_GUARD === "1";
 const BORN = "insert into auth.users (id, email) values ($1, $2)";
 
 function errorCode(thrown: unknown): string {
@@ -91,7 +89,7 @@ describe("race: the advisory lock on the id of an account of Auth", () => {
 
   const stored = async (id: string) => (await readRows<{ n: string; hash: string | null }>("select count(*) over () as n, encrypted_password as hash from auth.users where id = $1", [id]))[0];
 
-  it.skipIf(!GUARD)("an INSERT in Auth with a password while another transaction remembers the id: it waits for the row, then the password is erased", async () => {
+  it("an INSERT in Auth with a password while another transaction remembers the id: it waits for the row, then the password is erased", async () => {
     const created = await student();
     const id = randomUUID();
     const { waitedOn, error } = await heldPair(
@@ -103,7 +101,7 @@ describe("race: the advisory lock on the id of an account of Auth", () => {
     expect((await stored(id))?.hash).toBeNull();
   });
 
-  it.skipIf(!GUARD)("the other order: remembering the id while an INSERT of an account with a password and another email is in progress is refused", async () => {
+  it("the other order: remembering the id while an INSERT of an account with a password and another email is in progress is refused", async () => {
     const created = await student();
     const id = randomUUID();
     const { waitedOn, error } = await heldPair(
@@ -115,7 +113,7 @@ describe("race: the advisory lock on the id of an account of Auth", () => {
     expect((await readRows<{ a: string | null }>("select auth_user_id::text as a from app.account_provisioning where student_id = $1", [created]))[0]?.a).toBeNull();
   });
 
-  it.skipIf(!GUARD)("an INSERT in Auth of a remembered id and a trivial UPDATE of its provisioning row finish without a deadlock, in either order", async () => {
+  it("an INSERT in Auth of a remembered id and a trivial UPDATE of its provisioning row finish without a deadlock, in either order", async () => {
     for (const insertFirst of [true, false]) {
       const created = await student();
       const id = randomUUID();
@@ -128,7 +126,7 @@ describe("race: the advisory lock on the id of an account of Auth", () => {
     }
   });
 
-  it.skipIf(!GUARD)("three connections: B remembers the id, A inserts it in Auth and waits, C marks the row deleted and waits for A; the account of Auth is there to be deleted (F2C-67, F2C-75)", async () => {
+  it("three connections: B remembers the id, A inserts it in Auth and waits, C marks the row deleted and waits for A; the account of Auth is there to be deleted (F2C-67, F2C-75)", async () => {
     const created = await student();
     const id = randomUUID();
     const [a, b, c, observer] = await Promise.all([openSession(), openSession(), openSession(), openSession()]);

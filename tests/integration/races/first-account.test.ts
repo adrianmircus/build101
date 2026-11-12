@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { openSession, readRows } from "../support/db";
 import { waitUntilBlocked } from "../support/race";
-import { createPerson, createStudent, createWorld } from "../support/world";
+import { studentAccount } from "../support/accounts";
+import { createStudent, createWorld } from "../support/world";
 
 // T1.F15 (F1-4, round 8): two direct writers of the first account of a student, at once. One links the student to A,
 // the other writes B in its provisioning row. Whatever the order, the student never ends linked to one account while
@@ -44,10 +46,15 @@ async function heldWrites(first: Write, second: Write): Promise<Held> {
   }
 }
 
-async function unlinkedStudent() {
+// Since phase 2 an account only reaches a student in the canonical way: its id is remembered in the provisioning row first and then its
+// row of Auth is born (student_auth_link_guard refuses to remember an ordinary one, and the trigger of auth.users refuses a synthetic
+// email that nobody remembered). So the link that brings a first account to a student with nothing remembered can no longer exist: a
+// linkable account is always already remembered by its student. What is left of the race, and what both tests keep, is a write of
+// another account against the first one, in either order, always refused with P0004 and leaving a single account in the row.
+async function students() {
   const world = await createWorld();
-  const [student, accountA, accountB] = await Promise.all([createStudent(world), createPerson(), createPerson()]);
-  return { student, accountA, accountB };
+  const [student, other] = await Promise.all([createStudent(world), createStudent(world)]);
+  return { student, other };
 }
 
 async function stateOf(student: string) {
@@ -56,7 +63,11 @@ async function stateOf(student: string) {
 
 describe("race: the first account of a student", () => {
   it("a link that arrives while another account is being remembered waits and is refused", async () => {
-    const { student, accountA, accountB } = await unlinkedStudent();
+    // The student remembers accountB (no row of Auth yet, as in the middle of the provisioning); the link brings the canonical account
+    // of another student, the only kind that can be linked.
+    const { student, other } = await students();
+    const accountB = randomUUID();
+    const accountA = await studentAccount(other);
     const held = await heldWrites({ sql: REMEMBER, values: [student, accountB] }, { sql: LINK, values: [student, accountA] });
     // Without the FOR UPDATE the link reads NULL, goes ahead and records nothing: linked to A, remembering B.
     expect(held.waitedOn, "the link must wait for the provisioning row's lock").not.toBeNull();
@@ -65,7 +76,11 @@ describe("race: the first account of a student", () => {
   });
 
   it("an account written while the link is open waits and is refused", async () => {
-    const { student, accountA, accountB } = await unlinkedStudent();
+    // The student already remembers its canonical account A (what the provisioning leaves before the link); the link of A is open
+    // and holds the provisioning row, and another writer tries to remember B.
+    const { student } = await students();
+    const accountA = await studentAccount(student);
+    const accountB = randomUUID();
     const held = await heldWrites({ sql: LINK, values: [student, accountA] }, { sql: REMEMBER, values: [student, accountB] });
     expect(held.waitedOn, "the write must wait for the link's lock").not.toBeNull();
     expect(held.secondError).toBe("P0004");

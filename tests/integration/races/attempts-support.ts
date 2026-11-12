@@ -1,7 +1,8 @@
 import { readRows, runRpc } from "../support/db";
 import type { Step } from "../support/race";
 import { describeOutcome, type Actor } from "../support/session";
-import { createPerson, SERVICE } from "../support/world";
+import { studentAccount } from "../support/accounts";
+import { SERVICE } from "../support/world";
 import { at } from "./version-ops-support";
 import { attemptOf, attemptRows, publishNow, ready, type Ready } from "./publish-support";
 
@@ -16,7 +17,7 @@ export async function published(count: number): Promise<Published> {
   const r = await ready(1, count);
   const accounts: string[] = [];
   for (const studentId of r.students) {
-    const userId = await createPerson();
+    const userId = await studentAccount(studentId);
     const linked = await runRpc(SERVICE, "internal_link_student_user", { p_student_id: studentId, p_user_id: userId });
     if (!linked.ok) throw new Error(`No se pudo vincular la cuenta del estudiante: ${describeOutcome(linked)}.`);
     accounts.push(userId);

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { callRpc } from "@/lib/server/repos/rpc";
 import { createLoggedInUser } from "../../factories";
+import { studentAccount } from "../support/accounts";
 import { createPerson, SERVICE } from "../support/world";
 import { readRows, runRpc } from "../support/db";
 import { idOf } from "../support/session";
@@ -61,7 +62,10 @@ export const IDENTITY_CALLS: CallsOf<IdentityRpc> = {
     await readRows(row, [s.institution.id, group.id, user.id]);
     return { args: { p_group_id: group.id, p_user_id: user.id } };
   },
-  internal_link_student_user: async (s) => ({ args: { p_student_id: (await freshStudent(s)).id, p_user_id: await createPerson() } }),
+  internal_link_student_user: async (s) => {
+    const student = await freshStudent(s);
+    return { args: { p_student_id: student.id, p_user_id: await studentAccount(student.id) } };
+  },
   create_student: async (s) => ({ args: { p_group_id: s.groupId, p_display_name: "Estudiante de prueba", p_username: username(), p_op_key: randomUUID() } }),
   update_student: async (s) => {
     const student = await freshStudent(s);
