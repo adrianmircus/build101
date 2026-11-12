@@ -4,8 +4,8 @@ import { expect, test } from "./support/fixtures";
 import { expectNoProfileLabels } from "./support/student";
 import { bubble, expectStep, expectVisibleFocus, tapInBubble } from "./support/tour";
 
-// Tabs like a keyboard user does until the target has focus. Focus does not start in the tour's bubble on steps with
-// a highlighted element, so it can take a few dozen presses to get across the page.
+// Tabs like a keyboard user does until the target has focus. Focus starts on the bubble's title, and the highlighted
+// element or the bubble's buttons can be a few presses away.
 async function tabTo(page: Page, target: Locator) {
   for (let i = 0; i < 80 && !(await target.evaluate((el) => el === document.activeElement)); i++) {
     await page.keyboard.press("Tab");
@@ -26,7 +26,7 @@ test("recorrido completo de la demo guiada", async ({ page }) => {
   });
 
   await test.step("Etapa 1: tu grupo", async () => {
-    let dialog = await expectStep(page, "Sos profe de matemática de 6.º", { takesFocus: true });
+    let dialog = await expectStep(page, "Sos profe de matemática de 6.º");
     await expect(page.getByRole("heading", { level: 1, name: "Mis grupos" })).toBeVisible();
     await checkAccessibility(page, "bienvenida");
     await tapInBubble(page, dialog, "Empezar");
@@ -94,7 +94,7 @@ test("recorrido completo de la demo guiada", async ({ page }) => {
   });
 
   await test.step("Etapa 4: lo que ve Paula", async () => {
-    const dialog = await expectStep(page, "Ahora, del lado de Paula", { takesFocus: true });
+    const dialog = await expectStep(page, "Ahora, del lado de Paula");
     await checkAccessibility(page, "aprobada");
     await tapInBubble(page, dialog, "Ver como Paula");
 
@@ -109,7 +109,7 @@ test("recorrido completo de la demo guiada", async ({ page }) => {
   });
 
   await test.step("Cierre y salida de la demo", async () => {
-    const end = await expectStep(page, "Eso es Tiza.ai", { takesFocus: true });
+    const end = await expectStep(page, "Eso es Tiza.ai");
     await checkAccessibility(page, "cierre");
     await end.getByRole("link", { name: "Salir de la demo" }).click();
     await expect(page).toHaveURL(/\/$/);

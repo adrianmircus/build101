@@ -8,6 +8,7 @@ import { STAGES, STEPS } from "@/lib/demo/steps";
 import { restartTour, setTour, useTour, type TourState } from "@/lib/demo/tour";
 import { resetDemo } from "@/lib/groups/store";
 import { Tour } from "./Tour";
+import { guardViewTransitions } from "./viewTransitionGuard";
 
 const noSubscription = () => () => {};
 
@@ -19,6 +20,9 @@ export function Demo() {
   const tour = useTour();
   const pathname = usePathname();
   const router = useRouter();
+
+  // Mounted on every route: it also keeps an aborted page transition (phones) from ending up as a console error.
+  useEffect(guardViewTransitions, []);
 
   // /demo lands here with ?tour=inicio: the demo's data and the tour start from scratch, and the URL is cleaned up.
   useEffect(() => {

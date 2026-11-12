@@ -1,6 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { KNOWN_UNREACHABLE_BUTTON_STEPS } from "../known-gaps";
-import { expect, test } from "./fixtures";
+import { expect } from "./fixtures";
 
 // The tour's bubble is a non-modal dialog named after the step's title.
 export function bubble(page: Page, title: string): Locator {
@@ -13,9 +12,10 @@ export async function insideViewport(page: Page, target: Locator): Promise<boole
   return !!box && !!size && box.y >= 0 && box.y + box.height <= size.height && box.x >= 0 && box.x + box.width <= size.width;
 }
 
-// Waits for the step to be on screen (the tour glides and fades before showing it) and records if the bubble
-// ended up outside the viewport, which a mouse or finger could not reach.
-export async function expectStep(page: Page, title: string, options: { takesFocus?: boolean } = {}): Promise<Locator> {
+// Waits for the step to be on screen (the tour glides and fades before showing it). Every bubble must be whole inside
+// the viewport (a mouse or a finger can reach all of it) and must have taken the focus on its title (a screen reader
+// reads it), whether the step is centered or highlights an element.
+export async function expectStep(page: Page, title: string): Promise<Locator> {
   const dialog = bubble(page, title);
   await expect(dialog).toBeVisible();
   // The bubble fades in (200 ms): wait until it is opaque so axe doesn't read half-faded colors as low contrast.
@@ -29,27 +29,18 @@ export async function expectStep(page: Page, title: string, options: { takesFocu
       }),
     )
     .toBe(true);
-  // Focus should move to the new step's title so a screen reader reads it. Centered steps do it today; steps with
-  // a highlighted element don't, so there it is only recorded (known gap, not a regression of this safety net).
-  const heading = dialog.getByRole("heading");
-  if (options.takesFocus) await expect(heading).toBeFocused();
-  else if (!(await heading.evaluate((el) => el === document.activeElement))) {
-    test.info().annotations.push({ type: "la burbuja no recibe el foco", description: title });
-  }
-  if (!(await insideViewport(page, dialog))) {
-    test.info().annotations.push({ type: "burbuja fuera de la pantalla", description: title });
-  }
+  await expect(dialog.getByRole("heading")).toBeFocused();
+  expect(await insideViewport(page, dialog), `La burbuja de «${title}» no entra entera en la pantalla`).toBe(true);
   return dialog;
 }
 
-// Taps a bubble button like a mouse or a finger would. If it is off screen, only the steps in known-gaps.ts may
-// fall back to Enter; any other step fails (softly, so the path still goes on).
+// Taps a bubble button like a mouse or a finger would. It has to be inside the screen: a button below the fold can't
+// be reached (Playwright would scroll to a fixed element that never moves, so the box is checked first).
 export async function tapInBubble(page: Page, dialog: Locator, name: string) {
   const button = dialog.getByRole("button", { name });
-  if (await insideViewport(page, button)) return button.click();
   const step = (await dialog.getByRole("heading").textContent()) ?? "";
-  expect.soft(KNOWN_UNREACHABLE_BUTTON_STEPS, `El botón «${name}» de «${step}» queda fuera de la pantalla`).toContain(step);
-  await button.press("Enter");
+  expect(await insideViewport(page, button), `El botón «${name}» de «${step}» queda fuera de la pantalla`).toBe(true);
+  await button.click();
 }
 
 // The focus ring must be drawn: an outline or a shadow on an element that matches :focus-visible (WCAG 2.4.7).
