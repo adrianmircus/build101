@@ -27,7 +27,7 @@ function parseRow(line: string): InventoryRow {
 
 /** The per-table sections of the doc: its rule and one row per group of fields. */
 export function parseInventoryTables(doc: string): InventorySection[] {
-  const body = sliceBetween(doc, "\n## Tablas", "\n## Lo que erasure.ts no cubre");
+  const body = sliceBetween(doc, "\n## Tablas", "\n## Orden de la supresión");
   return body
     .split(/\n### /)
     .slice(1)

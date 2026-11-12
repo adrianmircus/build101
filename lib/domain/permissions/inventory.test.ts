@@ -19,10 +19,7 @@ const migrations = readdirSync(migrationsDir)
 const sections = parseInventoryTables(doc);
 const byTable = new Map(sections.map((item) => [item.table, item]));
 const studentTables = new Set<string>(STUDENT_DATA_TABLES);
-const NOT_IN_ERASURE: string[] = ["sin datos de estudiantes", "fuera de erasure.ts"];
-// Tables that hold data about students and have no rule in erasure.ts. The doc says so. Closing a
-// gap means changing erasure.ts (T9.5) and then this list.
-const KNOWN_GAPS = ["app_users", "assessments", "memberships", "presets"];
+const NOT_IN_ERASURE: string[] = ["sin datos de estudiantes"];
 const PROVIDERS = ["Supabase", "Netlify", "Anthropic", "OpenRouter", "ElevenLabs", "Resend", "Sentry", "Cloudflare", "Dictado del navegador"];
 // JSON columns that must be explained field by field.
 const JSON_FIELDS: Record<string, string[]> = {
@@ -36,12 +33,12 @@ const JSON_FIELDS: Record<string, string[]> = {
   submissions: ["answers", "choices"],
 };
 // The one field per table that erasure mode lets through (20261111130800_platform.sql).
-const REDACTABLE: Record<string, string> = {
-  version_events: "data",
-  generation_outputs: "output",
-  answer_key_revisions: "content",
-  publications: "content",
-  generations: "inputs",
+const REDACTABLE: Record<string, string[]> = {
+  version_events: ["data", "result"],
+  generation_outputs: ["output"],
+  answer_key_revisions: ["content"],
+  publications: ["content"],
+  generations: ["inputs"],
 };
 
 function sorted(values: readonly string[]): string[] {
@@ -63,11 +60,8 @@ describe("privacy inventory: tables", () => {
     for (const [table, entry] of Object.entries(ERASURE_RULES)) expect(byTable.get(table)?.rule, table).toBe(entry.rule);
   });
 
-  it("marks every other table as without student data or as a known gap", () => {
-    const others = sections.filter((item) => !studentTables.has(item.table));
-    for (const item of others) expect(NOT_IN_ERASURE, item.table).toContain(item.rule);
-    const gaps = others.filter((item) => item.rule === "fuera de erasure.ts").map((item) => item.table);
-    expect(sorted(gaps)).toEqual(KNOWN_GAPS);
+  it("marks every other table as without student data", () => {
+    for (const item of sections.filter((row) => !studentTables.has(row.table))) expect(NOT_IN_ERASURE, item.table).toContain(item.rule);
   });
 });
 
@@ -124,11 +118,12 @@ describe("privacy inventory: fields", () => {
     }
   });
 
-  it("redacts in immutable rows only the field erasure mode lets through", () => {
-    for (const [table, field] of Object.entries(REDACTABLE)) {
-      const rows = byTable.get(table)?.rows ?? [];
-      expect(rows.find((row) => row.fields.includes(field))?.action, `${table}.${field}`).toMatch(/compartida: redacta$/);
-      for (const row of rows.filter((item) => !item.fields.includes(field))) expect(row.action, `${table}.${row.fields.join(",")}`).not.toMatch(/redacta/);
+  it("redacts in immutable rows only the fields erasure mode lets through", () => {
+    for (const [table, allowed] of Object.entries(REDACTABLE)) {
+      for (const row of byTable.get(table)?.rows ?? []) {
+        const redacts = /redacta$/.test(row.action);
+        expect(redacts, `${table}.${row.fields.join(",")}`).toBe(row.fields.some((field) => allowed.includes(field)));
+      }
     }
   });
 });

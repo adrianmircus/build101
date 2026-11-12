@@ -29,15 +29,15 @@ La columna «Después» describe lo que queda: `no queda`, `personal` (se sigue 
 
 Para los campos de control de cada tabla (`id`, `institution_id`, `created_at`, `updated_at`, `revision`) rige lo mismo que para la fila: se van con ella y, si la fila queda, son identificadores técnicos sin dato propio.
 
-La redacción de filas inmutables (eventos, salidas de la IA, revisiones de la clave, publicaciones y entradas de la generación) corre dentro del modo supresión de `app.begin_erasure`. Solo puede tocar un campo por tabla: `version_events.data`, `generation_outputs.output`, `answer_key_revisions.content`, `publications.content` y `generations.inputs`.
+La redacción de filas inmutables (eventos, salidas de la IA, revisiones de la clave, publicaciones y entradas de la generación) corre dentro del modo supresión de `app.begin_erasure`. Solo puede tocar un campo por tabla, salvo `version_events`, que deja dos: `version_events.data`, `version_events.result`, `generation_outputs.output`, `answer_key_revisions.content`, `publications.content` y `generations.inputs`.
 
 ## Tablas
 
 ### `app_users`
 
-Regla: `fuera de erasure.ts`.
+Regla: `delete`.
 
-Una fila por cuenta de Auth. Para los estudiantes `display_name` es nulo y el nombre vive en `students`. La fila de la cuenta de un estudiante no figura en `erasure.ts`: se va por cascada cuando T9.5 borra la cuenta de Auth. Hoy esa baja no está escrita en las reglas.
+Una fila por cuenta de Auth. Para los estudiantes `display_name` es nulo y el nombre vive en `students`. La fila de la cuenta de un estudiante se va en cascada cuando T9.5 borra la cuenta de Auth (paso 3 del orden de la supresión).
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
@@ -64,9 +64,9 @@ Regla: `sin datos de estudiantes`.
 
 ### `memberships`
 
-Regla: `fuera de erasure.ts`.
+Regla: `delete`.
 
-Pertenencia de una cuenta a una institución con su rol. Los estudiantes tienen una con rol `student`. Esa fila se va por cascada con la cuenta de Auth, igual que `app_users`, y hoy `erasure.ts` no lo dice.
+Pertenencia de una cuenta a una institución con su rol. Los estudiantes tienen una con rol `student`. Esa fila se va en cascada con `app_users` al borrar la cuenta de Auth.
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
@@ -146,7 +146,7 @@ Una fila por cuenta de estudiante, para que `reconcile_accounts` no recree una c
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
 | `student_id` | desvincula | no queda | La clave foránea es `ON DELETE SET NULL`: al borrar al estudiante queda en nulo. |
-| `auth_user_id` | conserva | no personal | Es el id de la cuenta de Auth. Es no personal solo si T9.5 borra la cuenta de Auth antes de cerrar la supresión: sin la cuenta, el id no lleva a nadie. |
+| `auth_user_id` | conserva | no personal | Es el id de la cuenta de Auth. Es no personal solo por el orden de la supresión (ver «Orden de la supresión»): la cuenta de Auth se borra en el paso 3, antes de cerrarla en el paso 4, y sin la cuenta el id no lleva a nadie. |
 | `status` | conserva | no personal | Pasa a `deleted`: es la marca que impide recrear la cuenta. |
 | `op_key`, `attempts`, `error_code` | conserva | no personal | Control técnico del aprovisionamiento, sin texto libre. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
@@ -227,13 +227,13 @@ Se borran después de sus efectos: primero se cancela lo que dependía de ellos.
 
 ### `assessments`
 
-Regla: `fuera de erasure.ts`.
+Regla: `redact`.
 
-El práctico original, del profe. `topic` y `general_instructions` son texto libre y pueden nombrar a un estudiante («Para Paula: ...»). `erasure.ts` redacta ese texto en `assessment_exercises` pero no en esta tabla. Hasta que lo decida el equipo, se tratan como personales.
+El práctico original, del profe. `topic` y `general_instructions` son texto libre y pueden nombrar a un estudiante («Para Paula: ...»). Si nombran al estudiante, se redactan, igual que en `assessment_exercises`.
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
-| `topic`, `general_instructions` | conserva | personal | Texto libre del profe. Hoy ninguna regla lo redacta. |
+| `topic`, `general_instructions` | redacta | personal | Texto libre del profe. Si nombra al estudiante, se redacta esa parte; si no, queda como estaba. |
 | `group_id`, `subject_id`, `kind`, `status`, `publish_at`, `due_at`, `source_file_id`, `created_by` | conserva | no personal | Datos del práctico, no de un estudiante. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
@@ -354,7 +354,7 @@ Historial de lo que hizo el profe con la salida de la IA: editó, aprobó, recha
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
 | `data` | individual: borra; compartida: redacta | personal | JSON según el tipo: `edited` trae el texto nuevo, `rejected` los motivos, `regenerated` la instrucción y `recipients_changed` los ids de estudiantes agregados y quitados. De `recipients_changed` se saca al estudiante y se redacta el texto que lo nombre. |
-| `result` | individual: borra; compartida: conserva | no personal | JSON con la respuesta exacta de la operación, que se repite si se reintenta. Solo lleva ids de objetos de la versión y revisiones, nunca ids de estudiantes ni texto libre. Esa es la condición para que sea no personal: la fila no deja redactar `result` (solo `data`). |
+| `result` | individual: borra; compartida: redacta | personal | JSON con la respuesta exacta de la operación, que se repite si se reintenta. Solo lleva ids de objetos de la versión y revisiones: en `set_version_recipients`, el id de la versión y su revisión, nunca ids de estudiantes. Si algún texto lo nombrara, se redacta igual que `data`. |
 | `kind`, `operation`, `target_id`, `op_id` | individual: borra; compartida: conserva | no personal | Nombre de la RPC y el id del objeto sobre el que actuó: no lleva ids de estudiantes. |
 | `version_revision`, `exercise_revision` | individual: borra; compartida: conserva | no personal | Números de revisión del ejercicio y de la versión: contadores sin contenido. |
 | `actor_user_id` | individual: borra; compartida: conserva | no personal | Id histórico del profe, sin clave foránea. No es de un estudiante. |
@@ -501,14 +501,14 @@ Contadores de uso. La clave es técnica.
 
 ### `presets`
 
-Regla: `fuera de erasure.ts`.
+Regla: `redact`.
 
-Configuraciones que guarda un profe (perfiles, apoyos, intereses). No están atadas a un estudiante, pero `name` es texto libre y puede decir «Paula TDAH». `erasure.ts` no las incluye.
+Configuraciones que guarda un profe (perfiles, apoyos, intereses). No están atadas a un estudiante, pero `name` es texto libre y puede decir «Paula TDAH». Si nombran al estudiante, se redactan.
 
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
-| `name` | conserva | personal | Texto libre del profe. Hoy ninguna regla lo redacta. |
-| `config` | conserva | personal | JSON con perfiles, apoyos e intereses. No está atado a un estudiante, pero los intereses son texto libre. |
+| `name` | redacta | personal | Texto libre del profe. Si nombra al estudiante, se redacta esa parte. |
+| `config` | redacta | personal | JSON con perfiles, apoyos e intereses. No está atado a un estudiante, pero los intereses son texto libre: si nombran al estudiante, se redacta esa parte. |
 | `owner_user_id`, `archived_at`, `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Dueño (el profe) e identificadores de la fila, sin dato propio. |
 
 ### `notifications`
@@ -556,15 +556,16 @@ Marca de una ventana de RPC de estudiante dentro de una transacción. Vive lo qu
 |---|---|---|---|
 | `txid`, `id`, `created_at` | conserva | no personal | Id de transacción de la base, uuid aleatorio y fecha. No hay ninguna referencia a un estudiante. |
 
-## Lo que erasure.ts no cubre
+## Orden de la supresión
 
-Estas diferencias entre el esquema y `erasure.ts` quedan registradas acá y las fija la prueba. Si se cierran, se actualiza el documento y la lista de la prueba.
+Lo que se conserva es no personal solo porque la supresión sigue este orden, que fija `erasure.ts`:
 
-- La cuenta de Auth del estudiante, su fila de `app_users` y su membresía con rol `student` no figuran en las reglas. Se van por cascada si T9.5 borra la cuenta de Auth. Hay que escribirlo en la supresión.
-- `assessments.topic` y `assessments.general_instructions` son texto libre del profe sin regla de redacción, mientras que `assessment_exercises` sí la tiene.
-- `presets.name` y `presets.config` pueden traer un nombre en texto libre y no tienen regla.
-- `version_events.result` no se puede redactar. Es seguro solo si las RPC nunca ponen ahí ids de estudiantes (en particular `set_version_recipients`, que escribe `recipients_changed`). Es una condición para T1.4d y T9.5.
-- `account_provisioning.auth_user_id` queda. Es no personal solo si la cuenta de Auth se borró.
+- Primero se marca la supresión (`erasures`, estado `marked`) y se desvincula el seudónimo.
+- Después se borran los objetos de Storage del estudiante y las filas según las reglas. Las redacciones corren dentro de `app.begin_erasure`.
+- Después se borra la cuenta de Auth con la API de administración. Eso borra en cascada `app_users` y `memberships`, y deja `account_provisioning.auth_user_id` apuntando a una cuenta que ya no existe. Por eso ese campo es no personal.
+- Recién entonces la supresión pasa a `done` y se copia afuera de la base.
+
+Si la cuenta de Auth no se borró, `auth_user_id` sigue siendo dato personal y la supresión no se cierra.
 
 ## Proveedores
 
