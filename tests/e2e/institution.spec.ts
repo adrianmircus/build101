@@ -1,34 +1,18 @@
+import { randomUUID } from "node:crypto";
 import type { Page } from "@playwright/test";
-import { expect, test } from "./support/fixtures";
+import { newTeacher } from "./support/accounts";
 import { checkAccessibility } from "./support/a11y";
+import { expect, test } from "./support/fixtures";
+import { inviteFromPanel, panelPath, signInAsAdmin } from "./support/panel";
+import { world } from "./support/world";
 
-// Recorridos del panel de la institución (T2.9): invitar profes, crear cuentas de estudiantes y las listas.
-//
-// SE ACTIVAN EN LA TANDA 4: hoy los servicios de lib/server/services/{institution,invitations,student-accounts}.ts son
-// stubs que responden UNAVAILABLE, y estos recorridos necesitan datos reales. Al activarlos hace falta una base local con:
-//   E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD  una cuenta de admin de un colegio
-//   E2E_INSTITUTION_ID                    el id de ese colegio
-//   E2E_MEMBER_EMAIL                      el correo de un profe que ya está en ese colegio
-//   E2E_PENDING_EMAIL                     el correo de una invitación pendiente de ese colegio
-// y un grupo «4.º B» de matemática con una estudiante «Lucía Fernández» (usuario luciaf) ya creada.
-
-const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? "";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "";
-const INSTITUTION = process.env.E2E_INSTITUTION_ID ?? "";
-const MEMBER_EMAIL = process.env.E2E_MEMBER_EMAIL ?? "";
-const PENDING_EMAIL = process.env.E2E_PENDING_EMAIL ?? "";
+// Recorridos del panel de la institución (T2.9, T2.10): invitar profes, crear cuentas de estudiantes, imprimir las tarjetas y las listas.
+// Corren contra el Supabase local y Mailpit, con el colegio y el admin que crea el global setup (tests/e2e/support/global-setup.ts).
+// Cada test crea lo suyo (correos, nombres, grupos con nombres que nadie más usa): corren en paralelo, en escritorio y en celular.
 
 // The route announcer of Next is also role=alert: it is left out so the locator is one element.
 function alertBox(page: Page) {
   return page.locator("[role=alert]:not(#__next-route-announcer__)");
-}
-
-async function signInAsAdmin(page: Page) {
-  await page.goto("/ingresar/profesor");
-  await page.getByLabel("Correo").fill(ADMIN_EMAIL);
-  await page.getByLabel("Contraseña", { exact: true }).fill(ADMIN_PASSWORD);
-  await page.getByRole("button", { name: "Ingresar" }).click();
-  await expect(page).toHaveURL(/\/grupos/);
 }
 
 async function expectNoHorizontalScroll(page: Page, where: string) {
@@ -36,11 +20,13 @@ async function expectNoHorizontalScroll(page: Page, where: string) {
   expect(scrollWidth, `${where}: la página se pasa del ancho`).toBeLessThanOrEqual(clientWidth);
 }
 
-test.describe.skip("panel de la institución", () => {
+const freshEmail = (label: string) => `${label}.${randomUUID().replaceAll("-", "").slice(0, 10)}@tiza-e2e.example`;
+
+test.describe("panel de la institución", () => {
   test("/institucion lleva al único colegio donde es admin y muestra las dos acciones y el resumen", async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto("/institucion");
-    await expect(page).toHaveURL(new RegExp(`/institucion/${INSTITUTION}$`));
+    await expect(page).toHaveURL(new RegExp(`/institucion/${world().institution.id}$`));
     await expect(page.getByRole("link", { name: "Invitar profes" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Crear cuentas de estudiantes" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Ver profes e invitaciones" })).toBeVisible();
@@ -48,21 +34,23 @@ test.describe.skip("panel de la institución", () => {
   });
 
   test("alguien que no es admin de ese colegio ve el aviso y no los datos", async ({ page }) => {
+    const { teacher } = world();
     await page.goto("/ingresar/profesor");
-    await page.getByLabel("Correo").fill(process.env.E2E_TEACHER_EMAIL ?? "");
-    await page.getByLabel("Contraseña", { exact: true }).fill(process.env.E2E_TEACHER_PASSWORD ?? "");
+    await page.getByLabel("Correo").fill(teacher.email);
+    await page.getByLabel("Contraseña", { exact: true }).fill(teacher.password);
     await page.getByRole("button", { name: "Ingresar" }).click();
-    await page.goto(`/institucion/${INSTITUTION}`);
+    await expect(page).toHaveURL(/\/grupos/);
+    await page.goto(panelPath());
     await expect(page.getByRole("heading", { name: "Esta página es para admins del colegio" })).toBeVisible();
   });
 });
 
-test.describe.skip("invitar profes", () => {
+test.describe("invitar profes", () => {
   test("pegar, revisar (mal escrito, repetido, ya es miembro) y mandar solo los que van", async ({ page }) => {
+    const nuevo = freshEmail("profe.nuevo");
     await signInAsAdmin(page);
-    await page.goto(`/institucion/${INSTITUTION}/invitar`);
-    const nuevo = `profe.nuevo.${Date.now()}@sanjose.edu.uy`;
-    await page.getByLabel("Correos").fill([nuevo, MEMBER_EMAIL, "pablo.ferreira@sanjose", nuevo].join("\n"));
+    await page.goto(panelPath("/invitar"));
+    await page.getByLabel("Correos").fill([nuevo, world().teacher.email, "pablo.ferreira@sanjose", nuevo].join("\n"));
     await page.getByRole("button", { name: "Revisar" }).click();
     await expect(page.getByRole("heading", { name: "Revisá antes de mandar" })).toBeFocused();
     const table = page.getByRole("table", { name: "Correos a invitar" });
@@ -77,7 +65,7 @@ test.describe.skip("invitar profes", () => {
 
   test("sin correos: el error está al lado del campo y el foco va al mensaje", async ({ page }) => {
     await signInAsAdmin(page);
-    await page.goto(`/institucion/${INSTITUTION}/invitar`);
+    await page.goto(panelPath("/invitar"));
     await page.getByRole("button", { name: "Revisar" }).click();
     await expect(alertBox(page)).toBeFocused();
     await expect(page.getByLabel("Correos")).toHaveAccessibleDescription(/Pegá al menos un correo/);
@@ -85,7 +73,7 @@ test.describe.skip("invitar profes", () => {
 
   test("«Corregir» vuelve a los correos sin perder lo pegado", async ({ page }) => {
     await signInAsAdmin(page);
-    await page.goto(`/institucion/${INSTITUTION}/invitar`);
+    await page.goto(panelPath("/invitar"));
     await page.getByLabel("Correos").fill("pablo.ferreira@sanjose");
     await page.getByRole("button", { name: "Revisar" }).click();
     await page.getByRole("button", { name: /Corregir/ }).click();
@@ -93,69 +81,90 @@ test.describe.skip("invitar profes", () => {
   });
 });
 
-test.describe.skip("crear cuentas de estudiantes", () => {
-  test("pegar nombres, revisar los usuarios (con repetidos), cambiar uno y crear", async ({ page }) => {
+test.describe("el profe acepta la invitación desde el correo", () => {
+  test("sin cuenta: el admin invita, el correo llega a Mailpit y el profe elige nombre y contraseña y queda adentro", async ({ page, context }) => {
+    const email = freshEmail("profe.invitado");
     await signInAsAdmin(page);
-    await page.goto(`/institucion/${INSTITUTION}/crear-cuentas`);
-    await page.getByLabel("Grupo").selectOption({ label: "4.º B · Matemática 2026" });
-    await page.getByLabel("Nombres y apellidos").fill("Lucía Fagúndez\nMateo Silva");
-    await page.getByRole("button", { name: "Revisar" }).click();
-    await expect(page.getByRole("heading", { name: "Revisá los usuarios" })).toBeFocused();
-    await expect(page.getByLabel("Usuario de Lucía Fagúndez")).toHaveValue("luciaf2");
-    await page.getByLabel("Usuario de Mateo Silva").fill("luciaf2");
-    await page.getByRole("button", { name: "Crear 2 cuentas" }).click();
-    await expect(alertBox(page)).toContainText("Hay 2 usuarios para corregir");
-    await expect(page.getByLabel("Usuario de Mateo Silva")).toHaveAccessibleDescription(/repetido/);
-    await checkAccessibility(page, "crear cuentas, revisar con repetidos");
-    await page.getByLabel("Usuario de Mateo Silva").fill("mateos");
-    await page.getByRole("button", { name: "Crear 2 cuentas" }).click();
-    await expect(page.getByRole("heading", { name: "Listas las 2 cuentas" })).toBeFocused();
-    await expect(page.getByRole("link", { name: "Imprimir tarjetas" })).toHaveAttribute("href", /\/grupos\/.+\/tarjetas$/);
+    const tokens = await inviteFromPanel(page, [email]);
+    // The profe has no session: the admin's goes away and the link is opened from the mail.
+    await context.clearCookies();
+
+    await page.goto(`/invitacion#${tokens.get(email)}`);
+    await expect(page.getByRole("heading", { name: /te invitó a sumarte a/ })).toBeVisible();
+    expect(new URL(page.url()).hash).toBe("");
+    await expect(page.getByLabel("Correo")).not.toBeEditable();
+    await expect(page.getByLabel("Correo")).toHaveValue(email);
+    await page.getByLabel("Nombre y apellido").fill("Ana Pérez");
+    await page.getByLabel("Contraseña", { exact: true }).fill("una frase para acordarme");
+    await checkAccessibility(page, "invitación, crear cuenta");
+    await page.getByRole("button", { name: "Crear cuenta y sumarme" }).click();
+    await expect(page.getByRole("status")).toContainText("Ya sos parte de");
+    await checkAccessibility(page, "invitación aceptada");
+
+    // She is inside: her groups open with the session of the invitation, and the same link does not serve again.
+    await page.goto("/grupos");
+    await expect(page).toHaveURL(/\/grupos/);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: "Salir" }).click();
+    await page.goto(`/invitacion#${tokens.get(email)}`);
+    await expect(page.getByRole("heading", { name: "Esta invitación ya no sirve" })).toBeVisible();
+    // And she enters later with the password she chose.
+    await page.goto("/ingresar/profesor");
+    await page.getByLabel("Correo").fill(email);
+    await page.getByLabel("Contraseña", { exact: true }).fill("una frase para acordarme");
+    await page.getByRole("button", { name: "Ingresar" }).click();
+    await expect(page).toHaveURL(/\/grupos/);
   });
 
-  test("crear un grupo nuevo: nombre, materia y año", async ({ page }) => {
+  test("con cuenta y sin sesión: entra con su contraseña para aceptar", async ({ page, context }) => {
+    const teacher = await newTeacher();
     await signInAsAdmin(page);
-    await page.goto(`/institucion/${INSTITUTION}/crear-cuentas`);
-    await page.getByLabel("Grupo").selectOption("nuevo");
-    await page.getByLabel("Nombre del grupo").fill("6.º C");
-    await expect(page.getByLabel("Materia")).toContainText("Matemática");
-    await page.getByLabel("Nombres y apellidos").fill("Valentina Rodríguez");
-    await page.getByRole("button", { name: "Revisar" }).click();
-    await expect(page.getByLabel("Usuario de Valentina Rodríguez")).toHaveValue("valentinar");
+    const tokens = await inviteFromPanel(page, [teacher.email], "Inclusión");
+    await context.clearCookies();
+
+    await page.goto(`/invitacion#${tokens.get(teacher.email)}`);
+    await expect(page.getByRole("heading", { name: "Entrá para aceptar" })).toBeVisible();
+    await page.getByLabel("Contraseña", { exact: true }).fill(teacher.password);
+    await page.getByRole("button", { name: "Entrar y sumarme" }).click();
+    await expect(page.getByRole("status")).toContainText("Ya sos parte de");
   });
 
-  test("faltan datos: el resumen enlaza a cada campo", async ({ page }) => {
+  test("con sesión de otro correo: marca el choque y ofrece salir y entrar con el correo de la invitación", async ({ page, context }) => {
+    const email = freshEmail("profe.otro");
     await signInAsAdmin(page);
-    await page.goto(`/institucion/${INSTITUTION}/crear-cuentas`);
-    await page.getByLabel("Grupo").selectOption("nuevo");
-    await page.getByRole("button", { name: "Revisar" }).click();
-    await expect(alertBox(page)).toBeFocused();
-    await alertBox(page).getByRole("link", { name: /nombre del grupo/ }).click();
-    await expect(page.getByLabel("Nombre del grupo")).toBeFocused();
+    const tokens = await inviteFromPanel(page, [email]);
+    // Whoever is in this browser is the admin: not the email of the invitation.
+    await page.goto(`/invitacion#${tokens.get(email)}`);
+    await expect(page.getByText("No es el correo con el que entraste")).toBeVisible();
+    await page.getByRole("button", { name: /Salir y entrar con/ }).click();
+    await expect(page.getByRole("heading", { name: /te invitó a sumarte a|Entrá para aceptar/ })).toBeVisible();
+    expect((await context.cookies()).some((cookie) => cookie.name.startsWith("sb-"))).toBe(false);
   });
 });
 
-test.describe.skip("ver profes e invitaciones", () => {
+test.describe("ver profes e invitaciones", () => {
   test("lista profes con «ya entró» e invitaciones con vencimiento; revocar pide confirmar", async ({ page }) => {
+    const pending = freshEmail("profe.pendiente");
     await signInAsAdmin(page);
-    await page.goto(`/institucion/${INSTITUTION}/profes`);
+    await inviteFromPanel(page, [pending]);
+    await page.goto(panelPath("/profes"));
     await expect(page.getByText(/ya entró alguna vez|todavía no entró/).first()).toBeVisible();
     await expect(page.getByText(/vence el|venció el/).first()).toBeVisible();
     await expect(page.getByRole("button", { name: /cambiar|rol/i })).toHaveCount(0);
-    await page.getByRole("button", { name: new RegExp(`Revocar la invitación de ${PENDING_EMAIL}`) }).click();
+    await page.getByRole("button", { name: new RegExp(`Revocar la invitación de ${pending}`) }).click();
     await expect(page.getByRole("button", { name: "No, dejarla" })).toBeFocused();
     await page.getByRole("button", { name: "No, dejarla" }).click();
     await checkAccessibility(page, "profes e invitaciones");
   });
 });
 
-test.describe.skip("celular chico (320 px)", () => {
+test.describe("celular chico (320 px)", () => {
   test.use({ viewport: { width: 320, height: 640 } });
 
   test("ninguna pantalla del panel se pasa del ancho", async ({ page }) => {
     await signInAsAdmin(page);
     for (const path of ["", "/invitar", "/crear-cuentas", "/profes", "/grupos"]) {
-      await page.goto(`/institucion/${INSTITUTION}${path}`);
+      await page.goto(panelPath(path));
       await expectNoHorizontalScroll(page, `/institucion/…${path}`);
     }
   });
