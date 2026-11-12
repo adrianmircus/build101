@@ -33,9 +33,13 @@ grant select on app.students, app.groups, app.enrollments, app.assessments, app.
 -- Only whether a consent is in force (dictation becomes typed without it), never its text or file.
 grant select (id, institution_id, student_id, purpose, status, valid_from, valid_until, revoked_at)
   on app.consents to tiza_student;
--- The attempt protocol: start, save and submit (and the row locks they take, which need UPDATE).
-grant update on app.assignments, app.assignment_attempts to tiza_student;
-grant insert, update on app.submissions to tiza_student;
+-- The attempt protocol: start, save and submit, and the row locks they take (FOR UPDATE needs
+-- UPDATE on some column). Column by column: the role can never move an attempt to another
+-- publication, version or key, nor a submission to another attempt.
+grant update (status, revision) on app.assignments to tiza_student;
+grant update (status, first_viewed_at, started_at, submitted_at, late, revision) on app.assignment_attempts to tiza_student;
+grant insert (institution_id, attempt_id, answers, choices) on app.submissions to tiza_student;
+grant update (answers, choices, submitted_at, revision) on app.submissions to tiza_student;
 
 -- Every policy limits the role to the caller's own rows. A student RPC can see no other student,
 -- and none of what reveals another student's profile: their interface (gaze implies motor, voice

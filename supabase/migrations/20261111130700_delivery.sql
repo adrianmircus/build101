@@ -122,15 +122,21 @@ end
 $$;
 
 -- An attempt is graded with its publication's key revision, never another one: the publication is
--- immutable, so after start (when the publication freezes) the key cannot move either.
+-- immutable, so after start (when the publication freezes) the key cannot move either. The guard
+-- runs as whoever writes; if that role cannot see the publication (RLS hides another student's to
+-- tiza_student) it refuses instead of reading a missing row as a null key.
 create function app.attempts_key_matches() returns trigger
 language plpgsql
 set search_path = ''
 as $$
+declare
+  v_key uuid;
 begin
-  if new.answer_key_revision_id is distinct from (
-    select p.answer_key_revision_id from app.publications p where p.id = new.publication_id
-  ) then
+  select p.answer_key_revision_id into v_key from app.publications p where p.id = new.publication_id;
+  if not found then
+    raise exception 'app.attempts_key_matches: the publication is not visible to this role' using errcode = 'P0004';
+  end if;
+  if new.answer_key_revision_id is distinct from v_key then
     raise exception 'app.attempts_key_matches: the key revision is the publication''s' using errcode = 'P0004';
   end if;
   return new;

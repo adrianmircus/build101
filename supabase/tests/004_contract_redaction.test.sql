@@ -1,7 +1,7 @@
 -- Redaction during an erasure, gaze options and keys, and the key snapshot. Runs as postgres.
 -- Erasure mode is the only way to rewrite a historical row, and only while a marked erasure runs.
 begin;
-select plan(26);
+select plan(27);
 
 insert into app.institutions (id, name, code, kind) values ('00000000-0000-0000-0000-0000000002a1', 'Liceo', 'liceo-r', 'school');
 insert into app.groups (id, institution_id, subject_id, name, school_year) values
@@ -74,7 +74,11 @@ select throws_ok($$
 $$, 'P0004', null, 'even inside the erasure, nothing but the content of a publication changes');
 select throws_ok($$
   update app.version_events set kind = 'edited' where id = '00000000-0000-0000-0000-000000000281'
-$$, 'P0004', null, 'inside the erasure an event changes only its data');
+$$, 'P0004', null, 'inside the erasure an event changes only its data and result');
+select lives_ok($$
+  update app.version_events set result = '{"id": "00000000-0000-0000-0000-000000000261"}'
+   where id = '00000000-0000-0000-0000-000000000281'
+$$, 'inside the erasure an event''s stored result can be redacted too');
 select throws_ok($$
   update app.audit_log set student_ids = '{}' where id = '00000000-0000-0000-0000-0000000002f1'
 $$, 'P0004', null, 'the access record is never redacted');

@@ -184,8 +184,8 @@ $$;
 --   - app.begin_erasure(id) opens it only for an erasure already marked (the mark comes first), and
 --     binds it to that erasure, its institution and the current transaction id. A setting copied
 --     into another transaction, or set by hand, does not match txid_current() and opens nothing;
---   - only one field per table can change, and only on rows of that institution:
---     version_events.data, generation_outputs.output, answer_key_revisions.content,
+--   - only the redactable fields of a table can change, and only on rows of that institution:
+--     version_events.data and .result, generation_outputs.output, answer_key_revisions.content,
 --     publications.content, generations.inputs. audit_log never;
 --   - while it is open no RPC runs: every api function starts with app.rpc_begin(), which refuses
 --     (20261111130900_lock_order.sql). The internal erasure RPC (T9.5) calls rpc_begin first and
@@ -215,28 +215,28 @@ end
 $$;
 
 -- True only when the erasure in force belongs to p_institution_id and the update changes nothing
--- but the one redactable field of p_table.
+-- but the redactable fields of p_table.
 create function app.redaction_allowed(p_table text, p_institution_id uuid, p_old jsonb, p_new jsonb) returns boolean
 language plpgsql
 stable
 set search_path = ''
 as $$
 declare
-  v_field text := case p_table
-    when 'version_events' then 'data'
-    when 'generation_outputs' then 'output'
-    when 'answer_key_revisions' then 'content'
-    when 'publications' then 'content'
-    when 'generations' then 'inputs'
+  v_fields text[] := case p_table
+    when 'version_events' then array['data', 'result']
+    when 'generation_outputs' then array['output']
+    when 'answer_key_revisions' then array['content']
+    when 'publications' then array['content']
+    when 'generations' then array['inputs']
   end;
 begin
-  if v_field is null or p_institution_id is null then
+  if v_fields is null or p_institution_id is null then
     return false;
   end if;
   if app.erasure_in_force() is distinct from p_institution_id then
     return false;
   end if;
-  return (p_old - v_field - 'updated_at') = (p_new - v_field - 'updated_at');
+  return (p_old - v_fields - 'updated_at') = (p_new - v_fields - 'updated_at');
 end
 $$;
 

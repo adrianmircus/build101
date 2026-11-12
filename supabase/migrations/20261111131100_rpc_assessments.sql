@@ -49,6 +49,8 @@ create function api.update_version_config(p_version_id uuid, p_revision integer,
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
+-- Its stored event result is { id, revision } of the version: never a student id. Who was added or
+-- removed goes only in the event's data, which an erasure can redact.
 create function api.set_version_recipients(p_version_id uuid, p_revision integer, p_student_ids uuid[], p_op_id uuid)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;

@@ -2,7 +2,7 @@
 -- anyone's needs: every api.student_* runs as tiza_student, and Postgres denies what the role is
 -- not granted, whatever path the SQL takes. Runs as postgres; everything is rolled back.
 begin;
-select plan(25);
+select plan(28);
 
 -- The role itself.
 select ok(
@@ -67,6 +67,19 @@ select is_empty($$
   select c.relname::text from pg_class c
    where c.relnamespace = 'app'::regnamespace and c.relkind = 'r' and has_table_privilege('tiza_student', c.oid, 'delete')
 $$, 'tiza_student deletes nothing');
+select ok(
+  has_column_privilege('tiza_student', 'app.assignment_attempts', 'status', 'update')
+  and not has_column_privilege('tiza_student', 'app.assignment_attempts', 'publication_id', 'update')
+  and not has_column_privilege('tiza_student', 'app.assignment_attempts', 'version_id', 'update')
+  and not has_column_privilege('tiza_student', 'app.assignment_attempts', 'answer_key_revision_id', 'update')
+  and not has_column_privilege('tiza_student', 'app.assignment_attempts', 'assignment_id', 'update'),
+  'on attempts the role updates only what the protocol changes, never the publication, version or key');
+select ok(
+  has_column_privilege('tiza_student', 'app.submissions', 'answers', 'update')
+  and not has_column_privilege('tiza_student', 'app.submissions', 'attempt_id', 'update')
+  and not has_column_privilege('tiza_student', 'app.assignments', 'student_id', 'update')
+  and not has_column_privilege('tiza_student', 'app.assignments', 'assessment_id', 'update'),
+  'a submission never moves to another attempt, nor an assignment to another student or assessment');
 select is_empty($$
   select pol.polname || ' on ' || pol.polrelid::regclass::text from pg_policy pol
    where pol.polrelid in (select c.oid from pg_class c where c.relnamespace = 'app'::regnamespace)
@@ -83,8 +96,9 @@ language sql as $f$
     join pg_proc f on f.oid = t.tgfoid
    where not t.tgisinternal
      and f.prosecdef
-     and (has_table_privilege('tiza_student', t.tgrelid, 'insert')
-       or has_table_privilege('tiza_student', t.tgrelid, 'update')
+     -- Column-level grants count: any column the role can insert or update makes the table writable.
+     and (has_any_column_privilege('tiza_student', t.tgrelid, 'insert')
+       or has_any_column_privilege('tiza_student', t.tgrelid, 'update')
        or has_table_privilege('tiza_student', t.tgrelid, 'delete'))
 $f$;
 select is_empty($$ select * from pg_temp.definer_triggers_on_student_tables() $$,
@@ -165,6 +179,19 @@ create function api.student_zz_peek() returns jsonb language plpgsql security de
       'otherAttempts', (select count(*) from app.assignment_attempts t where t.id = '00000000-0000-0000-0000-0000000005e2'));
   end
   $p$;
+-- The attack Codex found: point the student's own attempt at another student's publication of the
+-- same assessment with a null key. The column grants stop it before any guard runs.
+create function api.student_zz_hijack() returns jsonb language plpgsql security definer set search_path = ''
+  as $p$
+  begin
+    perform app.rpc_begin();
+    update app.assignment_attempts
+       set publication_id = '00000000-0000-0000-0000-000000000592', version_id = '00000000-0000-0000-0000-000000000562',
+           answer_key_revision_id = null
+     where id = '00000000-0000-0000-0000-0000000005e1';
+    return '{}';
+  end
+  $p$;
 select app.end_student_rpc_change();
 
 -- The window is open again only to let postgres call what tiza_student now owns.
@@ -173,6 +200,8 @@ select throws_ok($$ select api.student_zz_key() $$, '42501', null,
   'a student RPC that reaches answer_key_revisions is denied by Postgres');
 select throws_ok($$ select api.student_zz_needs() $$, '42501', null,
   'a student RPC that reaches student_needs is denied by Postgres');
+select throws_ok($$ select api.student_zz_hijack() $$, '42501', null,
+  'a student RPC cannot move its attempt to another student''s publication');
 select lives_ok($$ select api.student_zz_start() $$,
   'the attempt protocol works as tiza_student, triggers included (touch_row, guards, key match)');
 select is(api.student_zz_peek() -> 'students', '1'::jsonb, 'a student RPC sees only the caller''s own student row');
