@@ -62,14 +62,33 @@ describe("findLeaks", () => {
     expect(findLeaks(leaked, task)).toEqual(["draft.answers.correct"]);
   });
 
-  it("reports a forbidden value anywhere, such as another student's id", () => {
+  const forbiddenIds = new Set([OTHER]);
+
+  it("reports a forbidden id as a value, such as another student's id", () => {
     const leaked = { ...examples.student_home, groups: [{ id: OTHER, name: "3.º A", subjectId: "math" }] };
-    expect(findLeaks(leaked, STUDENT_DTO_ALLOWLISTS.student_home, { forbiddenValues: new Set([OTHER]) })).toEqual(["groups.0.id"]);
+    expect(findLeaks(leaked, STUDENT_DTO_ALLOWLISTS.student_home, { forbiddenIds })).toEqual(["groups.0.id"]);
   });
 
-  it("reports a forbidden value used as a key, even inside the student's own answers", () => {
+  it("reports a forbidden id embedded in text, whatever its case", () => {
+    const leaked = { ...examples.student_home, groups: [{ id: ID, name: `Referencia: ${OTHER.toUpperCase()}`, subjectId: "math" }] };
+    expect(findLeaks(leaked, STUDENT_DTO_ALLOWLISTS.student_home, { forbiddenIds })).toEqual(["groups.0.name"]);
+  });
+
+  it("reports a forbidden id used as a key, even inside the student's own answers", () => {
     const leaked = { ...examples.student_task, draft: { revision: 1, answers: { [OTHER]: { text: "x", mode: "typed" } }, choices: {} } };
-    expect(findLeaks(leaked, task, { forbiddenValues: new Set([OTHER]) })).toEqual([`draft.answers.${OTHER}`]);
+    expect(findLeaks(leaked, task, { forbiddenIds })).toEqual([`draft.answers.${OTHER}`]);
+  });
+
+  // The correct option of the example's question is "A": a visible option and the student's choice.
+  const correct = [{ value: "A", allowedAt: ["questions.*.options.*.id", "draft.choices.*"] }];
+
+  it("lets a secret appear where it is legitimately visible: the options and the student's own choice", () => {
+    expect(findLeaks(examples.student_task, task, { secrets: correct })).toEqual([]);
+  });
+
+  it("reports a secret anywhere else", () => {
+    const leaked = { ...examples.student_task, exercises: [{ id: ID, label: "A", body: "x + 1 = 2" }] };
+    expect(findLeaks(leaked, task, { secrets: correct })).toEqual(["exercises.0.label"]);
   });
 
   it("reports a profile word inside text the server wrote, whatever its case and accents", () => {

@@ -55,6 +55,10 @@ export const VersionEvent = z
   .object({
     id: Id,
     kind: VersionEventKind,
+    // The concrete operation and target that wrote it, and the result replayed on a repeat.
+    operation: z.string().regex(/^[a-z][a-z0-9_]{2,62}$/),
+    targetId: Id,
+    result: z.record(z.string(), z.unknown()),
     generationId: Id.nullable(),
     versionExerciseId: Id.nullable(),
     versionRevision: Revision,
@@ -79,8 +83,9 @@ export const AnswerKeyContent = z
 export type AnswerKeyContent = z.infer<typeof AnswerKeyContent>;
 
 /**
- * Immutable. Keeps the snapshot it was made for: the version revision and the revision of every
- * adapted exercise and gaze question. It corresponds to a version when both maps equal today's.
+ * Immutable. Keeps the snapshot it was made for: the version revision, the revision of every
+ * adapted exercise and gaze question, and the instructions revision. It corresponds to a version
+ * when both maps and the instructions revision equal today's.
  */
 export const AnswerKeyRevision = z
   .object({
@@ -91,6 +96,7 @@ export const AnswerKeyRevision = z
     versionRevision: Revision,
     exerciseRevisions: z.record(Id, Revision),
     questionRevisions: z.record(Id, Revision),
+    instructionsRevision: Revision,
     createdAt: Timestamp,
   })
   .strict();

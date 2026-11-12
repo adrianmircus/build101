@@ -101,13 +101,13 @@ select throws_ok($$
      '00000000-0000-0000-0000-0000000000f2', 'math', '{}', repeat('a', 64), 'r1', 'p1', 1)
 $$, '23505', null, 'one running version generation per version');
 
-insert into app.version_events (institution_id, version_id, op_id, kind, generation_id, version_revision) values
+insert into app.version_events (institution_id, version_id, op_id, kind, generation_id, version_revision, operation, target_id) values
   ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-000000000061', gen_random_uuid(), 'generated',
-   '00000000-0000-0000-0000-000000000081', 1);
+   '00000000-0000-0000-0000-000000000081', 1, 'internal_finish_generation', '00000000-0000-0000-0000-000000000081');
 select throws_ok($$
-  insert into app.version_events (institution_id, version_id, op_id, kind, generation_id, version_revision) values
+  insert into app.version_events (institution_id, version_id, op_id, kind, generation_id, version_revision, operation, target_id) values
     ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-000000000061', gen_random_uuid(), 'generated',
-     '00000000-0000-0000-0000-000000000081', 1)
+     '00000000-0000-0000-0000-000000000081', 1, 'internal_finish_generation', '00000000-0000-0000-0000-000000000081')
 $$, '23505', null, 'a single generated event per generation');
 
 select throws_ok($$

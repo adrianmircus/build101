@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Id, Key, Revision, Timestamp } from "../common";
-import { AnswerMode, GraphSpec, OptionId, QuestionOption } from "../assessments/versions";
+import { AnswerMode, GraphSpec, OptionId, OptionList } from "../assessments/versions";
 
 // Publications, attempts, submissions and grades (20261111130700_delivery.sql). What a student
 // receives is an immutable copy; answers and grading point to exercise and question ids.
@@ -20,7 +20,7 @@ export const PublishedExercise = z.object({ id: Id, label: z.string(), body: z.s
 
 /** A gaze question as published: the options, never which one is right. */
 export const PublishedQuestion = z
-  .object({ id: Id, exerciseId: Id, stem: z.string(), options: z.array(QuestionOption).min(2).max(4) })
+  .object({ id: Id, exerciseId: Id, stem: z.string(), options: OptionList })
   .strict();
 
 export const PublicationContent = z

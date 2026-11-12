@@ -177,3 +177,38 @@ begin
   );
 end
 $$;
+
+-- Erasure mode: the only way to rewrite a historical row. Erasing one student must also take them
+-- out of rows that belong to other students too (a shared version's events, outputs, key revisions
+-- or publication), and those rows reject UPDATE. app.begin_erasure(id) opens a transaction-local
+-- window, valid only for an erasure already marked (status 'marked', so the mark always comes
+-- first); app.append_only, app.publications_guard (content only) and app.generations_guard
+-- (inputs only) let redactions through while it is open. It closes with the transaction, and the
+-- erasure row moving to 'done' closes it for good. Only the internal erasure RPC (T9.5, service_role)
+-- calls begin_erasure: no user can set the setting, and nothing grants EXECUTE on app functions.
+create function app.in_erasure() returns boolean
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_setting text := coalesce(current_setting('tiza.erasure', true), '');
+begin
+  if v_setting !~ '^[0-9a-f-]{36}$' then
+    return false;
+  end if;
+  return exists (select 1 from app.erasures e where e.id = v_setting::uuid and e.status = 'marked');
+end
+$$;
+
+create function app.begin_erasure(p_erasure_id uuid) returns void
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if not exists (select 1 from app.erasures e where e.id = p_erasure_id and e.status = 'marked') then
+    raise exception 'app.begin_erasure: only a marked erasure opens erasure mode' using errcode = 'P0004';
+  end if;
+  perform set_config('tiza.erasure', p_erasure_id::text, true);
+end
+$$;

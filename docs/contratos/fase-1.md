@@ -2,12 +2,12 @@
 
 Este documento fija la base de datos de la fase 1: dónde viven las tablas, cómo se escriben las RPC, cómo se toman los locks y cómo se reparten los tickets. Lo escribió el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora los 13 hallazgos de la revisión de Codex del contrato (C1 a C13).
+Fecha: 11/11/2026. Rama: `plataforma/f1-contratos`. Incorpora las dos rondas de revisión de Codex del contrato (C1 a C17).
 
 Archivos del contrato:
 
 - Migraciones `supabase/migrations/20261111130000` a `20261111131200`. Nacen cerradas y ningún ticket las edita.
-- Pruebas `supabase/tests/000_privileges.test.sql`, `001_contract.test.sql`, `002_contract_rules.test.sql` y `003_contract_history.test.sql`.
+- Pruebas `supabase/tests/000_privileges.test.sql`, `001_contract.test.sql`, `002_contract_rules.test.sql`, `003_contract_history.test.sql` y `004_contract_redaction.test.sql`.
 - Tipos y esquemas en `lib/domain/`, con el registro de RPC en `lib/domain/rpc.ts`.
 - El chequeo de compilación entre el registro y la base, en `lib/server/db/rpc-contract.ts`.
 - La regla de supresión de cada tabla con datos de un estudiante, en `lib/domain/permissions/erasure.ts`.
@@ -286,7 +286,7 @@ Todas en el esquema `api`, `SECURITY DEFINER`, con `search_path = ''`, devuelven
 | `set_version_recipients(p_version_id, p_revision, p_student_ids, p_op_id)` | T1.4b |
 | `archive_version(p_version_id, p_revision)` | T1.4b |
 | `list_versions(p_assessment_id)` | T1.4b |
-| `get_version(p_version_id)` (auditada) | T1.4b |
+| `get_version(p_version_id)` (auditada; incluye instrucciones y claves de las preguntas con su revisión) | T1.4b |
 | `update_version_instructions(p_version_id, p_revision, p_general_instructions, p_op_id)` (`p_revision` es `instructions_revision`) | T1.4c |
 | `update_version_exercise(p_version_exercise_id, p_revision, p_body, p_op_id)` | T1.4c |
 | `update_version_question(p_question_id, p_revision, p_stem, p_options, p_op_id)` | T1.4c |
@@ -347,12 +347,12 @@ end if;
 perform app.lock_begin();
 perform app.lock_version_tree(v_version_id, null, array[p_version_exercise_id]);
 
--- Bajo el lock: ¿este op_id ya se aplicó? Si es la misma operación sobre el mismo recurso,
--- se devuelve lo que escribió; si es otra, CONFLICT op_key_reused. Nunca un éxito aparente.
-v_event := app.claim_version_op(v_institution_id, p_op_id, 'edited', v_version_id, p_version_exercise_id);
+-- Bajo el lock: ¿este op_id ya se aplicó? La identidad es la RPC y su destino concreto (esta
+-- pregunta, este ejercicio, la versión). La misma: se devuelve el resultado que se guardó. Otra
+-- (otra pregunta del mismo ejercicio, el ejercicio de esa pregunta): CONFLICT op_key_reused.
+v_event := app.claim_version_op(v_institution_id, p_op_id, 'update_version_exercise', v_version_id, p_version_exercise_id);
 if v_event.id is not null then
-  return jsonb_build_object('id', p_version_exercise_id, 'revision', v_event.exercise_revision,
-                            'versionRevision', v_event.version_revision);
+  return v_event.result;
 end if;
 
 select ve.revision into v_revision from app.version_exercises ve where ve.id = p_version_exercise_id;
@@ -365,15 +365,16 @@ update app.version_exercises set body = p_body, revision = revision + 1, written
 update app.versions set revision = revision + 1 where id = v_version_id returning revision into v_version_revision;
 update app.answer_keys set stale = true where version_id = v_version_id;
 begin
-  insert into app.version_events (institution_id, version_id, op_id, kind, version_exercise_id,
-                                  version_revision, exercise_revision, data, actor_user_id)
-  values (v_institution_id, v_version_id, p_op_id, 'edited', p_version_exercise_id,
-          v_version_revision, v_revision, jsonb_build_object('body', p_body), app.actor_id());
+  v_result := jsonb_build_object('id', p_version_exercise_id, 'revision', v_revision, 'versionRevision', v_version_revision);
+  insert into app.version_events (institution_id, version_id, op_id, kind, operation, target_id, result,
+                                  version_exercise_id, version_revision, exercise_revision, data, actor_user_id)
+  values (v_institution_id, v_version_id, p_op_id, 'edited', 'update_version_exercise', p_version_exercise_id, v_result,
+          p_version_exercise_id, v_version_revision, v_revision, jsonb_build_object('body', p_body), app.actor_id());
 exception when unique_violation then
   -- El mismo op_id usado a la vez sobre otra versión (otro lock): el índice único es el respaldo.
   perform app.raise_error('CONFLICT', 'op_key_reused');
 end;
-return jsonb_build_object('id', p_version_exercise_id, 'revision', v_revision, 'versionRevision', v_version_revision);
+return v_result;
 ```
 
 La misma regla vale para `student_need_events` (bajo el lock de la fila del estudiante) y para todo `op_key` de `generations`, `operations`, `account_provisioning` e `import_runs`: se busca bajo el lock del recurso, se compara la identidad (recurso y tipo de operación) y el índice único es el respaldo.
@@ -422,6 +423,7 @@ Publicar (`publish_version`, T1.5a), en una transacción:
 
 - toma el árbol de la versión;
 - exige `approved_revision = revision = p_revision`;
+- exige el contenido completo (C17): la versión en `ready` y cada ejercicio adaptado en `ready` con texto; si no, `CONFLICT content_incomplete`. Aprobar exige lo mismo, así no se aprueba una versión a medio hacer;
 - en mirada, exige preguntas y una revisión de la clave que corresponda (ver «Clave»); en escritura y dictado la clave es opcional;
 - exige que cada destinatario esté inscripto y tenga el consentimiento `ai_adaptation` vigente, si la versión tiene una generación;
 - copia la revisión a `publications`: las instrucciones de la versión, los ejercicios y las preguntas, sin la opción correcta, sin `changes` y con `answer_mode` y `aids` calculados;
@@ -473,13 +475,15 @@ update app.assignments set status = 'submitted', revision = revision + 1 where i
 
 Lo que pide R3-3, con C1:
 
-- `answer_key_revisions` es solo agregar. Cada revisión guarda su contenido, `version_revision`, `exercise_revisions` (`{ id del ejercicio adaptado: revisión }`) y `question_revisions` (`{ id de la pregunta: revisión }`).
+- `answer_key_revisions` es solo agregar. Cada revisión guarda su contenido, `version_revision`, `exercise_revisions` (`{ id del ejercicio adaptado: revisión }`), `question_revisions` (`{ id de la pregunta: revisión }`) e `instructions_revision`: las instrucciones también cambian qué es una respuesta correcta («expresalo en metros»).
 - Editar una pregunta, sus opciones o su opción correcta (`question_keys`) sube la revisión de la pregunta, la de su ejercicio y la de la versión. Intercambiar las opciones A y B, aunque los ids queden iguales, ya cambia la revisión.
-- Una revisión R corresponde a la versión V si `R.exercise_revisions` es igual al mapa de revisiones de los ejercicios de V de hoy y `R.question_revisions` es igual al de sus preguntas de hoy. `version_revision` queda para trazar, no para comparar: cambiar destinatarios sube la revisión de la versión pero no toca la clave. T1.4e escribe esa comparación como `app.answer_key_matches(revisión, versión)`.
-- Una clave generada (`internal_record_answer_key_revision`) guarda el snapshot de las entradas de su generación, no el de hoy. Se vuelve la actual solo si la generación sigue vigente y ese snapshot todavía corresponde; si no, queda guardada como `obsolete`, visible para el profe.
+- Una revisión R corresponde a la versión V si `R.exercise_revisions` es igual al mapa de revisiones de los ejercicios de V de hoy, `R.question_revisions` es igual al de sus preguntas de hoy y `R.instructions_revision` es la de V de hoy (C1). Vale igual para claves generadas, editadas y confirmadas. `version_revision` queda para trazar, no para comparar: cambiar destinatarios sube la revisión de la versión pero no toca la clave. T1.4e escribe esa comparación como `app.answer_key_matches(revisión, versión)`.
+- Una clave generada (`internal_record_answer_key_revision`) guarda el snapshot de las entradas de su generación (incluida `inputs.instructionsRevision`), no el de hoy. Se vuelve la actual solo si la generación sigue vigente y ese snapshot todavía corresponde; si no, queda guardada como `obsolete`, visible para el profe.
 - Editar (`edit_answer_key`) guarda el contenido que manda el profe con las revisiones de hoy. Confirmar (`confirm_answer_key`) crea una revisión nueva con el contenido de la base, las opciones correctas de `question_keys` de hoy y las revisiones de hoy; en mirada exige una opción para cada pregunta. Los dos mandan la revisión de la que partieron (`p_base_revision_id`); si no es la vigente, `CONFLICT`.
-- `answer_keys.stale` lo prende toda edición de un ejercicio, una pregunta o una opción correcta (T1.4c). Publicar no confía en el flag: compara.
+- `answer_keys.stale` lo prende toda edición de un ejercicio, una pregunta, una opción correcta o las instrucciones (T1.4c). Publicar no confía en el flag: compara.
 - Cada intento apunta a la revisión de la clave de su publicación, y no cambia (C8).
+- Opciones y clave válidas (C15): cada pregunta tiene de 2 a 4 opciones con ids de una letra sin repetir (`app.is_option_list`, CHECK), y la opción correcta es siempre una de ellas. Las RPC lo comprueban antes de escribir: `set_question_key` con una opción que no existe da `INVALID unknown_option`; `update_version_question` que saca la opción correcta da `INVALID correct_option_removed` (primero se cambia la correcta). Dos triggers son el respaldo.
+- Editar la opción correcta con su revisión (C14): `get_version`, la lectura auditada de la revisión del profe, devuelve `keys` con cada `QuestionKey` (pregunta, opción correcta y revisión). Es lo que `set_question_key` necesita después de recargar. Nunca llega a un estudiante.
 
 ## Seudónimos y supresiones
 
@@ -492,7 +496,15 @@ Lo que pide R3-7, y lo que el esquema garantiza:
 - `erasures` guarda solo el seudónimo, ya desvinculado, y fechas. Se marca antes de borrar nada. Se copia afuera de la base en la misma acción (`external_copied_at`).
 - Borrar la cuenta de un profe no reescribe el historial: los actores son ids sin FK (ver «Triggers»).
 
-Qué pasa con cada tabla (C9): `lib/domain/permissions/erasure.ts` da una regla y su porqué a cada tabla con datos de un estudiante, también los derivados de su perfil (ejercicios adaptados, preguntas, claves, salidas de la IA, operaciones y el original si lo nombra). Las reglas son `delete`, `unlink`, `redact`, `keep` y `by_version`: una versión individual se borra con todo lo que cuelga de ella; una compartida se conserva sin él como destinatario y se redacta el texto libre que lo nombre. T1.9 la desarrolla campo por campo en el inventario y su prueba comprueba que coinciden. T9.5 la ejecuta.
+Qué pasa con cada tabla (C9): `lib/domain/permissions/erasure.ts` da una regla y su porqué a cada tabla con datos de un estudiante, también los derivados de su perfil (ejercicios adaptados, preguntas, claves, salidas de la IA, operaciones y el original si lo nombra). Las reglas son `delete`, `unlink`, `redact`, `keep` y `by_version`. Una versión es individual si en toda su historia solo la recibió él: todas sus filas de `version_recipients` y todos los intentos sobre sus publicaciones son suyos. Esa se borra con todo lo que cuelga de ella, y ninguna entrega de otro estudiante se va con ella. Cualquier otra es compartida: se conserva sin él como destinatario y se redacta el texto libre que lo nombre. T1.9 la desarrolla campo por campo en el inventario y su prueba comprueba que coinciden. T9.5 la ejecuta.
+
+Cómo se redacta lo inmutable (C9). Las filas de una versión compartida (eventos, salidas de la IA, revisiones de la clave, la publicación y las entradas de la generación) rechazan `UPDATE`. La supresión no las esquiva: abre un modo propio.
+
+- `app.begin_erasure(<supresión>)` abre, solo para la transacción, el modo supresión. Exige que la fila de `erasures` exista en `marked`: la marca va siempre primero.
+- Con el modo abierto, `app.append_only` deja pasar la redacción, `app.publications_guard` deja cambiar solo `content` y `app.generations_guard` deja cambiar solo `inputs`. Nada más se relaja: una generación terminada sigue sin reabrirse.
+- El modo se cierra con la transacción, y pasar la supresión a `done` lo cierra aunque la transacción siga.
+- Solo lo llama la RPC interna de supresión (T9.5, `service_role`). Ningún usuario puede fijar la marca de la transacción, y nadie tiene `EXECUTE` sobre las funciones de `app`.
+- `004_contract_redaction` lo prueba: fuera del modo no se reescribe nada; dentro, el evento compartido pierde al estudiante borrado y conserva al otro; una publicación solo cambia su contenido; con la supresión terminada se vuelve a cerrar.
 
 Lo que no garantiza:
 
@@ -504,10 +516,14 @@ Lo que no garantiza:
 
 `lib/domain/delivery/leaks.ts` tiene dos piezas:
 
-- `findLeaks(valor, lista, { forbiddenValues, forbiddenWords })` recorre el JSON y reporta: una clave fuera de la lista; una clave que no es un id dentro de `answers` o `choices`; un valor prohibido (el id de otro estudiante, una opción correcta sembrada) como valor entero o como clave, en cualquier lugar; y una palabra prohibida (los nombres de los perfiles, `PROFILE_WORDS`, sin importar mayúsculas ni tildes) dentro de cualquier texto que escribió el servidor. Lo que escribió el estudiante (`ownContent`: sus respuestas) queda exento solo de la búsqueda de palabras.
+- `findLeaks(valor, lista, { forbiddenIds, forbiddenWords, secrets })` recorre el JSON y reporta:
+  - una clave fuera de la lista, o una clave que no es un id dentro de `answers` o `choices`;
+  - un id prohibido (otro estudiante, un seudónimo, una versión) como valor, como clave o metido en cualquier texto («Referencia: <id>»), también en lo que escribió el estudiante (C10);
+  - una palabra prohibida (los nombres de los perfiles, `PROFILE_WORDS`, sin importar mayúsculas ni tildes) dentro de cualquier texto que escribió el servidor. Lo que escribió el estudiante (`ownContent`: sus respuestas) queda exento solo de esta búsqueda;
+  - un secreto fuera de los lugares donde su valor es legítimamente visible. La opción correcta «A» también es una opción visible y quizás la elección del propio estudiante: puede aparecer en `questions.*.options.*.id` y `draft.choices.*`, y en ningún otro lado. Lo mismo para la respuesta esperada de un ejercicio, permitida solo en las respuestas del estudiante.
 - `checkStudentDto(nombre, valor, opciones)` valida además la estructura completa con el esquema estricto del DTO, así un campo que falta o sobra también falla.
 
-La prueba de T1.5d usa `checkStudentDto` sobre los cuatro DTO, con dos estudiantes de perfiles distintos en el mismo grupo, las opciones correctas y los ids del otro como valores prohibidos y `PROFILE_WORDS` como palabras.
+La prueba de T1.5d usa `checkStudentDto` sobre los cuatro DTO, con dos estudiantes de perfiles distintos en el mismo grupo: los ids del otro estudiante, los seudónimos y los ids de versión como `forbiddenIds`; `PROFILE_WORDS` como palabras; y como `secrets` cada opción correcta (permitida en las opciones y en las elecciones propias) y cada respuesta esperada (permitida en las respuestas propias).
 
 ## Matriz de permisos
 
@@ -698,13 +714,20 @@ Criterios de aceptación:
     revisión, procedencia en nulo, revisión de la versión, answer_keys.stale y evento edited.
   - update_version_instructions con instructions_revision.
   - update_version_question y set_question_key suben la revisión de la pregunta, la de su ejercicio y la de la
-    versión.
-  - approve_version exige p_revision = revision y deja approved_revision; cualquier cambio posterior la deja
-    atrás. reject_version escribe rejected con sus motivos.
+    versión; la opción correcta tiene que existir (unknown_option) y no se puede sacar con una edición
+    (correct_option_removed).
+  - claim_version_op con la RPC y el destino concreto (la pregunta, el ejercicio o la versión); el evento guarda
+    operation, target_id y el resultado, que se devuelve tal cual en una repetición.
+  - Una edición manual con texto pasa el ejercicio a ready.
+  - approve_version exige p_revision = revision y el contenido completo (content_incomplete), y deja
+    approved_revision; cualquier cambio posterior la deja atrás. reject_version escribe rejected con sus motivos.
+  - get_version devuelve keys (QuestionKey con su revisión).
 Pruebas obligatorias: 017_version_content.test.sql con las reglas comunes; aprobar una revisión vieja es
   CONFLICT; editar instrucciones, un ejercicio, una opción o la opción correcta después de aprobar deja la
   versión sin aprobar. En integración, con dos clientes a la vez: dos copias de la misma edición aplican una vez
-  y la segunda devuelve el mismo resultado; el mismo op_id sobre dos ejercicios distintos da CONFLICT en uno.
+  y la segunda devuelve el mismo resultado; el mismo op_id sobre dos ejercicios distintos, sobre dos preguntas
+  del mismo ejercicio o sobre una pregunta y su ejercicio da CONFLICT en uno. En pgTAP: opciones repetidas y una
+  opción correcta inexistente se rechazan; aprobar una versión con un ejercicio pending es content_incomplete.
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: regenerar un ejercicio (T7.4), checklist (T7.5).
 Dependencias nuevas: ninguna.
@@ -743,17 +766,20 @@ Agente: backend          Tanda: 9        Depende de: T1.4d
 Turno de base: sí
 Objetivo: revisiones inmutables de la clave, con su correspondencia a ejercicios y preguntas.
 Archivos que puede crear o cambiar: supabase/migrations/20261112180000_t1_4e_answer_keys.sql,
-  supabase/tests/019_answer_keys.test.sql.
+  supabase/tests/019_answer_keys.test.sql, supabase/tests/013_reconstruction.test.sql (sumar get_answer_key:
+  no es auditada, y su respuesta no puede traer perfiles ni destinatarios).
 Contratos que usa (solo lectura): sección «Clave» de este documento, lib/domain/assessments/rpc-generations.ts.
 Criterios de aceptación:
-  - app.answer_key_matches(revisión, versión) compara exercise_revisions y question_revisions con los de hoy.
+  - app.answer_key_matches(revisión, versión) compara exercise_revisions, question_revisions e
+    instructions_revision con los de hoy.
   - edit y confirm agregan una revisión numerada con las revisiones de hoy; CAS con p_base_revision_id.
     confirm toma las opciones correctas de question_keys y en mirada exige una para cada pregunta.
   - internal_record_answer_key_revision guarda el snapshot de las entradas de su generación y solo la vuelve
     actual si la generación sigue vigente y el snapshot corresponde.
   - get_answer_key solo staff del grupo; nunca un estudiante.
 Pruebas obligatorias: 019_answer_keys.test.sql con las reglas comunes; intercambiar dos opciones o cambiar la
-  correcta deja la clave sin corresponder hasta confirmarla; una clave generada que llega después de una edición
+  correcta, o cambiar las instrucciones, deja la clave sin corresponder hasta confirmarla; una clave generada
+  que llega después de una edición
   queda obsolete y no es la actual; una revisión no se puede modificar.
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: generar la clave con IA (T7.6).
@@ -768,12 +794,14 @@ Objetivo: publish_version sin fechas, según «Intentos y entrega».
 Archivos que puede crear o cambiar: supabase/migrations/20261112190000_t1_5a_publish.sql,
   supabase/tests/020_publish.test.sql.
 Contratos que usa (solo lectura): lib/domain/delivery/**, sección «Intentos y entrega».
-Criterios de aceptación: los puntos de «Publicar», cada uno con su error (not_approved, missing_questions,
-  stale_answer_key, missing_consent, not_enrolled); el op_key repetido devuelve la misma publicación; la copia
+Criterios de aceptación: los puntos de «Publicar», cada uno con su error (not_approved, content_incomplete,
+  missing_questions, stale_answer_key, missing_consent, not_enrolled); el op_key repetido devuelve la misma publicación; la copia
   lleva las instrucciones de la versión y no lleva opción correcta, changes ni config; cada intento lleva la
   revisión de la clave de su publicación.
 Pruebas obligatorias: 020_publish.test.sql con las reglas comunes; volver a publicar mueve solo intentos sin
-  empezar, con la clave nueva.
+  empezar, con la clave nueva; crear una versión typed, asignarle un destinatario y publicarla con ejercicios
+  pending se rechaza con content_incomplete; cambiar las instrucciones después de aprobar la clave obliga a
+  confirmarla.
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: fechas, retirar y reasignar (T8.1).
 Dependencias nuevas: ninguna.
@@ -828,9 +856,10 @@ Contratos que usa (solo lectura): lib/domain/delivery/student-dto.ts, lib/domain
 Criterios de aceptación: interface, answer_mode y aids calculados en el servidor, sin nombrar perfiles; sin
   consentimiento de dictado, voice pasa a typed en cada lectura; student_grades solo intentos corregidos.
 Pruebas obligatorias: en integración, un estudiante con perfil motor y otro con dislexia en el mismo grupo:
-  checkStudentDto sobre cada DTO, con los ids del otro estudiante y las opciones correctas como valores
-  prohibidos y PROFILE_WORDS como palabras, devuelve vacío; y un caso negativo plantado (una versión cuyo texto
-  nombra el perfil) falla.
+  checkStudentDto sobre cada DTO, con las opciones de «Prueba de fugas» (forbiddenIds, PROFILE_WORDS y las
+  opciones correctas y respuestas esperadas como secrets con sus lugares permitidos), devuelve vacío; y dos
+  casos negativos plantados fallan: una versión cuyo texto nombra el perfil y un título que incluye el id del
+  otro estudiante.
 Inventario de datos: ninguna tabla nueva.
 Fuera de alcance: el payload RSC (T4.8).
 Dependencias nuevas: ninguna.
@@ -933,10 +962,10 @@ Agente: orquestador      Tanda: 1        Depende de: contrato
 Turno de base: no
 Objetivo: docs/PRIVACIDAD-DATOS.md dice, para cada tabla y campo con datos de un estudiante, qué pasa al
   borrarlo, y una prueba lo compara con el esquema y con erasure.ts.
-Archivos que puede crear o cambiar: docs/PRIVACIDAD-DATOS.md, supabase/tests/004_inventory.test.sql,
+Archivos que puede crear o cambiar: docs/PRIVACIDAD-DATOS.md, supabase/tests/005_inventory.test.sql,
   lib/domain/permissions/inventory.test.ts.
 Contratos que usa (solo lectura): este documento, lib/domain/permissions/tables.ts, lib/domain/permissions/erasure.ts.
-Criterios de aceptación: 004_inventory compara las tablas de app con una lista literal; inventory.test.ts
+Criterios de aceptación: 005_inventory compara las tablas de app con una lista literal; inventory.test.ts
   comprueba que esa lista, APP_TABLES y las tablas del inventario son las mismas, y que cada tabla de
   STUDENT_DATA_TABLES aparece con la regla de ERASURE_RULES y, campo por campo, qué se borra, qué se redacta y
   qué se conserva y por qué, incluidos los JSON (inputs, output, data, merge_result, result, id_map). También

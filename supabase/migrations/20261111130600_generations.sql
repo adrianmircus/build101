@@ -54,8 +54,10 @@ begin
   if old.status <> 'running' and new.status is distinct from old.status then
     raise exception 'app.generations_guard: a finished generation never reopens' using errcode = 'P0004';
   end if;
+  -- Inside an erasure only inputs may change (redacting a student's free text); the rest never.
   if new.version_id <> old.version_id or new.kind <> old.kind or new.op_key <> old.op_key
-     or new.inputs <> old.inputs or new.target_exercise_id is distinct from old.target_exercise_id then
+     or (new.inputs <> old.inputs and not app.in_erasure())
+     or new.target_exercise_id is distinct from old.target_exercise_id then
     raise exception 'app.generations_guard: what a generation was asked never changes' using errcode = 'P0004';
   end if;
   return new;
@@ -132,6 +134,11 @@ create table app.version_events (
   version_id uuid not null,
   op_id uuid not null,
   kind text not null check (kind in ('generated', 'edited', 'approved', 'rejected', 'regenerated', 'recipients_changed')),
+  -- The identity of the operation that wrote it: the RPC and its concrete target (a question, an
+  -- exercise, the version, a generation), and the exact result it returned, replayed on a repeat.
+  operation text not null check (operation ~ '^[a-z][a-z0-9_]{2,62}$'),
+  target_id uuid not null,
+  result jsonb not null default '{}' check (jsonb_typeof(result) = 'object'),
   generation_id uuid,
   version_exercise_id uuid,
   version_revision integer not null check (version_revision >= 1),
@@ -187,9 +194,11 @@ create table app.answer_key_revisions (
   -- { exercises: { <version_exercise_id>: {...} }, questions: { <question_id>: "A" } }.
   content jsonb not null check (jsonb_typeof(content) = 'object'),
   version_revision integer not null check (version_revision >= 1),
-  -- { <version_exercise_id>: <revision> } and { <question_id>: <revision> } of the snapshot.
+  -- The snapshot: { <version_exercise_id>: <revision> }, { <question_id>: <revision> } and the
+  -- version's instructions_revision (instructions can change what a right answer is: «en metros»).
   exercise_revisions jsonb not null check (jsonb_typeof(exercise_revisions) = 'object'),
   question_revisions jsonb not null default '{}' check (jsonb_typeof(question_revisions) = 'object'),
+  instructions_revision integer not null check (instructions_revision >= 1),
   generation_id uuid,
   -- Historical identity, no FK: deleting the account must not rewrite an append-only row.
   author_user_id uuid,
@@ -216,10 +225,11 @@ alter table app.answer_keys
 
 -- Idempotency of an operation on a version, checked UNDER the version lock (so two copies of the
 -- same request serialize and the second finds the first's event). Returns the event already
--- written by this op_id, or null when there is none. The same op_id on another resource or
--- another kind of operation is a CONFLICT, never a silent success. The unique (institution_id,
+-- written by this op_id, or null when there is none; the caller replays event.result. The same
+-- op_id with another operation (RPC) or another concrete target (two questions of one exercise,
+-- a question and its exercise) is a CONFLICT, never a silent success. The unique (institution_id,
 -- op_id) index is the backstop: an RPC turns its unique_violation into the same CONFLICT.
-create function app.claim_version_op(p_institution_id uuid, p_op_id uuid, p_kind text, p_version_id uuid, p_version_exercise_id uuid)
+create function app.claim_version_op(p_institution_id uuid, p_op_id uuid, p_operation text, p_version_id uuid, p_target_id uuid)
 returns app.version_events
 language plpgsql
 set search_path = ''
@@ -231,8 +241,7 @@ begin
   if not found then
     return null;
   end if;
-  if v_event.kind <> p_kind or v_event.version_id <> p_version_id
-     or v_event.version_exercise_id is distinct from p_version_exercise_id then
+  if v_event.operation <> p_operation or v_event.version_id <> p_version_id or v_event.target_id <> p_target_id then
     perform app.raise_error('CONFLICT', 'op_key_reused');
   end if;
   return v_event;

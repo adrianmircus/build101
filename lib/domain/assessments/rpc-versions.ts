@@ -3,7 +3,8 @@ import { Id, Revision, type RpcSpec, Written } from "../common";
 import {
   AnswerMode,
   OptionId,
-  QuestionOption,
+  OptionList,
+  QuestionKey,
   VERSION_STATUSES,
   Version,
   VersionConfig,
@@ -30,13 +31,17 @@ export const VersionSummary = z
   .strict();
 export type VersionSummary = z.infer<typeof VersionSummary>;
 
-/** Audited: the teacher's review of one version. */
+/**
+ * Audited: the teacher's review of one version. keys carries each question's correct option with
+ * the revision set_question_key needs for its CAS after a reload; never reaches a student.
+ */
 export const VersionDetail = z
   .object({
     version: Version,
     recipients: z.array(VersionRecipient),
     exercises: z.array(VersionExercise),
     questions: z.array(VersionQuestion),
+    keys: z.array(QuestionKey),
   })
   .strict();
 export type VersionDetail = z.infer<typeof VersionDetail>;
@@ -90,7 +95,7 @@ export const VERSION_RPCS = {
         p_question_id: Id,
         p_revision: Revision,
         p_stem: z.string().min(1).max(5000),
-        p_options: z.array(QuestionOption).min(2).max(4),
+        p_options: OptionList,
         p_op_id: Id,
       })
       .strict(),

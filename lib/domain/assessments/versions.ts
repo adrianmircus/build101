@@ -40,6 +40,15 @@ export const QuestionOption = z
   .object({ id: OptionId, text: z.string().max(2000), graph: GraphSpec.optional() })
   .strict();
 
+/** 2 to 4 options with distinct ids, like app.is_option_list: [A, A] could never be graded. */
+export const OptionList = z
+  .array(QuestionOption)
+  .min(2)
+  .max(4)
+  .refine((options) => new Set(options.map((option) => option.id)).size === options.length, {
+    message: "Hay opciones repetidas.",
+  });
+
 /** For the teacher only: what changed and why. The why can name the profile. */
 export const Change = z.object({ what: z.string().max(500), why: z.string().max(1000) }).strict();
 
@@ -85,7 +94,7 @@ export const VersionQuestion = z
     versionExerciseId: Id,
     position: z.int().min(0),
     stem: z.string().min(1).max(5000),
-    options: z.array(QuestionOption).min(2).max(4),
+    options: OptionList,
     revision: Revision,
   })
   .strict();

@@ -124,6 +124,22 @@ create table app.version_exercises (
   foreign key (institution_id, assessment_id, exercise_id) references app.assessment_exercises (institution_id, assessment_id, id) on delete cascade
 );
 
+-- 2 to 4 options, each an object with a one-letter id, ids never repeated: an ambiguous [A, A]
+-- could never be graded.
+create function app.is_option_list(p_options jsonb) returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select case when jsonb_typeof(p_options) <> 'array' then false else
+    jsonb_array_length(p_options) between 2 and 4
+    and not exists (
+      select 1 from jsonb_array_elements(p_options) as o
+       where jsonb_typeof(o) <> 'object' or coalesce(o ->> 'id', '') !~ '^[A-Z]$')
+    and (select count(distinct o ->> 'id') from jsonb_array_elements(p_options) as o) = jsonb_array_length(p_options)
+  end
+$$;
+
 -- Multiple-choice questions for gaze answers, without the answer.
 create table app.version_questions (
   id uuid primary key default gen_random_uuid(),
@@ -133,7 +149,7 @@ create table app.version_questions (
   position integer not null check (position >= 0),
   stem text not null check (char_length(stem) between 1 and 5000),
   -- [{ "id": "A", "text": "...", "graph": {...} }], validated by zod.
-  options jsonb not null check (jsonb_typeof(options) = 'array'),
+  options jsonb not null check (app.is_option_list(options)),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   revision integer not null default 1 check (revision >= 1),
@@ -183,6 +199,43 @@ create trigger versions_touch before update on app.versions for each row execute
 create trigger version_exercises_touch before update on app.version_exercises for each row execute function app.touch_row();
 create trigger version_questions_touch before update on app.version_questions for each row execute function app.touch_row();
 create trigger question_keys_touch before update on app.question_keys for each row execute function app.touch_row();
+
+-- A key always names one of its question's options, whatever is edited first. The RPCs check this
+-- before writing and answer INVALID (unknown_option, correct_option_removed); these triggers are
+-- the backstop, so a bug cannot leave a key pointing at an option that does not exist.
+create function app.question_key_in_options() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from app.version_questions q cross join lateral jsonb_array_elements(q.options) as o
+     where q.id = new.question_id and o ->> 'id' = new.correct_option_id
+  ) then
+    raise exception 'app.question_key_in_options: the correct option is one of the question''s options' using errcode = 'P0004';
+  end if;
+  return new;
+end
+$$;
+
+create function app.question_options_keep_key() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if exists (
+    select 1 from app.question_keys k
+     where k.question_id = new.id
+       and not exists (select 1 from jsonb_array_elements(new.options) as o where o ->> 'id' = k.correct_option_id)
+  ) then
+    raise exception 'app.question_options_keep_key: an edit cannot remove the correct option' using errcode = 'P0004';
+  end if;
+  return new;
+end
+$$;
+
+create trigger question_keys_in_options before insert or update on app.question_keys for each row execute function app.question_key_in_options();
+create trigger version_questions_keep_key before update of options on app.version_questions for each row execute function app.question_options_keep_key();
 
 alter table app.assessments enable row level security;
 alter table app.assessments force row level security;

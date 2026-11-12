@@ -118,12 +118,17 @@ $$;
 
 -- Trigger for append-only tables (events, outputs, key revisions, audit). Rows are never rewritten:
 -- they are the feedback the learning engine learns from and the evidence of who saw what. DELETE
--- stays possible on purpose: erasure and retention remove rows, they never edit them.
+-- stays possible on purpose: erasure and retention remove rows. The one exception is redaction
+-- inside an erasure transaction (app.begin_erasure, 20261111130800_platform.sql): the only path
+-- that may rewrite history, to take one student out of rows that also belong to others.
 create function app.append_only() returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
+  if app.in_erasure() then
+    return new;
+  end if;
   raise exception 'app.append_only: % rows are never updated', tg_table_name using errcode = 'P0004';
 end
 $$;

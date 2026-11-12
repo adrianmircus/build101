@@ -8,10 +8,16 @@ import { APP_TABLES, type AppTable } from "./tables";
 //   unlink      the row stays, without the link to the student.
 //   redact      the row stays; the parts about the student (their entry, a name in free text) go.
 //   keep        the row stays as is, for the reason given.
-//   by_version  follows the version: an individual version (the student was its only recipient)
-//               is deleted with everything hanging from it; a shared one stays without them as
-//               recipient, because it was adapted to a combination of profiles of several
-//               students, and any free text naming them is redacted.
+//   by_version  follows the version. An individual version is one that, in all its history,
+//               only this student received: every version_recipients row and every attempt on
+//               its publications is theirs. It is deleted with everything hanging from it, so no
+//               other student's delivery can go with it. Any other version is shared: it stays,
+//               without them as recipient, and any free text naming them is redacted.
+//
+// How redaction coexists with immutable history: rows of a shared version (events, outputs, key
+// revisions, the publication, the generation's inputs) reject UPDATE. T9.5 runs the whole erasure
+// in one transaction opened with app.begin_erasure(<marked erasure>): only there do the guards let
+// a redaction through (20261111130800_platform.sql), and 004_contract_redaction proves it.
 
 export type ErasureRule = "delete" | "unlink" | "redact" | "keep" | "by_version";
 export type ErasureEntry = { rule: ErasureRule; why: string };

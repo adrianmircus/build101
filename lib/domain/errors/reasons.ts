@@ -39,6 +39,10 @@ export const REASON_MESSAGES: Record<string, string> = {
   draft_outdated: "Hay una versión más nueva de tus respuestas. Revisala antes de entregar.",
   unknown_exercise: "Hay respuestas que no corresponden a esta tarea.",
   not_submitted: "Todavía no hay una entrega para corregir.",
+  content_incomplete: "Faltan ejercicios por completar en esta versión.",
+  unknown_option: "La respuesta correcta tiene que ser una de las opciones.",
+  correct_option_removed: "No se puede sacar la opción correcta. Cambiá primero la respuesta correcta.",
+  options_repeated: "Hay opciones repetidas.",
 };
 
 export function messageFor(code: ErrorCode, reason: string | undefined): string {

@@ -36,6 +36,10 @@ language plpgsql
 set search_path = ''
 as $$
 begin
+  -- Inside an erasure the content of a shared publication may be redacted; nothing else changes.
+  if app.in_erasure() and (to_jsonb(new) - 'content') = (to_jsonb(old) - 'content') then
+    return new;
+  end if;
   if (to_jsonb(new) - 'withdrawn_at') <> (to_jsonb(old) - 'withdrawn_at') or old.withdrawn_at is not null then
     raise exception 'app.publications_guard: a publication is immutable; it can only be withdrawn once' using errcode = 'P0004';
   end if;

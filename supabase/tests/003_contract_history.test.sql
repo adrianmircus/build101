@@ -2,7 +2,7 @@
 -- resource, provenance always points to the version's own generation, deleting an account keeps
 -- every historical row, and an attempt keeps its publication's key revision. Runs as postgres.
 begin;
-select plan(14);
+select plan(16);
 
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-000000000111', 'actor@test.invalid');
 insert into app.app_users (id, display_name) values ('00000000-0000-0000-0000-000000000111', 'Profe');
@@ -30,17 +30,27 @@ insert into app.generations (id, institution_id, version_id, kind, target_revisi
                              profiles_hash, profiles_revision, prompt_version, required_jobs) values
   ('00000000-0000-0000-0000-000000000181', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000162',
    'version', 1, gen_random_uuid(), 'math', '{}', repeat('b', 64), 'r1', 'p1', 1);
-insert into app.version_events (institution_id, version_id, op_id, kind, version_exercise_id, version_revision, actor_user_id) values
+insert into app.version_questions (id, institution_id, version_id, version_exercise_id, position, stem, options) values
+  ('00000000-0000-0000-0000-000000000172', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161',
+   '00000000-0000-0000-0000-000000000171', 0, '¿x?', '[{"id": "A", "text": "1"}, {"id": "B", "text": "2"}]'),
+  ('00000000-0000-0000-0000-000000000173', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161',
+   '00000000-0000-0000-0000-000000000171', 1, '¿y?', '[{"id": "A", "text": "3"}, {"id": "B", "text": "4"}]');
+insert into app.version_events (institution_id, version_id, op_id, kind, version_exercise_id, version_revision,
+                                operation, target_id, result, actor_user_id) values
   ('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-0000000001f1',
-   'edited', '00000000-0000-0000-0000-000000000171', 2, '00000000-0000-0000-0000-000000000111');
+   'edited', '00000000-0000-0000-0000-000000000171', 2, 'update_version_exercise', '00000000-0000-0000-0000-000000000171',
+   '{"revision": 2, "versionRevision": 2}', '00000000-0000-0000-0000-000000000111'),
+  ('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-0000000001f2',
+   'edited', '00000000-0000-0000-0000-000000000171', 3, 'update_version_question', '00000000-0000-0000-0000-000000000172',
+   '{"revision": 2, "versionRevision": 3}', '00000000-0000-0000-0000-000000000111');
 insert into app.answer_keys (id, institution_id, version_id) values
   ('00000000-0000-0000-0000-000000000191', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161');
 insert into app.answer_key_revisions (id, institution_id, version_id, answer_key_id, number, source, content,
-                                      version_revision, exercise_revisions, author_user_id) values
+                                      version_revision, exercise_revisions, instructions_revision, author_user_id) values
   ('00000000-0000-0000-0000-0000000001b1', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161',
-   '00000000-0000-0000-0000-000000000191', 1, 'edited', '{}', 1, '{}', '00000000-0000-0000-0000-000000000111'),
+   '00000000-0000-0000-0000-000000000191', 1, 'edited', '{}', 1, '{}', 1, '00000000-0000-0000-0000-000000000111'),
   ('00000000-0000-0000-0000-0000000001b2', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161',
-   '00000000-0000-0000-0000-000000000191', 2, 'edited', '{}', 1, '{}', '00000000-0000-0000-0000-000000000111');
+   '00000000-0000-0000-0000-000000000191', 2, 'edited', '{}', 1, '{}', 1, '00000000-0000-0000-0000-000000000111');
 insert into app.publications (id, institution_id, assessment_id, version_id, version_revision, answer_key_revision_id,
                               content, answer_mode, published_by) values
   ('00000000-0000-0000-0000-0000000001c1', '00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000141',
@@ -65,21 +75,29 @@ end
 $f$;
 
 select ok(
-  (app.claim_version_op('00000000-0000-0000-0000-0000000001a1', gen_random_uuid(), 'edited',
+  (app.claim_version_op('00000000-0000-0000-0000-0000000001a1', gen_random_uuid(), 'update_version_exercise',
      '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000171')).id is null,
   'a new op_id finds nothing');
 select is(
-  (app.claim_version_op('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000001f1', 'edited',
-     '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000171')).version_revision,
-  2, 'the same op_id on the same resource returns what it wrote');
+  (app.claim_version_op('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000001f1', 'update_version_exercise',
+     '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000171')).result,
+  '{"revision": 2, "versionRevision": 2}'::jsonb, 'the same operation on the same target returns the result it gave');
 select is(
   pg_temp.error_of($$ select app.claim_version_op('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000001f1',
-     'edited', '00000000-0000-0000-0000-000000000162', null) $$),
+     'update_version_exercise', '00000000-0000-0000-0000-000000000162', '00000000-0000-0000-0000-000000000171') $$),
   'P0001 CONFLICT op_key_reused', 'the same op_id on another version is a CONFLICT');
 select is(
+  pg_temp.error_of($$ select app.claim_version_op('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000001f2',
+     'update_version_question', '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000173') $$),
+  'P0001 CONFLICT op_key_reused', 'the same op_id on another question of the same exercise is a CONFLICT');
+select is(
+  pg_temp.error_of($$ select app.claim_version_op('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000001f2',
+     'update_version_exercise', '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000171') $$),
+  'P0001 CONFLICT op_key_reused', 'a question edit and an edit of its exercise never share an op_id');
+select is(
   pg_temp.error_of($$ select app.claim_version_op('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-0000000001f1',
-     'approved', '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000171') $$),
-  'P0001 CONFLICT op_key_reused', 'the same op_id for another kind of operation is a CONFLICT');
+     'approve_version', '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000161') $$),
+  'P0001 CONFLICT op_key_reused', 'the same op_id for another operation is a CONFLICT');
 
 -- Provenance points only to the version's own generations.
 select throws_ok($$
@@ -104,7 +122,7 @@ select is(
   + (select count(*) from app.version_events where actor_user_id = '00000000-0000-0000-0000-000000000111')
   + (select count(*) from app.answer_key_revisions where author_user_id = '00000000-0000-0000-0000-000000000111')
   + (select count(*) from app.publications where published_by = '00000000-0000-0000-0000-000000000111'),
-  5::bigint, 'need events, version events, key revisions and publications keep the actor id');
+  6::bigint, 'need events, version events, key revisions and publications keep the actor id');
 
 -- An attempt is graded with its publication's key, and keeps it once started.
 select throws_ok($$
@@ -135,9 +153,9 @@ $$, 'P0004', null, 'a submitted attempt keeps its key');
 
 select throws_ok($$
   insert into app.answer_key_revisions (institution_id, version_id, answer_key_id, number, source, content,
-                                        version_revision, exercise_revisions, question_revisions)
+                                        version_revision, exercise_revisions, question_revisions, instructions_revision)
   values ('00000000-0000-0000-0000-0000000001a1', '00000000-0000-0000-0000-000000000161', '00000000-0000-0000-0000-000000000191',
-          3, 'edited', '{}', 1, '{}', '[]')
+          3, 'edited', '{}', 1, '{}', '[]', 1)
 $$, '23514', null, 'question revisions are a map from question id to revision');
 
 select * from finish();
