@@ -173,6 +173,9 @@ export type Database = {
 "set_question_key":
 { Args: { "p_correct_option_id": string,"p_question_id": string,"p_revision"?: number }; Returns: Json
                            },
+"set_student_interface":
+{ Args: { "p_interface": string,"p_revision": number,"p_student_id": string }; Returns: Json
+                           },
 "set_student_needs":
 { Args: { "p_interests": (string)[],"p_op_id": string,"p_profiles": (string)[],"p_review_due_on"?: string,"p_revision"?: number,"p_student_id": string,"p_supports": (string)[] }; Returns: Json
                            },

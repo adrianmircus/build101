@@ -3,6 +3,8 @@ import type { ErrorCode } from "@/lib/errors";
 // The user-facing text of every error an RPC can raise. SQL raises a code and a reason key
 // (app.raise_error); the Spanish text lives only here. A reason that is not listed falls back to
 // its code's default, so a new reason in SQL never shows raw text, and SQL never builds a message.
+// Every reason SQL raises has its entry here and every entry is raised by some function: 030_reasons.test.sql (reads the
+// raised ones from the function bodies) and reasons.test.ts (compares its literal list with these keys) keep them aligned.
 
 export const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   NOT_FOUND: "No encontramos lo que buscabas. Puede que lo hayan archivado o que no tengas acceso.",
@@ -14,7 +16,7 @@ export const DEFAULT_MESSAGES: Record<ErrorCode, string> = {
 };
 
 export const REASON_MESSAGES: Record<string, string> = {
-  not_implemented: "Esto todavía no está disponible.",
+  forbidden: DEFAULT_MESSAGES.FORBIDDEN,
   no_session: "Tu sesión terminó. Volvé a entrar.",
   not_found: DEFAULT_MESSAGES.NOT_FOUND,
   not_a_student: "Esta pantalla es solo para estudiantes. Entrá con tu cuenta de estudiante.",
@@ -24,7 +26,6 @@ export const REASON_MESSAGES: Record<string, string> = {
   assessment_archived: "Este práctico está archivado y ya no se puede cambiar. Si lo necesitás, creá uno nuevo.",
   sandbox_restricted: "En la demo no se puede hacer esto.",
   username_taken: "Ese usuario ya existe en la institución. Elegí otro.",
-  already_enrolled: "Ya está en el grupo.",
   not_enrolled: "No está en el grupo. Si es destinatario de una versión, sacalo de la versión antes de publicar.",
   not_a_member: "Esa persona no es parte de la institución.",
   role_conflict: "Una persona no puede ser estudiante y docente de la misma institución.",
@@ -37,6 +38,11 @@ export const REASON_MESSAGES: Record<string, string> = {
   unknown_support: "Ese apoyo no está validado todavía.",
   invalid_needs: "Revisá los perfiles y apoyos elegidos: hay valores vacíos o repetidos.",
   invalid_interests: "Revisá los intereses: cada uno tiene que tener entre 1 y 60 letras y no puede repetirse.",
+  invalid_interface: "Elegí cómo se le muestra la pantalla al estudiante: estándar, con la mirada o con la voz.",
+  invalid_role: "Ese rol no es válido. Elegí uno de la lista.",
+  invalid_code: "El código de la institución no es válido. Usá de 3 a 32 letras minúsculas, números o guiones.",
+  invalid_institution_kind: "El tipo de institución no es válido: tiene que ser una escuela o una demo.",
+  invalid_institution_shape: "Una demo necesita vencimiento y dueño; una escuela no lleva ninguno de los dos.",
   invalid_students: "Elegí entre 1 y 200 estudiantes de la misma institución.",
   invalid_note: "Escribí la nota: tiene que tener entre 1 y 5000 caracteres.",
   not_author: "Solo quien escribió la nota puede cambiarla.",

@@ -7,9 +7,12 @@ import {
   enrollStudent,
   listGroupStudents,
   restoreStudent,
+  setStudentInterface,
   unenrollStudent,
   updateStudent,
 } from "@/lib/server/repos/students";
+import { studentHome } from "@/lib/server/repos/student";
+import { setStudentNeeds } from "@/lib/server/repos/needs";
 import { createGroup, createSchool } from "../factories";
 import { createLoggedInStudent, createStudent as makeStudent } from "../factories/students";
 
@@ -87,6 +90,27 @@ describe("repos of students", () => {
     const restored = await restoreStudent(teacher.client, student.id, archived.revision);
     expect(restored.revision).toBe(archived.revision + 1);
     expect((await listGroupStudents(teacher.client, group.id)).total).toBe(1);
+  });
+
+  it("sets the accessibility interface of a student, apart from the profile, and the student sees it", async () => {
+    const { admin, teacher, group } = await schoolWithGroup();
+    const student = await makeStudent(teacher.client, group.id);
+    const logged = await createLoggedInStudent(admin, student);
+    expect((await studentHome(logged.client)).interface).toBe("standard");
+
+    // A motor profile does not choose the interface (it used to derive gaze).
+    await setStudentNeeds(teacher.client, student.id, { profiles: ["motor"], supports: [], interests: [], opId: randomUUID() });
+    expect((await studentHome(logged.client)).interface).toBe("standard");
+
+    const set = await setStudentInterface(teacher.client, student.id, { interface: "gaze", revision: 1 });
+    expect(set).toEqual({ id: student.id, revision: 2 });
+    expect((await studentHome(logged.client)).interface).toBe("gaze");
+    // The same value does not move the revision; a stale one is CONFLICT; a value outside the three is refused by the schema.
+    expect(await setStudentInterface(teacher.client, student.id, { interface: "gaze", revision: 2 })).toEqual(set);
+    await expect(setStudentInterface(teacher.client, student.id, { interface: "voice", revision: 1 })).rejects.toMatchObject({ code: "CONFLICT" });
+    // Taking motor off the profile does not take gaze off the student.
+    await setStudentNeeds(teacher.client, student.id, { profiles: [], supports: [], interests: [], opId: randomUUID(), revision: 1 });
+    expect((await studentHome(logged.client)).interface).toBe("gaze");
   });
 
   it("enrolls a student in a second group and unenrolls them from the first", async () => {

@@ -7,7 +7,7 @@ import type { CallsOf } from "./types";
 // How to call the operations over a student's needs, notes and consents (T1.3a, T1.3b).
 
 type SensitiveRpc =
-  | "set_student_needs" | "get_student_needs" | "get_group_needs" | "list_student_need_events" | "list_student_notes"
+  | "set_student_needs" | "set_student_interface" | "get_student_needs" | "get_group_needs" | "list_student_need_events" | "list_student_notes"
   | "create_student_note" | "update_student_note" | "archive_student_note" | "list_student_consents" | "record_consent"
   | "revoke_consent";
 
@@ -35,6 +35,10 @@ export const SENSITIVE_CALLS: CallsOf<SensitiveRpc> = {
   set_student_needs: async (s) => ({
     args: { p_student_id: (await freshStudent(s)).id, p_profiles: ["adhd"], p_supports: [], p_interests: [], p_op_id: randomUUID() },
   }),
+  set_student_interface: async (s) => {
+    const student = await freshStudent(s);
+    return { args: { p_student_id: student.id, p_interface: "gaze", p_revision: student.revision } };
+  },
   get_student_needs: async (s) => {
     const id = await withNeeds(s);
     return { args: { p_student_ids: [id] }, listing: true, target: id };

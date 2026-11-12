@@ -11,14 +11,19 @@ export const Username = z
   .toLowerCase()
   .regex(/^[a-z0-9][a-z0-9._-]{1,39}$/);
 
+/** The accessibility setting of a student: which tools the screen offers. The staff chooses it; it is not derived from the profile. */
+export const STUDENT_INTERFACES = ["standard", "gaze", "voice"] as const;
+export const StudentInterface = z.enum(STUDENT_INTERFACES);
+export type StudentInterface = z.infer<typeof StudentInterface>;
+
 export const Student = z.object({
   id: Id,
   institutionId: Id,
   displayName: DisplayName,
   username: Username,
   userId: Id.nullable(),
-  // Derived from needs (sensitive for staff): only the student reads their own, in StudentHome.
-  interface: z.enum(["standard", "gaze", "voice"]),
+  // An accessibility setting the staff picks (api.set_student_interface), independent of the profile (T1.F8). The student reads their own, in StudentHome.
+  interface: StudentInterface,
   archivedAt: Timestamp.nullable(),
   revision: Revision,
 });

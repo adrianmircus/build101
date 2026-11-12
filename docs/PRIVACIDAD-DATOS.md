@@ -112,7 +112,7 @@ Es el estudiante. Nombre y usuario son personales; no son sensibles.
 |---|---|---|---|
 | `display_name`, `username` | borra | no queda | Nombre y usuario de login: identifican. |
 | `user_id` | borra | no queda | Apunta a su cuenta de Auth, que T9.5 borra aparte. |
-| `interface` | borra | no queda | Modo de respuesta (mirada, dictado o escritura): permite deducir el perfil. |
+| `interface` | borra | no queda | Ajuste de accesibilidad (estándar, mirada o voz) que elige el staff; ya no se deriva del perfil (T1.F8). Sigue siendo del estudiante: se borra con él. |
 | `archived_at` | borra | no queda | Dice cuándo dejó de cursar. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | borra | no queda | Identificadores y fechas de la fila, sin dato propio. |
 

@@ -73,8 +73,8 @@ select is(pg_temp.as_service($$ select api.internal_create_institution('Liceo A'
   pg_temp.id('instA')::text, 'the same code with the same data returns the same institution');
 select is(pg_temp.as_service($$ select api.internal_create_institution('Otro nombre', 't1-2a-liceo-a', 'school') $$) ->> 'error',
   'P0001 CONFLICT op_key_reused', 'the same code with other data is CONFLICT op_key_reused');
-select is(left(pg_temp.as_service($$ select api.internal_create_institution('Demo', 't1-2a-bad', 'sandbox') $$) ->> 'error', 5),
-  '23514', 'a sandbox needs an owner and an expiry (the table check answers)');
+select is(pg_temp.as_service($$ select api.internal_create_institution('Demo', 't1-2a-bad', 'sandbox') $$) ->> 'error',
+  'P0001 INVALID invalid_institution_shape', 'a sandbox needs an owner and an expiry (the RPC answers before the table check)');
 select is(pg_temp.as_service(format($$ select api.internal_create_institution('Demo', 't1-2a-demo', 'sandbox', now() + interval '1 day', %L) $$, gen_random_uuid())) ->> 'error',
   'P0001 NOT_FOUND not_found', 'a sandbox owner that is not an app user is NOT_FOUND');
 insert into ids (k, id) select 'instS', (pg_temp.as_service(format(
@@ -125,8 +125,8 @@ select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L
   'P0001 NOT_FOUND not_found', 'a membership in an unknown institution is NOT_FOUND');
 select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'teacher') $$, pg_temp.id('instA'), gen_random_uuid())) ->> 'error',
   'P0001 NOT_FOUND not_found', 'a membership for an unknown user is NOT_FOUND');
-select is(left(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'janitor') $$, pg_temp.id('instA'), pg_temp.id('owner'))) ->> 'error', 5),
-  '23514', 'an unknown role is refused by the table check');
+select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'janitor') $$, pg_temp.id('instA'), pg_temp.id('owner'))) ->> 'error',
+  'P0001 INVALID invalid_role', 'an unknown role is INVALID invalid_role, not a table check');
 
 -- A person is not a student and staff in the same institution, whichever side comes second.
 select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'student') $$, pg_temp.id('instA'), pg_temp.id('owner'))) ->> 'error',

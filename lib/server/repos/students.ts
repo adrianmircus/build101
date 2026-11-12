@@ -1,5 +1,6 @@
 import "server-only";
 import type { Written } from "@/lib/domain/common";
+import type { StudentInterface } from "@/lib/domain/students/entities";
 import type { GroupStudent } from "@/lib/domain/students/rpc";
 import type { Page } from "./groups";
 import { callRpc, type RpcDb } from "./rpc";
@@ -41,6 +42,22 @@ export async function updateStudent(db: RpcDb, studentId: string, changes: Stude
     p_revision: changes.revision,
     p_display_name: changes.displayName,
     p_username: changes.username,
+  });
+}
+
+/**
+ * The accessibility setting of the student (what the screen offers: standard, gaze or voice). The staff picks it; it is not
+ * derived from the profile. `revision` is the student's: a stale one is CONFLICT; the same value does not move it.
+ */
+export async function setStudentInterface(
+  db: RpcDb,
+  studentId: string,
+  input: { interface: StudentInterface; revision: number },
+): Promise<Written> {
+  return callRpc(db, "set_student_interface", {
+    p_student_id: studentId,
+    p_revision: input.revision,
+    p_interface: input.interface,
   });
 }
 

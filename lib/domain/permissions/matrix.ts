@@ -49,6 +49,7 @@ const STUDENTS: Operation[] = [
 
 const SENSITIVE: Operation[] = [
   op({ rpc: "set_student_needs", ticket: "T1.3a", allow: NEEDS }),
+  op({ rpc: "set_student_interface", ticket: "T1.F8", allow: NEEDS, note: "Ajuste de accesibilidad que elige el staff; no se deriva del perfil." }),
   op({ rpc: "get_student_needs", ticket: "T1.3a", allow: NEEDS, note: "Auditada." }),
   op({ rpc: "get_group_needs", ticket: "T1.3a", allow: NEEDS, note: "Auditada." }),
   op({ rpc: "list_student_need_events", ticket: "T1.3a", allow: NEEDS, note: "Auditada." }),
