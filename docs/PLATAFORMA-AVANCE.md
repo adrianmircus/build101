@@ -116,7 +116,7 @@ El 12/11/2026 el usuario eligió las recomendaciones del diseño (`docs/diseno/f
 | T2.5c | Pruebas de la fase 1 con cuentas canónicas | backend (Sonnet) | Mergeado |
 | T2.8 | Puente de la sesión vieja: se borran las cuentas de demo | backend (Sonnet) | Mergeado |
 | T2.10 | Recorridos de punta a punta con Supabase local y Mailpit | frontend (Sonnet) | Mergeado |
-| T2.F1 a T2.F3 | Arreglos de las rondas de cierre de Codex | Sonnet | Mergeados |
+| T2.F1 a T2.F6 | Arreglos de las seis rondas de cierre de Codex | Sonnet | Mergeados |
 
 ### Decisiones de la fase
 
@@ -124,6 +124,12 @@ El 12/11/2026 el usuario eligió las recomendaciones del diseño (`docs/diseno/f
 - **Modelo de amenazas en el esquema `auth`:** entra lo que GoTrue hace por pedidos públicos y lo que hacen nuestros servicios. El DML del dueño sobre `auth.sessions`, `auth.refresh_tokens`, credenciales y registros de sesión queda fuera, porque quien escribe ahí ya puede leer todo o crear sesiones.
 - **El QR no alcanza para entrar:** completa el colegio y el usuario; la contraseña se pide siempre.
 - **El dictado y los comandos de voz son solo de staff** hasta la fase 4, cuando el estudiante real tenga prácticos.
+
+### Cierre
+
+Revisión de cierre de Codex en seis rondas (`docs/revisiones/fase-2-cierre-codex.md`), con 25 hallazgos y los arreglos T2.F1 a T2.F6. Veredicto de la sexta: «fase lista para push». Quedan para después dos mejoras de pruebas (F2-24 y F2-25: recorridos de navegador para el borrado de la contraseña en la invitación y para el cierre fallido al cambiar de tarjeta).
+
+Recorrido en el navegador con el build de producción y Supabase local: aceptar la invitación del primer admin, crear cuentas en el panel, imprimir tarjetas, entrar como estudiante, salir y la demo guiada, sin errores de consola ni del servidor.
 
 ### Pendiente con el usuario
 

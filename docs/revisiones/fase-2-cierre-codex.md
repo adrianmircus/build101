@@ -225,3 +225,34 @@ El estado completo queda así:
 | F2-22 | Parcialmente abierto para el fragmento vacío. |
 
 Pasaron ambos chequeos de TypeScript sin emitir archivos y el lint de los archivos revisados de T2.F5. Las reproducciones usaron código real y dependencias simuladas en memoria. No ejecuté build, pgTAP, integración ni Playwright: demo guiada, accesibilidad e impresión tienen revisión de código, sin validación nueva de navegador en esta ronda. El árbol de trabajo sigue limpio.
+
+## Ronda 6
+
+**Veredicto: fase lista para push.** No encontré un bloqueante nuevo con el criterio de daño real indicado.
+
+1. **F2-25 — Baja — Se puede hacer después: la prueba de F2-23 no comprueba el bloqueo en pantalla.**  
+   **Dónde:** [useStudentLogin.test.ts:80](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/useStudentLogin.test.ts:80) y [CardLanding.tsx:53](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/CardLanding.tsx:53).  
+   **Escenario:** la prueba comprueba `hasUnclosed()` y llama directamente a `closePreviousSession()`. Seguiría pasando si se eliminara de `CardLanding` la condición que impide mostrar B, o si se desconectara el botón de reintento. La implementación actual sí conecta esas piezas correctamente.  
+   **Cambiaría:** agregar un recorrido que demore el login de A, abra B y haga fallar el logout; comprobar que B no aparece, que otro fallo mantiene el bloqueo y que el reintento exitoso muestra B sin sesión de A. No frena el cierre.
+
+T2.F6 cierra los tres escenarios pendientes:
+
+- **F2-23:** un logout fallido conserva la marca de sesión sin cerrar; la tarjeta nueva espera y ofrece reintentar.
+- **F2-13:** las filas quedan congeladas antes de esperar `createGroup`. Si después se pierde la respuesta de creación, conservan usuarios, slots y clave para resolver el mismo intento.
+- **F2-22:** un `hashchange` explícito hacia vacío olvida el token anterior e invalida el formulario. La lectura inicial después de limpiar la barra sigue conservando el token necesario.
+
+No identifiqué una regresión bloqueante introducida por esos cambios.
+
+| Anteriores | Estado |
+|---|---|
+| F2-1 y F2-2 | Cerrados por la exclusión explícita del modelo de amenazas. |
+| F2-3 a F2-8, F2-10 a F2-12, F2-14 a F2-16 | Cierres conservados; sin regresiones identificadas. |
+| F2-9 | Pendiente aceptado para T1.0; no bloqueante. |
+| F2-13 | Cerrado con T2.F6. |
+| F2-17 a F2-21 | Correcciones conservadas; F2-23 completa la protección del cambio de QR. |
+| F2-22 y F2-23 | Cerrados con T2.F6. |
+| F2-24 | Sigue pendiente la cobertura real de ambos formularios; se puede hacer después. |
+
+Revisé el diff contra `plataforma/fase-1`, excluyendo `docs/diseno`. Pasaron ambos chequeos de TypeScript y **1.044 pruebas unitarias**, incluidas las 55 dirigidas a T2.F6. El lint del ticket pasó sin errores, con dos advertencias de dependencias de efectos en `CardLanding`.
+
+No ejecuté build, pgTAP, integración ni Playwright. La demo guiada, accesibilidad e impresión tuvieron revisión de código y pruebas existentes, sin validación nueva de navegador. No modifiqué archivos; el árbol continúa limpio.
