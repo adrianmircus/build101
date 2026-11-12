@@ -505,7 +505,7 @@ Tandas. Cada tanda tiene a lo sumo un ticket con migraciones (turno de base) y n
 | 1 | T2.7 sesión vigente y límites | T2.1 sesión en el proxy, T2.4 login del profe e invitación, T2.6a login del estudiante |
 | 2 | T2.3 invitaciones | T2.9 panel de la institución, T2.6b tarjetas |
 | 3 | T2.5a cuentas de estudiantes (SQL) | T2.2 comando de administración |
-| 4 | | T2.5b servicios de cuentas, T2.8 puente de la sesión vieja |
+| 4 | | T2.5b servicios de cuentas, T2.5c pruebas de la fase 1 con cuentas canónicas, T2.8 puente de la sesión vieja |
 
 ```
 T2.1 · La sesión en el proxy y el actor
@@ -626,9 +626,8 @@ Archivos: supabase/migrations/20261114130000_t2_5a_student_accounts.sql (incluye
   supabase/tests/030_reasons.test.sql, supabase/tests/006_inventory.test.sql, lib/domain/errors/reasons.ts,
   lib/domain/permissions/erasure.ts, lib/domain/permissions/tables.ts, docs/PRIVACIDAD-DATOS.md,
   tests/integration/races/access-cards.test.ts, tests/integration/races/provisioning.test.ts, tests/factories/** y
-  tests/integration/support/** (el login de estudiante de las pruebas pasa por el bind, así sigue leyendo datos), y los archivos pgTAP y de
-  integración de la fase 1 que hoy apagan student_auth_link_guard: sus cuentas de estudiante pasan a la forma canónica y
-  la guardia queda prendida en toda la suite, también en tests/integration/setup/global.ts.
+  tests/integration/support/** (el login de estudiante de las pruebas pasa por el bind, así sigue leyendo datos). Los
+  archivos de la fase 1 que apagan student_auth_link_guard los arregla T2.5c.
 Criterios: las RPC de «Cuentas de estudiantes» con las reglas comunes; dos emisiones a la vez del mismo estudiante
   terminan con una sola tarjeta activa y la credencial de la última; issue_access_cards borra las sesiones del
   estudiante; internal_get_student_login es la única que devuelve el hash, y solo a service_role; remember concurrente
@@ -655,6 +654,18 @@ Archivos: scripts/admin/institution.ts, scripts/admin/reconcile.ts (stub hasta T
   (F2C-87), tests/integration/admin/institution.test.ts.
 Criterios: crea la institución y la invitación del admin y muestra el enlace solo en la terminal; repetirlo con el
   mismo código no crea otra; pide confirmación si apunta a una URL que no es local.
+```
+
+```
+T2.5c · Pruebas de la fase 1 con cuentas canónicas
+Agente: backend          Tanda: 4        Depende de: T2.5a
+Turno de base: no
+Objetivo: toda la suite corre con student_auth_link_guard prendida, como producción.
+Archivos: los archivos pgTAP de supabase/tests/ que hoy apagan student_auth_link_guard (salvo 040 y 043), los de
+  tests/integration que vinculan cuentas comunes a estudiantes, tests/integration/setup/global.ts.
+Criterios: ningún archivo apaga la guardia; las cuentas de estudiante de las pruebas tienen la forma canónica; las
+  pruebas de la fase 1 que comprueban rechazos (una persona staff y estudiante, dos estudiantes con una cuenta) siguen
+  comprobando lo mismo; toda la suite en verde.
 ```
 
 ```
