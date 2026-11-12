@@ -307,7 +307,7 @@ Todas en el esquema `api`, `SECURITY DEFINER`, con `search_path = ''`, devuelven
 | `remove_exercise(p_exercise_id, p_revision)` | T1.4a |
 | `reorder_exercises(p_assessment_id, p_revision, p_exercise_ids)` | T1.4a |
 | `create_version(p_assessment_id, p_config, p_answer_mode, p_op_key, p_base_version_id = null)` | T1.4b (firma de T1.F3) |
-| `update_version_config(p_version_id, p_revision, p_config, p_answer_mode)` | T1.4b |
+| `update_version_config(p_version_id, p_revision, p_config, p_answer_mode)` | T1.4b, T1.F4 (cambiar la configuración o el modo pasa a `superseded` las generaciones running de la versión, limpia `current_generation_id` y la procedencia, y marca `stale` también si hay instrucciones editadas) |
 | `set_version_recipients(p_version_id, p_revision, p_student_ids, p_op_id)` | T1.4b |
 | `archive_version(p_version_id, p_revision)` | T1.4b |
 | `list_versions(p_assessment_id)` | T1.4b |
@@ -446,8 +446,8 @@ El protocolo, igual en todas las altas con `op_key`:
 
 - La fila guarda `op_key` y `op_identity`: el sha256 del texto de un `jsonb_build_array` con el nombre de la RPC y lo que define el alta, tal como era al crearla (un arreglo JSON, así ningún separador hace chocar dos entradas). Nunca se reconstruye desde la fila, que se puede editar después. Un `CHECK` exige las dos o ninguna.
 - `op_key` es único por institución (`<tabla>_op_key_key`). Reusarlo en otro recurso, o con otros datos, es `CONFLICT op_key_reused`; nunca una segunda fila.
-- La RPC autoriza y valida primero. Después toma `pg_advisory_xact_lock` de (RPC, institución, `op_key`), antes de cualquier lock de fila y antes de buscar, y busca bajo ese lock. La misma identidad devuelve el resultado original (`{ id, revision: 1 }`, o lo que diga la RPC), aunque la fila se haya editado, archivado o sacado después. Recién si no existe toma los locks de fila y escribe.
-- `app.op_key_frozen()` congela las dos columnas (`P0004`). Donde la identidad sale de texto libre que una supresión puede redactar (`assessments`, `assessment_exercises`, `versions`), la supresión en curso de esa institución puede ponerlas en nulo juntas al redactar ese texto; `groups` nunca. `publications_guard` ya congela las de una publicación, también dentro de una supresión.
+- La RPC autoriza y valida primero. Después toma `pg_advisory_xact_lock` de (RPC, institución, `op_key`), antes de cualquier lock de fila y antes de buscar, y busca bajo ese lock. La misma identidad devuelve el resultado original (`{ id, revision: 1 }`, o lo que diga la RPC), aunque la fila se haya editado, archivado o sacado después. Recién si no existe toma los locks de fila, valida las referencias que pueden cambiar (la materia habilitada de `create_group`, la unidad del programa de `add_exercise`) y escribe: la repetición de un alta nunca depende de ellas (T1.F4).
+- `app.op_key_frozen()` congela las dos columnas (`P0004`). En `assessments`, `assessment_exercises` y `versions` la identidad es un hash del texto tal como se creó, aunque después se edite: la supresión en curso de esa institución puede ponerlas en nulo juntas, sin mirar el contenido actual (ver «Seudónimos y supresiones»); `groups` nunca. `publications_guard` ya congela las de una publicación, también dentro de una supresión.
 - La prueba de carrera, con dos conexiones, comprueba que la segunda copia espera en el lock (`advisory`) y responde lo mismo. Sin el lock la segunda no espera, no ve la fila sin confirmar, inserta y choca con el índice: `23505` crudo.
 
 ### Una salida de la IA (C3)
@@ -579,6 +579,10 @@ Cómo se redacta lo inmutable (C9). Las filas de una versión compartida (evento
 - El modo se cierra con la transacción, y pasar la supresión a `done` lo cierra aunque la transacción siga.
 - Solo lo llama la RPC interna de supresión (T9.5, `service_role`). Ningún usuario puede fijar la marca de la transacción, y nadie tiene `EXECUTE` sobre las funciones de `app`.
 - `004_contract_redaction` lo prueba: fuera del modo no se reescribe nada; dentro, el evento compartido pierde al estudiante borrado y conserva al otro; una publicación solo cambia su contenido; un evento no cambia de tipo; `audit_log` no se toca; otra institución queda afuera; una RPC llamada como `authenticated` se niega a correr; `authenticated` no puede abrir el modo; una marca con otra transacción no abre nada; con la supresión terminada se vuelve a cerrar.
+
+La identidad de una alta (T1.F4). `op_key` y `op_identity` de `assessments`, `assessment_exercises` y `versions` son un hash del texto tal como se creó («Para Paula» editado a «Repaso» conserva el hash de «Para Paula»): con SHA256 se comprueban nombres candidatos. Regla: al suprimir a un estudiante se ponen en nulo `op_key` y `op_identity` de todos los prácticos, ejercicios y versiones de los grupos donde estuvo inscripto alguna vez, y de las versiones de las que fue destinatario, sin mirar el contenido actual. T9.5 lo hace dentro de `app.begin_erasure`, antes de borrar las inscripciones (son lo que dice en qué grupos estuvo), y `app.op_key_frozen` lo deja solo ahí. `groups` conserva la suya: el nombre del grupo no es de una persona. Las pruebas 015 y 016 recorren crear, editar y suprimir.
+
+En una versión compartida, T9.5 redacta además `data.recipients` de los eventos `recipients_changed`, no solo `added` y `removed`: la lista de destinatarios nombra (por id) al estudiante suprimido.
 
 Orden de una supresión (T9.5), para que lo que queda nunca sea personal:
 

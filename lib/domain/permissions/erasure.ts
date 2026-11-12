@@ -26,6 +26,12 @@ import { APP_TABLES, type AppTable } from "./tables";
 //   3. delete the Auth account with the admin API: that cascades app_users and memberships, and
 //      leaves account_provisioning.auth_user_id pointing at no account;
 //   4. only then move the erasure to 'done' and copy it out of the database.
+//
+// Operations of the creations (T1.F4): op_key and op_identity of assessments, assessment_exercises and
+// versions are a hash of the text as it was created. The erasure of a student nulls them on every row
+// of the groups where the student was ever enrolled (and on every version they received), whatever the
+// text says now, so it runs in step 2 before the enrollments are deleted. Groups keep theirs: a group
+// name is not personal.
 
 export type ErasureRule = "delete" | "unlink" | "redact" | "keep" | "by_version";
 // `nullifies` lists the columns of a kept or redacted row that go to NULL: the link to the student and
@@ -49,7 +55,11 @@ export const ERASURE_RULES = {
   consents: { rule: "delete", why: "Consentimientos del estudiante; se borran después de sus efectos." },
   files: { rule: "delete", why: "Formularios firmados e informes del estudiante: primero el objeto, después la fila." },
   version_recipients: { rule: "delete", why: "Dice qué versión recibió, lo que junto con la configuración revela su perfil." },
-  versions: { rule: "by_version", why: "Una versión individual es atribuible; una compartida responde a varios estudiantes. Si en una compartida se redacta la configuración, se ponen en nulo op_key y op_identity (sha256 de la configuración del alta)." },
+  versions: {
+    rule: "by_version",
+    why: "Una versión individual es atribuible; una compartida responde a varios estudiantes. op_key y op_identity (sha256 de la configuración del alta, tal como se creó) se ponen en nulo en toda versión de los grupos donde estuvo inscripto alguna vez y en toda de la que fue destinatario, sin mirar la configuración actual: editada a algo neutro sigue permitiendo comprobar nombres candidatos.",
+    nullifies: ["op_key", "op_identity"],
+  },
   version_exercises: { rule: "by_version", why: "Texto adaptado a su perfil cuando la versión es individual." },
   version_questions: { rule: "by_version", why: "Preguntas de mirada de su versión." },
   question_keys: { rule: "by_version", why: "Clave de las preguntas de su versión." },
@@ -65,8 +75,16 @@ export const ERASURE_RULES = {
   grades: { rule: "delete", why: "Sus notas." },
   group_analyses: { rule: "redact", why: "Se borra su parte del resultado y su etiqueta del mapa de seudónimos; el resto es del grupo." },
   operations: { rule: "redact", why: "El resultado del análisis de un grupo tiene su parte; un documento leído puede nombrarlo." },
-  assessment_exercises: { rule: "redact", why: "El original es del profe; si su texto nombra al estudiante, se redacta, y con él se ponen en nulo op_key y op_identity (sha256 del texto del alta)." },
-  assessments: { rule: "redact", why: "El tema y las instrucciones generales son texto libre del profe: si nombran al estudiante, se redactan, y con ellos se ponen en nulo op_key y op_identity (sha256 del texto del alta)." },
+  assessment_exercises: {
+    rule: "redact",
+    why: "El original es del profe; si su texto nombra al estudiante, se redacta. op_key y op_identity (sha256 del texto del alta, tal como se creó) se ponen en nulo en todo ejercicio de los grupos donde estuvo inscripto alguna vez, sin mirar el texto actual.",
+    nullifies: ["op_key", "op_identity"],
+  },
+  assessments: {
+    rule: "redact",
+    why: "El tema y las instrucciones generales son texto libre del profe: si nombran al estudiante, se redactan. op_key y op_identity (sha256 del texto del alta, tal como se creó) se ponen en nulo en todo práctico de los grupos donde estuvo inscripto alguna vez, sin mirar el texto actual.",
+    nullifies: ["op_key", "op_identity"],
+  },
   presets: { rule: "redact", why: "El nombre y la configuración son texto libre del profe (por ejemplo «Paula TDAH»): si nombran al estudiante, se redactan." },
   feedback_events: { rule: "delete", why: "Señales de uso por seudónimo: no hay justificación para tratarlas como disociadas." },
   audit_log: { rule: "keep", why: "Registro de accesos, cinco años. Sus ids ya no llevan a nadie." },

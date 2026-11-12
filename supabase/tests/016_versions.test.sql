@@ -5,7 +5,7 @@
 -- are tried as the owner of the table, expecting P0004: as authenticated the UPDATE would fail first on
 -- privileges (42501) and the test would pass without the guard. The whole file is rolled back.
 begin;
-select plan(202);
+select plan(223);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -538,6 +538,98 @@ select pg_temp.mk_asm('adm2', 'go_n', 'a_adm');
 select pg_temp.mk_ex('adm2', 'a_adm', 'k1', 'Texto');
 select is(pg_temp.cv('adm2', 'a_adm', pg_temp.cfg('"motor"', '', '')) ->> 'position', '1', 'an admin who also teaches go_n creates a version in it');
 select is(pg_temp.cv('teach', 'a_adm', pg_temp.cfg()) ->> 'error', 'P0001 NOT_FOUND not_found', 'a teacher of another group of the same institution cannot');
+
+-- ---------------------------------------------------------------------------------------------
+-- T1.F4 (F3-1): create, edit to neutral text, erase. The identity is a hash of the configuration AS
+-- CREATED (here an interest that names a student), so erasing a student nulls op_key and
+-- op_identity of every version of the groups where they were ever enrolled, and of every version
+-- they were a recipient of, whatever the configuration says now (erasure.ts, `nullifies`). The
+-- statements below are that rule. s5 was unenrolled before: "ever" counts.
+-- ---------------------------------------------------------------------------------------------
+create function pg_temp.forget_version_operations(p_student uuid) returns void language sql as $$
+  update app.versions v set op_key = null, op_identity = null
+   where v.assessment_id in (select a.id from app.assessments a
+                              where a.group_id in (select e.group_id from app.enrollments e where e.student_id = p_student))
+      or v.id in (select r.version_id from app.version_recipients r where r.student_id = p_student);
+$$;
+insert into ids (k, id) values ('kfv', gen_random_uuid());
+select pg_temp.keep('vp', pg_temp.cvk('teach', 'a2', 'kfv', pg_temp.cfg('"motor"', '', '"Paula"')));
+create temp table op_before (identity text);
+insert into op_before select v.op_identity from app.versions v where v.id = pg_temp.id('vp');
+select is(pg_temp.ucv('teach', 'vp', '1', pg_temp.cfg('"motor"', '', '"Ajedrez"')) ->> 'revision', '2', 'the version is edited to a neutral configuration');
+select is((select v.config -> 'interests' ->> 0 from app.versions v where v.id = pg_temp.id('vp')), 'Ajedrez', 'the configuration no longer names anyone ...');
+select is((select v.op_identity ~ '^[0-9a-f]{64}$' and v.op_identity = (select identity from op_before) and v.op_key = pg_temp.id('kfv') from app.versions v where v.id = pg_temp.id('vp')),
+  true, '... but the identity is still the hash of the one it was created with');
+select is((select count(*) from app.enrollments e where e.student_id = pg_temp.id('s5') and e.group_id = pg_temp.id('g_n')) > 0, true, 's5 was enrolled in g_n (and was unenrolled since)');
+select throws_ok(format('select pg_temp.forget_version_operations(%L)', pg_temp.id('s5')), 'P0004', null, 'outside an erasure the identity cannot be forgotten');
+insert into ids (k, id) values ('era_s', gen_random_uuid());
+insert into app.erasures (id, institution_id, kind, pseudonym_id)
+  select pg_temp.id('era_s'), pg_temp.id('i_n'), 'student', p.id from app.student_pseudonyms p where p.student_id = pg_temp.id('s5');
+select app.begin_erasure(pg_temp.id('era_s'));
+select lives_ok(format('select pg_temp.forget_version_operations(%L)', pg_temp.id('s5')), 'inside the erasure of s5 the rule runs');
+select is((select count(*) from app.versions v join app.assessments a on a.id = v.assessment_id
+            where a.group_id = pg_temp.id('g_n') and (v.op_key is not null or v.op_identity is not null)), 0::bigint,
+  'no version of g_n keeps its op_key or op_identity, edited or not (vp was edited to neutral text)');
+select is((select count(*) from app.versions v join app.assessments a on a.id = v.assessment_id
+            where a.group_id = pg_temp.id('go_n') and v.op_identity is not null), (select count(*) from app.versions v join app.assessments a on a.id = v.assessment_id where a.group_id = pg_temp.id('go_n')),
+  'negative: the versions of a group where s5 was never enrolled keep every identity');
+select is((select count(*) from app.versions v join app.assessments a on a.id = v.assessment_id where a.group_id = pg_temp.id('go_n')) > 0, true, 'and that group does have versions: the negative proves something');
+update app.erasures set status = 'done', completed_at = now() where id = pg_temp.id('era_s');
+select set_config('tiza.erasure', '', true);
+
+
+-- ---------------------------------------------------------------------------------------------
+-- T1.F4 (T14b-1, T14b-2): changing the configuration supersedes what is still running for the old
+-- one and clears what points at it, and edited instructions count as content that goes stale.
+-- The generations are seeded as the owner (T1.4d writes them).
+-- ---------------------------------------------------------------------------------------------
+create function pg_temp.seed_generation(p_version text, p_kind text, p_exercise text default null) returns uuid language plpgsql as $$
+declare
+  v_id uuid;
+begin
+  insert into app.generations (institution_id, version_id, kind, target_exercise_id, target_revision, op_key, subject_id, inputs,
+                               profiles_hash, profiles_revision, prompt_version, required_jobs)
+  values (pg_temp.id('i_n'), pg_temp.id(p_version), p_kind, case when p_exercise is null then null else (select ve.id from app.version_exercises ve where ve.version_id = pg_temp.id(p_version) and ve.exercise_id = pg_temp.id(p_exercise)) end,
+          1, gen_random_uuid(), 'math', '{}', repeat('a', 64), 'r1', 'p1', 1)
+  returning id into v_id;
+  return v_id;
+end $$;
+select pg_temp.keep('vq', pg_temp.cv('teach', 'a2', pg_temp.cfg('"motor"', '', '')));
+create temp table gens (k text primary key, id uuid);
+insert into gens select 'gv', pg_temp.seed_generation('vq', 'version');
+insert into gens select 'ge', pg_temp.seed_generation('vq', 'exercise', 'f1');
+update app.version_exercises ve set status = 'generating', current_generation_id = (select id from gens where k = 'ge'), written_by_generation_id = (select id from gens where k = 'gv')
+ where ve.version_id = pg_temp.id('vq') and ve.exercise_id = pg_temp.id('f1');
+update app.versions set current_generation_id = (select id from gens where k = 'gv'), status = 'generating' where id = pg_temp.id('vq');
+select is(pg_temp.ucv('teach', 'vq', '1', pg_temp.cfg('"motor"', '', '')) ->> 'revision', '1', 'the same configuration and mode change nothing ...');
+select is((select count(*) from app.generations g where g.version_id = pg_temp.id('vq') and g.status = 'running'), 2::bigint, '... and leave both generations running');
+select is(pg_temp.ucv('teach', 'vq', '1', pg_temp.cfg('"adhd"', '', '')) ->> 'revision', '2', 'a different configuration is saved');
+select is((select string_agg(g.status || ':' || (g.finished_at is not null)::text, ',' order by g.kind) from app.generations g where g.version_id = pg_temp.id('vq')), 'superseded:true,superseded:true',
+  'both generations (version and exercise) are superseded, with their end date');
+select is((select concat_ws('|', v.current_generation_id is null, v.status, v.stale) from app.versions v where v.id = pg_temp.id('vq')), 't|empty|t',
+  'the version points at no generation, its status is recalculated and it is stale (it had a generation in force)');
+select is((select concat_ws('|', ve.current_generation_id is null, ve.written_by_generation_id is null, ve.status) from app.version_exercises ve
+            where ve.version_id = pg_temp.id('vq') and ve.exercise_id = pg_temp.id('f1')), 't|t|pending',
+  'the exercise lost its generation and its provenance, and is no longer generating');
+-- The conditions the protocol of outputs (C3) checks: no generation in force and none running, so an
+-- output of the old configuration that arrives now is stored as obsolete and never applied.
+select is((select count(*) from app.generations g
+             where g.version_id = pg_temp.id('vq') and (g.status = 'running'
+                or g.id in (select v.current_generation_id from app.versions v where v.id = g.version_id)
+                or g.id in (select ve.current_generation_id from app.version_exercises ve where ve.version_id = g.version_id)
+                or g.id in (select ve.written_by_generation_id from app.version_exercises ve where ve.version_id = g.version_id))),
+  0::bigint, 'no generation of the old configuration is running or in force for any target: its output would not apply');
+select throws_ok(format('update app.generations set status = ''running'', finished_at = null where id = %L', (select id from gens where k = 'gv')), 'P0004', null,
+  'and a superseded generation never reopens');
+
+-- T14b-2: instructions edited by a person are content too.
+select pg_temp.keep('vi', pg_temp.cv('teach', 'a2', pg_temp.cfg('"motor"', '', '"Uno"')));
+select pg_temp.keep('vcc', pg_temp.cv('teach', 'a2', pg_temp.cfg('"motor"', '', '"Dos"')));
+update app.versions set instructions_revision = 2, general_instructions = 'Instrucciones editadas' where id = pg_temp.id('vi');
+select is(pg_temp.ucv('teach', 'vi', '1', pg_temp.cfg('"adhd"', '', '"Uno"')) ->> 'revision', '2', 'a version with only pending exercises but edited instructions: the configuration changes');
+select is((select v.stale from app.versions v where v.id = pg_temp.id('vi')), true, 'and it is stale: the edited instructions were written for the old one');
+select is(pg_temp.ucv('teach', 'vcc', '1', pg_temp.cfg('"adhd"', '', '"Dos"')) ->> 'revision', '2', 'control: the same change on a version with nothing written');
+select is((select v.stale from app.versions v where v.id = pg_temp.id('vcc')), false, 'leaves it not stale');
 
 select * from finish();
 rollback;
