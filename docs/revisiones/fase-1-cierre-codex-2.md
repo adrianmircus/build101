@@ -51,3 +51,23 @@ El resto de lo señalado en ronda 3 queda corregido. No encontré otra alta/medi
 Barrido de las 45 tablas y comprobación en PostgreSQL **READ ONLY**: las 52 funciones de triggers coinciden con las migraciones. Evalué las guardas sobre variables sintéticas, sin UPDATE ni modificaciones del worktree; no repetí las suites informadas.
 
 Veredicto: fase no lista
+
+## Ronda 5
+
+**F1-4 sigue abierta: queda un rodeo de severidad media en `students.user_id`.**
+
+Para un estudiante S vinculado a A:
+
+1. Como propietario, poner su aprovisionamiento en `status = 'deleted', student_id = NULL`: las guardias actuales lo permiten.
+2. Borrar Auth A: la cascada deja `S.user_id = NULL`.
+3. Llamar a `internal_link_student_user(S, B)`, fuera del modo supresión, con B libre y sin conflicto de roles.
+
+La [nueva guardia](supabase/migrations/20261113100000_t1_fix11.sql:20) ya no encuentra la memoria porque busca por `student_id`. El [RPC](supabase/migrations/20261112130000_t1_2b_fix.sql:60) obtiene `v_status = NULL` y continúa; el trigger posterior actualiza cero filas. **S termina vinculado a B aunque el aprovisionamiento conserve A.** Requiere la escritura privilegiada inicial, como los hallazgos anteriores de F1-4.
+
+Hay que conservar esa memoria asociada mientras exista S y rechazar la vinculación si falta aprovisionamiento. Agregar la regresión completa pasando por el RPC.
+
+**Invitaciones queda resuelta.** Tampoco encontré un bloqueo nuevo para borrar Auth y después el estudiante, cumpliendo los pasos previos de supresión. No identifiqué otra alta/media en el diff.
+
+Verificación exclusivamente `READ ONLY`: evalué las guardias vigentes con registros sintéticos y contrasté catálogo y fuentes —212 funciones coinciden—. No ejecuté escrituras ni repetí las suites informadas; worktree intacto.
+
+Veredicto: fase no lista
