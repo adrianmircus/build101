@@ -31,6 +31,9 @@ Lo que Codex encontró una y otra vez en los tickets de base (T1.2a, T1.2b). Tod
 - Las validaciones de longitud, formato y rango no dejan pasar `NULL`: en SQL, `length(NULL) < 3` es `NULL` y no entra al `IF`. Los nulos se rechazan explícitamente con `INVALID`.
 - Las columnas que identifican a quién pertenece una fila (`user_id`, `student_id`, `institution_id`, `publication_id`…) son inmutables, con una guardia que lo hace cumplir.
 
+- Los largos en SQL se cuentan como los cuenta zod 4, por puntos de código: `char_length()`. Nada de contar unidades UTF-16; si no, un texto con emojis que el dominio acepta lo rechaza la base, o al revés.
+- Todo `jsonb` que va a una copia publicada o a un DTO se reconstruye hoja por hoja con su tipo (`jsonb_typeof`), nunca se copia un valor o un subárbol tal cual.
+
 ## Pruebas
 
 - Ninguna prueba se borra para entrar en el límite de líneas: se parte el archivo.
