@@ -429,12 +429,23 @@ insert into audited (sig) values
   ('api.list_student_need_events(uuid,integer,integer)'::regprocedure::text),
   ('api.list_student_notes(uuid)'::regprocedure::text), ('api.list_student_consents(uuid)'::regprocedure::text),
   ('api.get_version(uuid)'::regprocedure::text), ('api.get_attempt_for_grading(uuid)'::regprocedure::text);
+-- Phase 2 (T2.3): RPCs a teacher of the group cannot call here: the admin of the institution's panel (invitations, staff, summary)
+-- and the acceptance of an invitation, which belongs to whoever has the invited email. None of them reads a student, and
+-- 042_invitations.test.sql checks their closed keys, their refusals for every role and what they write.
+create temp table elsewhere (sig text primary key);
+insert into elsewhere (sig) values
+  ('api.create_invitation(uuid,text,text,bytea,uuid)'::regprocedure::text), ('api.resend_invitation(uuid,integer,bytea)'::regprocedure::text),
+  ('api.revoke_invitation(uuid,integer)'::regprocedure::text), ('api.mark_invitation_sent(uuid,integer)'::regprocedure::text),
+  ('api.list_invitations(uuid)'::regprocedure::text), ('api.list_institution_staff(uuid)'::regprocedure::text),
+  ('api.get_institution_summary(uuid)'::regprocedure::text), ('api.list_enabled_subjects()'::regprocedure::text),
+  ('api.accept_invitation(bytea)'::regprocedure::text);
 select is((select string_agg(p.oid::regprocedure::text, ',' order by p.oid::regprocedure::text)
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'api' and has_function_privilege('authenticated', p.oid, 'execute')
               and p.proname not like 'student\_%'
               and p.oid::regprocedure::text not in (select a.sig from answers a)
-              and p.oid::regprocedure::text not in (select au.sig from audited au)), null::text,
+              and p.oid::regprocedure::text not in (select au.sig from audited au)
+              and p.oid::regprocedure::text not in (select e.sig from elsewhere e)), null::text,
   'every RPC an authenticated user can run, by full signature, is either called here or one of the audited reads: add the call of the ticket that adds a new one');
 -- And the guard itself: it flags an overload that nobody called (the control creates one, as the owner, and grants it).
 create function api.list_my_institutions(p_extra integer) returns jsonb language sql security definer set search_path = '' as $$ select '{}'::jsonb $$;
@@ -444,7 +455,8 @@ select is((select string_agg(p.oid::regprocedure::text, ',')
             where n.nspname = 'api' and has_function_privilege('authenticated', p.oid, 'execute')
               and p.proname not like 'student\_%'
               and p.oid::regprocedure::text not in (select a.sig from answers a)
-              and p.oid::regprocedure::text not in (select au.sig from audited au)), 'api.list_my_institutions(integer)',
+              and p.oid::regprocedure::text not in (select au.sig from audited au)
+              and p.oid::regprocedure::text not in (select e.sig from elsewhere e)), 'api.list_my_institutions(integer)',
   'control: a new overload of a covered RPC is flagged, even though its name was called');
 
 select * from finish();

@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { AppError } from "@/lib/errors";
 import { createSessionClient } from "../db/client";
 import { unavailable } from "../unavailable";
 
@@ -26,18 +27,68 @@ export async function getClaims(): Promise<SessionClaims | null> {
   return { userId: claims.data.sub, sessionId: claims.data.session_id ?? null, email: claims.data.email ?? null };
 }
 
-/** signInWithPassword; null when Auth refuses the pair. Leaves the session cookies. */
-export async function signInWithPassword(email: string, password: string, options?: { signal?: AbortSignal }): Promise<SessionClaims | null> {
-  return unavailable(email, password, options);
+// Auth answers «wrong credentials», «expired link» or «weak password» with a 4xx. A network failure, a timeout, a 429 or a 5xx
+// is not an answer about the person: it is an outage, and it never counts as a wrong password. The texts carry nothing that
+// was sent, so they can reach the screen as they are.
+const OUTAGE = "No pudimos completar esto ahora. Probá de nuevo en un momento.";
+const BUSY = "Hubo muchos pedidos seguidos. Probá de nuevo en un minuto.";
+
+type AuthFailure = { status?: number | undefined; name?: string | undefined };
+
+function isOutage(error: AuthFailure): boolean {
+  return error.status === undefined || error.status === 0 || error.status === 429 || error.status >= 500;
 }
 
+function outage(error: AuthFailure): AppError {
+  return new AppError("UNAVAILABLE", error.status === 429 ? BUSY : OUTAGE);
+}
+
+const AccessClaims = z.object({ session_id: z.guid().optional() });
+
+/** The claims of the session a sign in just opened. */
+function claimsOf(session: { access_token: string; user: { id: string; email?: string | undefined } }): SessionClaims {
+  const payload = Buffer.from(session.access_token.split(".")[1] ?? "", "base64url").toString("utf8");
+  const claims = AccessClaims.safeParse(JSON.parse(payload));
+  return { userId: session.user.id, sessionId: claims.success ? (claims.data.session_id ?? null) : null, email: session.user.email ?? null };
+}
+
+/** The answer of Auth, or an outage if the signal fires first: a login that outlives its deadline is dropped. */
+async function until<T>(work: PromiseLike<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return work;
+  if (signal.aborted) throw new AppError("UNAVAILABLE", OUTAGE);
+  return new Promise<T>((resolve, reject) => {
+    signal.addEventListener("abort", () => reject(new AppError("UNAVAILABLE", OUTAGE)), { once: true });
+    work.then(resolve, reject);
+  });
+}
+
+/** signInWithPassword; null when Auth refuses the pair (wrong email or password, or an account that cannot sign in). Leaves the session cookies. */
+export async function signInWithPassword(email: string, password: string, options?: { signal?: AbortSignal }): Promise<SessionClaims | null> {
+  const client = await createSessionClient();
+  const { data, error } = await until(client.auth.signInWithPassword({ email, password }), options?.signal);
+  if (error) {
+    if (isOutage(error)) throw outage(error);
+    return null;
+  }
+  return data.session ? claimsOf(data.session) : null;
+}
+
+/** Closes this session (local), the others of the same person (others) or all of them (global). With no session there is nothing to close. */
 export async function signOut(scope: SignOutScope): Promise<void> {
-  return unavailable(scope);
+  const client = await createSessionClient();
+  const { error } = await client.auth.signOut({ scope });
+  if (error && error.name !== "AuthSessionMissingError" && isOutage(error)) throw outage(error);
 }
 
 /** verifyOtp({ type: "recovery", token_hash }); false when the link expired or was already used. Leaves a session. */
 export async function verifyRecoveryOtp(tokenHash: string): Promise<boolean> {
-  return unavailable(tokenHash);
+  const client = await createSessionClient();
+  const { data, error } = await client.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
+  if (error) {
+    if (isOutage(error)) throw outage(error);
+    return false;
+  }
+  return data.session !== null;
 }
 
 /** The tokens of a session that our server obtained without cookies (see exchangeMagicLink in repos/admin/auth-users.ts). */
@@ -51,12 +102,25 @@ export async function setSessionTokens(tokens: SessionTokens): Promise<void> {
   return unavailable(tokens);
 }
 
-/** updateUser({ password }) for the current session. */
+/** updateUser({ password }) for the current session. A password Auth does not accept is INVALID; with no session, FORBIDDEN. */
 export async function updatePassword(password: string): Promise<void> {
-  return unavailable(password);
+  const client = await createSessionClient();
+  const { error } = await client.auth.updateUser({ password });
+  if (!error) return;
+  if (error.status === 401 || error.status === 403 || error.name === "AuthSessionMissingError") {
+    throw new AppError("FORBIDDEN", "Tu sesión terminó. Volvé a entrar.");
+  }
+  if (isOutage(error)) throw outage(error);
+  throw new AppError("INVALID", "La contraseña no sirve: elegí otra de 10 caracteres como mínimo que no sea la que usabas.");
 }
 
-/** resetPasswordForEmail: Auth sends the mail (template supabase/templates/recovery.html). */
+/**
+ * resetPasswordForEmail: Auth sends the mail (template supabase/templates/recovery.html). An answer of 4xx (a mail that was
+ * sent a moment ago, a limit of Auth) is dropped on purpose: whether it fails depends on the account existing, and the person
+ * always reads the same text. An outage is thrown.
+ */
 export async function requestPasswordReset(email: string, redirectTo: string): Promise<void> {
-  return unavailable(email, redirectTo);
+  const client = await createSessionClient();
+  const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error && error.status !== 429 && isOutage(error)) throw outage(error);
 }

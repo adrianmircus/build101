@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readRows } from "../support/db";
 import type { Scene } from "./fixtures";
 import type { CallsOf } from "./types";
 
 // How to call the operations of phase 2 (invitations, student accounts, attempt limits) over a scene.
 // They are marked since: 2 in the matrix, so the phase 1 run skips them until T2.3, T2.5a and T2.7 land.
-// Each ticket refines its calls (a real invitation, a card to issue) when it implements the RPC.
+// Each ticket refines its calls (a real invitation, a card to issue) when it implements the RPC: T2.3 did it for the invitations.
 
 type AccountsRpc =
   | "internal_revoke_user_sessions"
@@ -40,14 +41,35 @@ const bytea = () => `\\x${hash()}`;
 const email = () => `invitada-${randomUUID().slice(0, 8)}@correo-de-prueba.invalid`;
 const key = (bucket: string) => `${bucket}:${hash()}`;
 
+/** The institutions where a call left an invitation: an invitation is never deleted but with its institution, and a revoked one is final, so the test removes them at the end (pgTAP files of phase 1 update every invitation of the table). */
+const scenesWithInvitations = new Set<string>();
+
+export async function purgeScenesWithInvitations(): Promise<void> {
+  const ids = [...scenesWithInvitations];
+  scenesWithInvitations.clear();
+  if (ids.length > 0) await readRows("delete from app.institutions where id = any(string_to_array($1, ',')::uuid[])", [ids.join(",")]);
+}
+
+/** A pending invitation of the scene, written as the owner of the tables (a sandbox cannot invite: its admin could not make one). */
+async function pendingInvitation(s: Scene): Promise<string> {
+  scenesWithInvitations.add(s.institution.id);
+  const rows = await readRows<{ id: string }>(
+    "insert into app.invitations (institution_id, email, role, token_hash, expires_at) values ($1, $2, 'teacher', decode($3, 'hex'), now() + interval '7 days') returning id",
+    [s.institution.id, email(), hash()],
+  );
+  const id = rows[0]?.id;
+  if (id === undefined) throw new Error("Falta la invitación de prueba.");
+  return id;
+}
+
 export const ACCOUNT_CALLS: CallsOf<AccountsRpc> = {
   internal_revoke_user_sessions: async (s) => ({ args: { p_user_id: s.owner.userId } }),
   internal_rate_limit_hit: async () => ({ args: { p_keys: [key("student_pair")], p_limits: ["10"], p_window_seconds: 900 } }),
   internal_rate_limit_clear: async () => ({ args: { p_keys: [key("student_pair")] } }),
   create_invitation: async (s: Scene) => ({ args: { p_institution_id: s.institution.id, p_email: email(), p_role: "teacher", p_token_hash: bytea(), p_op_key: randomUUID() } }),
-  resend_invitation: async () => ({ args: { p_invitation_id: randomUUID(), p_revision: 1, p_token_hash: bytea() } }),
-  revoke_invitation: async () => ({ args: { p_invitation_id: randomUUID(), p_revision: 1 } }),
-  mark_invitation_sent: async () => ({ args: { p_invitation_id: randomUUID(), p_revision: 1 } }),
+  resend_invitation: async (s) => ({ args: { p_invitation_id: await pendingInvitation(s), p_revision: 1, p_token_hash: bytea() } }),
+  revoke_invitation: async (s) => ({ args: { p_invitation_id: await pendingInvitation(s), p_revision: 1 } }),
+  mark_invitation_sent: async (s) => ({ args: { p_invitation_id: await pendingInvitation(s), p_revision: 1 } }),
   list_invitations: async (s) => ({ args: { p_institution_id: s.institution.id }, listing: true }),
   list_institution_staff: async (s) => ({ args: { p_institution_id: s.institution.id }, listing: true }),
   get_institution_summary: async (s) => ({ args: { p_institution_id: s.institution.id } }),

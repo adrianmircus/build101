@@ -32,3 +32,22 @@ export function authAdmin(timeoutMs: number = AUTH_FETCH_TIMEOUT_MS) {
   });
   return client.auth.admin;
 }
+
+/**
+ * A new client for ONE exchange of a token for a session (the magic link of a student), with the public key: no cookies, no
+ * session kept, no refresh and no `debug` (with it auth-js logs whole sessions), and the same cut of 5 seconds as `authAdmin`
+ * (F2C-80). It is never shared between operations, so the session of one student can never be left in the client of another.
+ * `timeoutMs` is only for tests.
+ */
+export function otpExchangeClient(timeoutMs: number = AUTH_FETCH_TIMEOUT_MS) {
+  const { url, publishableKey } = readAdminDbEnv();
+  return createClient(url, publishableKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, debug: false },
+    global: {
+      fetch: (input, init) => {
+        const timeout = AbortSignal.timeout(timeoutMs);
+        return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout });
+      },
+    },
+  });
+}

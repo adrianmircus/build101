@@ -27,6 +27,13 @@ export const REASON_MESSAGES: Record<string, string> = {
   sandbox_restricted: "En la demo no se puede hacer esto.",
   // Temporary: the stubs of phase 2 raise it until their tickets replace them; the last one removes it (also from 030_reasons).
   not_implemented: "Esto todavía no está disponible.",
+  already_member: "Esa persona ya es parte de la institución con ese rol.",
+  invitation_pending: "Ya hay una invitación pendiente para ese correo y ese rol. Podés reenviarla desde la lista.",
+  invitation_closed: "Esta invitación ya no está disponible: se aceptó o se canceló. Pedile a quien administra la institución que te invite de nuevo.",
+  invitation_expired: "Esta invitación venció. Pedile a quien administra la institución que te mande una nueva.",
+  invitation_email_mismatch: "Esta invitación es para otro correo. Entrá con el correo al que llegó.",
+  invalid_email: "El correo no es válido. Revisalo: no puede ser de una cuenta de estudiante.",
+  invalid_token: "El enlace no es válido. Abrí de nuevo el que te llegó por correo.",
   username_taken: "Ese usuario ya existe en la institución. Elegí otro.",
   not_enrolled: "No está en el grupo. Si es destinatario de una versión, sacalo de la versión antes de publicar.",
   not_a_member: "Esa persona no es parte de la institución.",

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="es">
+  <body>
+    <p>Hola,</p>
+    <p>Pediste cambiar la contraseña de tu cuenta de Tiza. Para elegir una nueva, abrí este enlace:</p>
+    <p><a href="{{ .SiteURL }}/ingresar/profesor/nueva#{{ .TokenHash }}">Elegir una contraseña nueva</a></p>
+    <p>Si el enlace no abre, copiá esta dirección en el navegador:<br>{{ .SiteURL }}/ingresar/profesor/nueva#{{ .TokenHash }}</p>
+    <p>El enlace sirve una sola vez y vence en una hora. Si no lo pediste vos, ignorá este correo: tu contraseña sigue siendo la misma.</p>
+  </body>
+</html>
