@@ -45,7 +45,7 @@ export const StudentPseudonym = z.object({
 });
 export type StudentPseudonym = z.infer<typeof StudentPseudonym>;
 
-export const PROVISIONING_STATUSES = ["pending", "active", "failed", "deleted"] as const;
+export const PROVISIONING_STATUSES = ["pending", "active", "failed", "deleted", "not_applicable"] as const;
 
 export const AccountProvisioning = z.object({
   id: Id,
