@@ -102,4 +102,31 @@ El 12/11/2026 el usuario eligió las recomendaciones del diseño (`docs/diseno/f
 
 | Ticket | Qué | Quién | Estado |
 |---|---|---|---|
-| Contrato | Tablas, RPC, servicios, entradas y tickets | Opus | En revisión de Codex |
+| Contrato | Tablas, RPC, servicios, entradas y tickets (versión 16) | Opus | 15 rondas de Codex (`docs/revisiones/fase-2-contrato-codex.md`) |
+| T2.1 | Sesión de Supabase en el proxy y `getActor` | backend (Sonnet) | Mergeado |
+| T2.7 | Sesión vigente en la base (`session_alive`) y límite de intentos en Postgres | backend (Sonnet) | Mergeado |
+| T2.4 | Login del profe, recuperar la contraseña e invitación (pantallas) | frontend (Sonnet) | Mergeado |
+| T2.6a | Login del estudiante, escaneo y `/t` | frontend (Sonnet) | Mergeado |
+| T2.3 | Invitaciones, login del profe y lecturas del panel (servidor) | backend (Sonnet) | Mergeado |
+| T2.9 | Panel de la institución | frontend (Sonnet) | Mergeado |
+| T2.6b | Tarjetas de acceso y QR propio | frontend (Sonnet) | Mergeado |
+| T2.5a | Cuentas de estudiantes en SQL: tarjetas, credenciales, bind de sesión | backend (Sonnet) | Mergeado |
+| T2.2 | Comando `npm run admin:institution` | backend (Sonnet) | Mergeado |
+| T2.5b | Servicios de cuentas de estudiantes | backend (Sonnet) | Mergeado |
+| T2.5c | Pruebas de la fase 1 con cuentas canónicas | backend (Sonnet) | Mergeado |
+| T2.8 | Puente de la sesión vieja: se borran las cuentas de demo | backend (Sonnet) | Mergeado |
+| T2.10 | Recorridos de punta a punta con Supabase local y Mailpit | frontend (Sonnet) | Mergeado |
+| T2.F1 a T2.F3 | Arreglos de las rondas de cierre de Codex | Sonnet | Mergeados |
+
+### Decisiones de la fase
+
+- **La contraseña del estudiante vive en nuestra base** (`app.student_credentials`, scrypt), no en Supabase Auth. Su cuenta de Auth no tiene contraseña y un trigger impide ponérsela. La sesión la abre el servidor con un enlace mágico que nunca llega a un correo y queda registrada en `student_sessions`: una sesión que no registró el servidor no lee nada. Emitir tarjetas es una sola transacción.
+- **Modelo de amenazas en el esquema `auth`:** entra lo que GoTrue hace por pedidos públicos y lo que hacen nuestros servicios. El DML del dueño sobre `auth.sessions`, `auth.refresh_tokens`, credenciales y registros de sesión queda fuera, porque quien escribe ahí ya puede leer todo o crear sesiones.
+- **El QR no alcanza para entrar:** completa el colegio y el usuario; la contraseña se pide siempre.
+- **El dictado y los comandos de voz son solo de staff** hasta la fase 4, cuando el estudiante real tenga prácticos.
+
+### Pendiente con el usuario
+
+- **Límites de Auth en hosted** (`/token` y `/verify`) y `Sb-Forwarded-For`: se miden con los proyectos de staging (T1.0). Los valores de `config.toml` son estimados.
+- **Reenviar el enlace del primer admin desde el comando:** hoy, si la invitación sigue pendiente, el comando no puede mostrar otro enlace hasta que venza (7 días). Hace falta `internal_resend_invitation`.
+- **Detalles de pantalla:** la tarjeta dice «tiza.ai/ingresar/estudiante» fijo, y al aceptar la invitación el admin va a «Mis grupos» en vez del panel.
