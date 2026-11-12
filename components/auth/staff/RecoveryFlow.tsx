@@ -13,7 +13,7 @@ import { StatusMessage } from "./StatusMessage";
 
 type Props = {
   verifyRecovery: ActionFn<{ tokenHash: string }, RecoveryVerified>;
-  setNewPassword: ActionFn<{ password: string }, NextStep>;
+  setNewPassword: ActionFn<{ password: string; userId: string }, NextStep>;
 };
 
 // /ingresar/profesor/nueva#<token_hash>: reads the fragment, clears the bar, asks the server if the link still works
@@ -68,7 +68,7 @@ export function RecoveryFlow({ verifyRecovery, setNewPassword }: Props) {
   return (
     <>
       <SheetHeading title="Elegí tu contraseña nueva" lead="Después entrás directo a tus grupos." />
-      <NewPasswordForm setNewPassword={setNewPassword} onExpired={() => setPhase({ kind: "expired" })} />
+      <NewPasswordForm setNewPassword={setNewPassword} userId={phase.userId} onExpired={() => setPhase({ kind: "expired" })} />
     </>
   );
 }

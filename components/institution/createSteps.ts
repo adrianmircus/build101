@@ -58,7 +58,7 @@ export function nextAttempt(state: CreateState, groupId: string): Attempt {
 
 export async function createRows(ctx: Context, request: { groupId: string; rows: DraftRow[]; attempt: Attempt }): Promise<Done<CreatedAccountRow[]>> {
   const { groupId, rows, attempt } = request;
-  const body = rows.map((row) => ({ displayName: row.displayName, username: normalizeUsername(row.username) }));
+  const body = rows.map((row) => ({ displayName: row.displayName, username: normalizeUsername(row.username), slot: row.slot }));
   const result = await callAction(ctx.actions.create, { groupId, rows: body, opKey: attempt.opKey });
   if (!result.ok) return { ok: false, text: failureText(result) };
   return { ok: true, value: result.data };

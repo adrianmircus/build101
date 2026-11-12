@@ -9,6 +9,9 @@ const BLOCKING = new Set(["serious", "critical"]);
 // Runs axe on the current screen. Serious and critical violations fail the test unless axe-known.ts lists them
 // for that screen. `screen` is a stable name: it is the key in the known list.
 export async function checkAccessibility(page: Page, screen: string) {
+  // The screen has to be steady before axe looks at it. After a Server Action that changes the session, Next refreshes the route
+  // and the document can be without its <title> for a moment (axe: document-title). A page that never gets one still fails here.
+  await expect.poll(() => page.title(), { message: `La pantalla «${screen}» no tiene <title>`, timeout: 10_000 }).not.toBe("");
   const { violations } = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   const unexpected = violations
     .filter((v) => v.impact && BLOCKING.has(v.impact))

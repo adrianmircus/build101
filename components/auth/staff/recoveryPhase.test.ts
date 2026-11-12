@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fail, ok } from "@/lib/errors";
 import { recoveryPhaseFor } from "./recoveryPhase";
 
+const USER = "11111111-1111-4111-8111-111111111111";
 const HASH = "a".repeat(40);
 
 describe("recoveryPhaseFor", () => {
@@ -12,8 +13,8 @@ describe("recoveryPhaseFor", () => {
   });
 
   it("un enlace bueno deja pedir la contraseña nueva", async () => {
-    const verify = vi.fn().mockResolvedValue(ok({ verified: true }));
-    expect(await recoveryPhaseFor(verify, HASH)).toEqual({ kind: "ready" });
+    const verify = vi.fn().mockResolvedValue(ok({ verified: true, userId: USER }));
+    expect(await recoveryPhaseFor(verify, HASH)).toEqual({ kind: "ready", userId: USER });
     expect(verify).toHaveBeenCalledWith({ tokenHash: HASH });
   });
 

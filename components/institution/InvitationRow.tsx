@@ -6,6 +6,7 @@ import type { InvitationView } from "@/lib/domain/accounts/entities";
 import { Icon } from "./Icon";
 import { invitationLine, mailPending } from "./listText";
 import { RevokeConfirm } from "./RevokeConfirm";
+import { revokeButtonId } from "./useReturnFocus";
 import { useInvitationRow, type InvitationActions } from "./useInvitationRow";
 
 type Props = { institutionId: string; item: InvitationView; actions: InvitationActions };
@@ -33,7 +34,7 @@ export function InvitationRow({ institutionId, item, actions }: Props) {
               {busy ? "Un momento…" : item.status === "expired" ? "Mandar otra" : "Reenviar"}
               <span className="sr-only"> a {item.email}</span>
             </button>
-            <button type="button" onClick={row.ask} disabled={busy} className={dangerButton}>
+            <button type="button" id={revokeButtonId(item.id)} onClick={row.ask} disabled={busy} className={dangerButton}>
               Revocar<span className="sr-only"> la invitación de {item.email}</span>
             </button>
           </div>

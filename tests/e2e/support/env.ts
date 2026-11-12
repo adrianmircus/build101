@@ -60,8 +60,7 @@ export function serverEnv(): Record<string, string> {
     RATE_LIMIT_SECRET: "e2e-only-rate-limit-secret-0123456789abcdef",
     MAIL_DRIVER: "mailpit",
     MAIL_MAILPIT_URL: stack.mailpitUrl,
-    // A production build refuses to start without a Resend key even when the driver is Mailpit. This one is never used.
-    RESEND_API_KEY: "e2e-not-a-real-key",
+    // Mailpit is accepted in a production build only on localhost: the stack is local.
     MAIL_FROM: "Tiza <e2e@tiza.test>",
   };
 }

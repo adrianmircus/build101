@@ -48,6 +48,18 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # The e2e needs the real stack: the specs of the panel, of the login and of the cards sign in against Supabase and read the
+      # mails from Mailpit, and tests/e2e/support/env.ts reads `supabase status` when Playwright loads its config. Same version
+      # as the devDependency of package.json (the one `npx supabase` runs), so the two never differ.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.1.0
+      # Mailpit stays (the recovery and invitation mails are read from it); studio, the edge runtime and the like are not needed.
+      - name: Supabase local
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,postgres-meta,supavisor
+      # db reset applies every migration from zero, the same path a fresh clone takes.
+      - name: Migraciones
+        run: supabase db reset
       - name: Navegador de Playwright
         run: npx playwright install --with-deps chromium
       # playwright.config.ts builds and starts the app itself (webServer), without any AI key:
@@ -61,6 +73,9 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+      - name: Registros de Supabase
+        if: failure()
+        run: docker ps -a && for c in $(docker ps -aq); do docker logs --tail 50 "$c" 2>&1 | head -60; done
 
   base:
     name: Base

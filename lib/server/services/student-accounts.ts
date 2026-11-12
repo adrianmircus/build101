@@ -39,6 +39,17 @@ export async function previewUsernames(input: { institutionId: string; names: st
 /** A rejection that says «this person may not do this» holds for every row: it is not a failed row. */
 const WHOLE_REQUEST = new Set(["FORBIDDEN", "NOT_FOUND", "RATE_LIMITED"]);
 
+/**
+ * What a row that did not come back created means. Only an answer of the database that says «no» is `failed` or `username_taken`:
+ * anything else (a dropped connection, a timeout, a bug after the commit) may have created the student, so it is `uncertain`
+ * and the retry with the same key finds them instead of making a second one.
+ */
+function rowOutcome(thrown: unknown): "username_taken" | "failed" | "uncertain" {
+  if (!(thrown instanceof AppError)) return "uncertain";
+  if (thrown.code === "CONFLICT" && thrown.message === REASON_MESSAGES.username_taken) return "username_taken";
+  return thrown.code === "INVALID" || thrown.code === "CONFLICT" ? "failed" : "uncertain";
+}
+
 /** create_student per row (op_key from the one of the request and the index of the row, UUID v5), then provisioning without password. One result per row. */
 export async function createStudentAccounts(input: { groupId: string; rows: NewStudent[]; opKey: string }): Promise<CreatedAccountRow[]> {
   const db = await sessionDb();
@@ -46,13 +57,13 @@ export async function createStudentAccounts(input: { groupId: string; rows: NewS
   // One after the other: each create_student takes its own locks, and the order of the rows is the one the admin reviewed.
   for (const [index, row] of input.rows.entries()) {
     try {
-      const created = await createStudent(db, input.groupId, { displayName: row.displayName, username: row.username, opKey: deriveOpKey(input.opKey, String(index)) });
+      const created = await createStudent(db, input.groupId, { displayName: row.displayName, username: row.username, opKey: deriveOpKey(input.opKey, String(row.slot ?? index)) });
       results.push({ index, outcome: "created", studentId: created.id });
     } catch (thrown) {
       if (thrown instanceof AppError && WHOLE_REQUEST.has(thrown.code)) throw thrown;
-      const taken = thrown instanceof AppError && thrown.code === "CONFLICT" && thrown.message === REASON_MESSAGES.username_taken;
-      log.warn("student_accounts.row_failed", { outcome: taken ? "username_taken" : "failed", errorType: thrown instanceof Error ? thrown.name : "unknown" });
-      results.push({ index, outcome: taken ? "username_taken" : "failed", studentId: null });
+      const outcome = rowOutcome(thrown);
+      log.warn("student_accounts.row_failed", { outcome, errorType: thrown instanceof Error ? thrown.name : "unknown" });
+      results.push({ index, outcome, studentId: null });
     }
   }
   return results;

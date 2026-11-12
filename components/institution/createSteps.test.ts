@@ -134,8 +134,56 @@ describe("createRows", () => {
     const rows = draftRows([{ displayName: "Lucía Fernández", username: "luciaf" }]).map((row) => ({ ...row, username: " LuciaF " }));
     const attempt = nextAttempt({ ...initialCreate(FIELDS), rows }, "g1");
     const result = await createRows({ institutionId: "i1", actions: a }, { groupId: "g1", rows, attempt });
-    expect(a.create).toHaveBeenCalledWith({ groupId: "g1", rows: [{ displayName: "Lucía Fernández", username: "luciaf" }], opKey: attempt.opKey });
+    expect(a.create).toHaveBeenCalledWith({ groupId: "g1", rows: [{ displayName: "Lucía Fernández", username: "luciaf", slot: 0 }], opKey: attempt.opKey });
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("una respuesta perdida al crear (F2-13)", () => {
+  const ROWS = draftRows([
+    { displayName: "Lucía Fernández", username: "luciaf" },
+    { displayName: "Mateo Silva", username: "mateos" },
+    { displayName: "Valentina Rodríguez", username: "valentinar" },
+  ]);
+
+  // The real reducer and the real steps; the server is a spy that answers what the real service answers for each case.
+  function flow(answers: Array<Array<"created" | "uncertain" | "username_taken">>) {
+    let state = createReducer(initialCreate({ ...FIELDS, groupChoice: "g1" }), { type: "reviewing", rows: ROWS });
+    const dispatch = (action: CreateAction) => {
+      state = createReducer(state, action);
+    };
+    const create = vi.fn(async (input: { rows: unknown[] }) => {
+      const outcomes = answers.shift() ?? [];
+      return ok(input.rows.map((_, index) => ({ index, outcome: outcomes[index] ?? "created", studentId: outcomes[index] === "uncertain" || outcomes[index] === "username_taken" ? null : `s${index}` })));
+    });
+    const confirm = async () => {
+      const done = await confirmCreate({ institutionId: "i1", actions: actions({ create }) }, state, dispatch);
+      if (done.ok) dispatch({ type: "results", results: done.value });
+    };
+    return { create, confirm, dispatch, state: () => state };
+  }
+
+  it("el reintento manda la misma clave del pedido y el mismo slot de cada fila incierta", async () => {
+    const f = flow([["created", "uncertain", "created"], ["created"]]);
+    await f.confirm();
+    expect(f.state().rows.map((row) => row.displayName)).toEqual(["Mateo Silva"]);
+    expect(f.state().flags).toEqual({ "fila-1": "uncertain" });
+    await f.confirm();
+    const [first, second] = f.create.mock.calls.map(([input]) => input as { opKey: string; rows: Array<{ slot: number }> });
+    expect(second?.opKey).toBe(first?.opKey);
+    expect(first?.rows.map((row) => row.slot)).toEqual([0, 1, 2]);
+    expect(second?.rows.map((row) => row.slot)).toEqual([1]);
+    expect(f.state().step).toBe("done");
+  });
+
+  it("solo la fila que el admin editó cambia de slot", async () => {
+    const f = flow([["uncertain", "uncertain", "created"], ["created", "created"]]);
+    await f.confirm();
+    f.dispatch({ type: "edit", key: "fila-1", value: "mateo.silva" });
+    await f.confirm();
+    const sent = f.create.mock.calls.map(([input]) => input as { opKey: string; rows: Array<{ slot: number }> });
+    expect(sent[1]?.opKey).toBe(sent[0]?.opKey);
+    expect(sent[1]?.rows.map((row) => row.slot)).toEqual([0, 3]);
   });
 });
 

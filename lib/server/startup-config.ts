@@ -1,4 +1,5 @@
 import "server-only";
+import { mailProblems } from "./mail/config";
 
 // What a production server needs to be able to start (F2-10). Without it the app would run thinking it sends mail or counts
 // login attempts, and the failure would show up later, far from its cause (an invitation that "fails to send", a login that
@@ -25,12 +26,8 @@ function siteUrlProblem(value: string | undefined): string | null {
 export function configProblems(env: StartupEnv): string[] {
   if (env.NODE_ENV !== "production") return [];
   const problems: string[] = [];
-  // Resend is the default in production, as in lib/server/mail/index.ts: it needs its key and a sender.
-  const driver = (env.MAIL_DRIVER ?? "").trim() || "resend";
-  if (driver === "resend") {
-    if (!filled(env.RESEND_API_KEY)) problems.push("RESEND_API_KEY (la clave de Resend)");
-    if (!filled(env.MAIL_FROM)) problems.push("MAIL_FROM (el remitente de los correos)");
-  }
+  // The same rule that chooses the sender (lib/server/mail/config.ts): what starts can send.
+  problems.push(...mailProblems(env));
   if ((env.RATE_LIMIT_SECRET ?? "").length < 32) problems.push("RATE_LIMIT_SECRET (32 caracteres como mínimo)");
   const site = siteUrlProblem(env.NEXT_PUBLIC_SITE_URL);
   if (site !== null) problems.push(site);

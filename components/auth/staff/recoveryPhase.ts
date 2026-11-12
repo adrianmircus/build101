@@ -5,7 +5,7 @@ import { failureText } from "./failureText";
 
 const RETRYABLE = ["UNAVAILABLE", "INTERNAL", "STALE_CLIENT", "RATE_LIMITED"];
 
-export type RecoveryPhase = { kind: "checking" } | { kind: "expired" } | { kind: "ready" } | { kind: "error"; text: string };
+export type RecoveryPhase = { kind: "checking" } | { kind: "expired" } | { kind: "ready"; userId: string } | { kind: "error"; text: string };
 
 /**
  * Asks the server if the recovery link still works. No hash, or a link that is gone (not found, forbidden, invalid):
@@ -14,6 +14,6 @@ export type RecoveryPhase = { kind: "checking" } | { kind: "expired" } | { kind:
 export async function recoveryPhaseFor(verify: ActionFn<{ tokenHash: string }, RecoveryVerified>, tokenHash: string): Promise<RecoveryPhase> {
   if (tokenHash === "") return { kind: "expired" };
   const result = await callAction(verify, { tokenHash });
-  if (result.ok) return { kind: "ready" };
+  if (result.ok) return { kind: "ready", userId: result.data.userId };
   return RETRYABLE.includes(result.code) ? { kind: "error", text: failureText(result) } : { kind: "expired" };
 }
