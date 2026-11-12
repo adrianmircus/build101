@@ -1,4 +1,5 @@
 import "server-only";
+import { isMailDriver, mailProblems, requestedDriver } from "./config";
 import { mailpitSender } from "./mailpit";
 import { resendSender } from "./resend";
 import type { MailEnv, MailSender } from "./types";
@@ -10,22 +11,14 @@ import type { MailEnv, MailSender } from "./types";
 export type { InvitationMailInput, MailMessage, MailSender } from "./types";
 export { invitationMail } from "./invitation";
 
-const MISSING = "Falta la configuración del correo: hace falta RESEND_API_KEY y MAIL_FROM. Mirá .env.example.";
-
-/** Resend in production, Mailpit anywhere else, unless MAIL_DRIVER says otherwise. */
-function driverOf(env: MailEnv): string {
-  return (env.MAIL_DRIVER ?? "").trim() || (env.NODE_ENV === "production" ? "resend" : "mailpit");
-}
-
 /**
- * The sender for this environment, chosen by MAIL_DRIVER (`resend` or `mailpit`). In production, without RESEND_API_KEY it is an
- * error of configuration: the app must not run thinking that it sends mail.
+ * The sender for this environment, chosen by MAIL_DRIVER (`resend` or `mailpit`). The rule is the one of the startup check
+ * (./config.ts): if the server started, this does not fail because of the configuration.
  */
 export function getMailSender(env: MailEnv = process.env): MailSender {
-  const apiKey = (env.RESEND_API_KEY ?? "").trim();
-  if (env.NODE_ENV === "production" && apiKey === "") throw new Error(MISSING);
-  const driver = driverOf(env);
-  if (driver === "mailpit") return mailpitSender(env);
-  if (driver === "resend" && apiKey !== "") return resendSender(apiKey, env);
-  throw new Error(MISSING);
+  const problems = mailProblems(env);
+  if (problems.length > 0) throw new Error(`Falta o está mal la configuración del correo: ${problems.join("; ")}. Mirá .env.example.`);
+  const driver = requestedDriver(env);
+  if (!isMailDriver(driver)) throw new Error("MAIL_DRIVER tiene que ser resend o mailpit. Mirá .env.example.");
+  return driver === "mailpit" ? mailpitSender(env) : resendSender((env.RESEND_API_KEY ?? "").trim(), env);
 }

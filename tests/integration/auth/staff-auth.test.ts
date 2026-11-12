@@ -137,23 +137,49 @@ describe("recovering the password", () => {
     const tokenHash = /\/ingresar\/profesor\/nueva#([A-Za-z0-9_-]+)/.exec(link)?.[1] ?? /[?&]token=([A-Za-z0-9_-]+)/.exec(link)?.[1];
     expect(tokenHash).toBeDefined();
 
-    expect(await verifyRecovery({ tokenHash: tokenHash ?? "" })).toEqual({ verified: true });
+    expect(await verifyRecovery({ tokenHash: tokenHash ?? "" })).toEqual({ verified: true, userId: user.id });
     await expect(verifyRecovery({ tokenHash: tokenHash ?? "" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(verifyRecovery({ tokenHash: "no-es-un-enlace-de-verdad" })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     const next = strong();
-    expect(await setNewPassword({ password: next })).toEqual({ next: "/grupos" });
+    expect(await setNewPassword({ password: next, userId: user.id })).toEqual({ next: "/grupos" });
     expect(await sessionsOf(user.id)).toBe(1);
     signOutOfTheJar();
     await expect(signInStaff({ email: user.email, password: user.password, ip: ip() })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(await signInStaff({ email: user.email, password: next, ip: ip() })).toEqual({ next: "/grupos" });
   });
 
+  it("the new password goes to the account that was verified: if another one signed in meanwhile it is CONFLICT and nothing changes", async () => {
+    const a = await staff();
+    const b = await staff();
+    await requestPasswordReset({ email: a.email, ip: ip(), origin: ORIGIN });
+    const mail = await latestMailTo(a.email);
+    const link = `${mail?.html ?? ""}${mail?.text ?? ""}`;
+    const tokenHash = /\/ingresar\/profesor\/nueva#([A-Za-z0-9_-]+)/.exec(link)?.[1] ?? /[?&]token=([A-Za-z0-9_-]+)/.exec(link)?.[1];
+    const verified = await verifyRecovery({ tokenHash: tokenHash ?? "" });
+    expect(verified.userId).toBe(a.id);
+
+    // In another tab of the same browser: A leaves and B enters.
+    signOutOfTheJar();
+    await openSession(b);
+    const sessionsOfB = await sessionsOf(b.id);
+    await expect(setNewPassword({ password: strong(), userId: verified.userId })).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "Cambiaste de cuenta en otra pestaña. Abrí el enlace de nuevo.",
+    });
+    // B keeps the password and the sessions; A keeps its password too.
+    expect(await sessionsOf(b.id)).toBe(sessionsOfB);
+    signOutOfTheJar();
+    expect(await signInStaff({ email: b.email, password: b.password, ip: ip() })).toEqual({ next: "/grupos" });
+    signOutOfTheJar();
+    expect(await signInStaff({ email: a.email, password: a.password, ip: ip() })).toEqual({ next: "/grupos" });
+  });
+
   it("without a session the new password is FORBIDDEN, and a password that Auth does not accept is INVALID", async () => {
-    await expect(setNewPassword({ password: strong() })).rejects.toMatchObject({ code: "FORBIDDEN", message: "Tu sesión terminó. Volvé a entrar." });
+    await expect(setNewPassword({ password: strong(), userId: randomUUID() })).rejects.toMatchObject({ code: "FORBIDDEN", message: "Tu sesión terminó. Volvé a entrar." });
     const user = await staff();
     await openSession(user);
-    await expect(setNewPassword({ password: "corta" })).rejects.toMatchObject({ code: "INVALID" });
+    await expect(setNewPassword({ password: "corta", userId: user.id })).rejects.toMatchObject({ code: "INVALID" });
   });
 });
 

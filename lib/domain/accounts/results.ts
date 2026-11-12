@@ -7,8 +7,11 @@ import { AccessCard, InvitationStatus } from "./entities";
 // What the services of phase 2 answer, and so what the Server Actions return inside a Result.
 // Nothing here carries a token, a hash or a profile.
 
-/** The recovery link was valid and left a session; the screen can ask for the new password. */
-export const RecoveryVerified = z.object({ verified: z.literal(true) }).strict();
+/**
+ * The recovery link was valid and left a session; the screen can ask for the new password. `userId` is the account that was verified:
+ * the screen sends it back with the new password, and the server changes nothing if the session now belongs to somebody else.
+ */
+export const RecoveryVerified = z.object({ verified: z.literal(true), userId: Id }).strict();
 export type RecoveryVerified = z.infer<typeof RecoveryVerified>;
 
 /** Where to go after a sign in or a sign out; the server decides, the browser only navigates. */
@@ -54,8 +57,11 @@ export const Accepted = z.object({ institutionId: Id, role: InvitedRole, next: z
 export type Accepted = z.infer<typeof Accepted>;
 
 
-/** One line of createStudentAccounts, by the index of the row it came in. */
-export const ACCOUNT_OUTCOMES = ["created", "username_taken", "failed"] as const;
+/**
+ * One line of createStudentAccounts, by the index of the row it came in. `uncertain`: the call died without saying whether the student
+ * was created (a lost answer): retry with the same opKey and the same `slot` and the server answers the one that already exists.
+ */
+export const ACCOUNT_OUTCOMES = ["created", "username_taken", "failed", "uncertain"] as const;
 export const CreatedAccountRow = z
   .object({ index: z.int().min(0), outcome: z.enum(ACCOUNT_OUTCOMES), studentId: Id.nullable() })
   .strict();

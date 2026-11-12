@@ -22,6 +22,6 @@ export const verifyRecoveryAction = defineAction({ name: "staff.verifyRecovery",
   verifyRecovery({ tokenHash }),
 );
 
-export const setNewPasswordAction = defineAction({ name: "staff.setNewPassword", input: SetNewPasswordInput }, async ({ password }) =>
-  setNewPassword({ password }),
+export const setNewPasswordAction = defineAction({ name: "staff.setNewPassword", input: SetNewPasswordInput }, async ({ password, userId }) =>
+  setNewPassword({ password, userId }),
 );

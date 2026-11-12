@@ -52,14 +52,24 @@ describe("createReducer", () => {
     expect(back.fields).toEqual(FIELDS);
   });
 
-  it("cambiar un usuario limpia la marca de esa fila y el intento", () => {
+  it("cambiar un usuario limpia la marca de esa fila y le da otra identidad; las demás conservan la suya", () => {
     let state = createReducer(reviewing(), { type: "started", groupId: "g", attempt: { opKey: "k", signature: "s" } });
     state = createReducer(state, { type: "results", results: [{ index: 1, outcome: "username_taken", studentId: null }, { index: 0, outcome: "created", studentId: "a" }, { index: 2, outcome: "created", studentId: "b" }] });
     expect(state.flags).toEqual({ "fila-1": "taken" });
     state = createReducer(state, { type: "edit", key: "fila-1", value: "mateos2" });
     expect(state.flags).toEqual({});
     expect(state.rows[0]?.username).toBe("mateos2");
-    expect(state.attempt).toBeNull();
+    expect(state.attempt).toEqual({ opKey: "k", signature: "s" });
+    expect(state.rows[0]?.slot).toBe(3);
+    expect(createReducer(state, { type: "edit", key: "fila-1", value: " MateoS2 " }).rows[0]?.slot).toBe(3);
+  });
+
+  it("una fila incierta se queda con su identidad y la clave del pedido para reintentar", () => {
+    let state = createReducer(reviewing(), { type: "started", groupId: "g", attempt: { opKey: "k", signature: "s" } });
+    state = createReducer(state, { type: "results", results: [{ index: 0, outcome: "created", studentId: "a" }, { index: 1, outcome: "uncertain", studentId: null }, { index: 2, outcome: "created", studentId: "c" }] });
+    expect(state.flags).toEqual({ "fila-1": "uncertain" });
+    expect(state.rows.map((row) => row.slot)).toEqual([1]);
+    expect(state.attempt?.opKey).toBe("k");
   });
 
   it("si se crearon todas, termina y cuenta las creadas", () => {
@@ -91,14 +101,15 @@ describe("createReducer", () => {
 });
 
 describe("opKey de un pedido", () => {
-  it("el mismo pedido reusa la clave y cualquier cambio da otra", () => {
+  it("el mismo pedido reusa la clave aunque se edite una fila (esa cambia de identidad); otro grupo da otra clave", () => {
     let count = 0;
     const fresh = () => `k${(count += 1)}`;
     const state = reviewing();
     const first = attemptFor(null, requestSignature(state), fresh);
     expect(attemptFor(first, requestSignature(state), fresh)).toBe(first);
     const edited = createReducer(state, { type: "edit", key: "fila-0", value: "lucia.f" });
-    expect(attemptFor(first, requestSignature(edited), fresh).opKey).toBe("k2");
-    expect(attemptFor(first, requestSignature({ ...state, groupId: "g" }), fresh).opKey).toBe("k3");
+    expect(attemptFor(first, requestSignature(edited), fresh)).toBe(first);
+    expect(edited.rows[0]?.slot).toBe(3);
+    expect(attemptFor(first, requestSignature({ ...state, groupId: "g" }), fresh).opKey).toBe("k2");
   });
 });

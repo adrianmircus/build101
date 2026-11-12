@@ -79,15 +79,15 @@ export async function signOut(scope: SignOutScope): Promise<void> {
   if (error && error.name !== "AuthSessionMissingError" && isOutage(error)) throw outage(error);
 }
 
-/** verifyOtp({ type: "recovery", token_hash }); false when the link expired or was already used. Leaves a session. */
-export async function verifyRecoveryOtp(tokenHash: string): Promise<boolean> {
+/** verifyOtp({ type: "recovery", token_hash }); the id of the verified user, or null when the link expired or was already used. Leaves a session. */
+export async function verifyRecoveryOtp(tokenHash: string): Promise<string | null> {
   const client = await createSessionClient();
   const { data, error } = await client.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
   if (error) {
     if (isOutage(error)) throw outage(error);
-    return false;
+    return null;
   }
-  return data.session !== null;
+  return data.session ? data.session.user.id : null;
 }
 
 /** The tokens of a session that our server obtained without cookies (see exchangeMagicLink in repos/admin/auth-users.ts). */

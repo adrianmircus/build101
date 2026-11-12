@@ -21,7 +21,7 @@ export const Token = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 export const SignInStaffInput = z.object({ email: StaffEmail, password: LoginPassword }).strict();
 export const VerifyRecoveryInput = z.object({ tokenHash: z.string().min(10).max(300) }).strict();
 export const RequestResetInput = z.object({ email: StaffEmail }).strict();
-export const SetNewPasswordInput = z.object({ password: NewPassword }).strict();
+export const SetNewPasswordInput = z.object({ password: NewPassword, userId: Id }).strict();
 
 export const ReadAccessCardInput = z.object({ token: Token }).strict();
 export const FindInstitutionInput = z.object({ code: InstitutionCode }).strict();
@@ -39,7 +39,8 @@ export const ResendInvitationInput = z.object({ institutionId: Id, invitationId:
 export const RevokeInvitationInput = z.object({ institutionId: Id, invitationId: Id, revision: Revision }).strict();
 
 export const PreviewUsernamesInput = z.object({ institutionId: Id, names: z.array(DisplayName).min(1).max(60) }).strict();
-export const NewStudentRow = z.object({ displayName: DisplayName, username: Username }).strict();
+/** `slot`: the identity of the row inside the request (the op_key derives from opKey and slot). Without it, the position of the row. A retry keeps it. */
+export const NewStudentRow = z.object({ displayName: DisplayName, username: Username, slot: z.int().min(0).max(100_000).optional() }).strict();
 export type NewStudent = z.output<typeof NewStudentRow>;
 export const CreateStudentAccountsInput = z
   .object({ groupId: Id, rows: z.array(NewStudentRow).min(1).max(60), opKey: Id })

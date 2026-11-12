@@ -5,10 +5,14 @@ import type { UsernameDraft } from "@/lib/domain/accounts/entities";
 // The suggestion comes from previewUsernames (it knows the taken ones); the admin may change it. The server decides
 // in the end (create_student gives username_taken if somebody took it meanwhile). Pure.
 
-export type DraftRow = { key: string; displayName: string; username: string; suggested: string };
+/**
+ * `slot` is the identity of the row for the server (its op_key derives from the opKey of the request and the slot). It stays while the
+ * row is the same, so a retry after a lost answer finds the student already created; editing the username gives the row a new one.
+ */
+export type DraftRow = { key: string; displayName: string; username: string; suggested: string; slot: number };
 
 /** Why a row cannot be created yet. `taken` and `failed` come back from the server after trying. */
-export type RowProblem = "empty" | "invalid" | "repeated" | "taken" | "failed";
+export type RowProblem = "empty" | "invalid" | "repeated" | "taken" | "failed" | "uncertain";
 
 /** The same shape the server accepts (Username in lib/domain/students). */
 export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{1,39}$/;
@@ -23,10 +27,11 @@ export function draftRows(drafts: UsernameDraft[]): DraftRow[] {
     displayName: draft.displayName,
     username: draft.username,
     suggested: draft.username,
+    slot: index,
   }));
 }
 
-export type Flags = Record<string, "taken" | "failed">;
+export type Flags = Record<string, "taken" | "failed" | "uncertain">;
 
 /** The problem of each row that has one, by key. Both rows of a repeated pair are marked, so neither is missed. */
 export function rowProblems(rows: DraftRow[], flags: Flags = {}): Record<string, RowProblem> {
@@ -59,6 +64,8 @@ export function problemText(problem: RowProblem): string {
       return "Justo alguien tomó este usuario. Elegí otro.";
     case "failed":
       return "No pudimos crear esta cuenta. Probá de nuevo.";
+    case "uncertain":
+      return "No sabemos si se creó: se cortó la conexión. Volvé a crear: si ya estaba, no se repite.";
   }
 }
 
@@ -84,6 +91,7 @@ const SHORT: Record<RowProblem, string> = {
   repeated: "el usuario está repetido",
   taken: "otra persona ya tomó ese usuario",
   failed: "no se pudo crear",
+  uncertain: "no sabemos si se creó",
 };
 
 /** What stops the confirm, row by row. A row that failed for a reason of ours («failed») can be tried again as it is. */
@@ -91,7 +99,7 @@ export function blockingProblems(rows: DraftRow[], flags: Flags = {}): FieldProb
   const problems = rowProblems(rows, flags);
   return rows.flatMap((row) => {
     const problem = problems[row.key];
-    if (!problem || problem === "failed") return [];
+    if (!problem || problem === "failed" || problem === "uncertain") return [];
     return [{ field: `usr-${row.key}`, message: problemText(problem), summary: `${row.displayName}: ${SHORT[problem]}` }];
   });
 }

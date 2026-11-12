@@ -14,6 +14,8 @@ export type RequestPasswordReset = { email: string; ip: string; origin: string }
 
 const MISMATCH = "El correo o la contraseña no coinciden. Revisalos y probá de nuevo.";
 const LINK_GONE = "El enlace venció o ya se usó. Pedí uno nuevo desde «Olvidé mi contraseña».";
+const SESSION_ENDED = "Tu sesión terminó. Volvé a entrar.";
+const ACCOUNT_CHANGED = "Cambiaste de cuenta en otra pestaña. Abrí el enlace de nuevo.";
 const STAFF_HOME = "/grupos";
 const MIN_ANSWER_MS = 800;
 /** Auth that does not answer in this time is an outage, not a wrong password. */
@@ -66,12 +68,19 @@ export async function requestPasswordReset(input: RequestPasswordReset): Promise
 
 /** verifyOtp({ type: "recovery", token_hash }) with the hash of the link fragment: leaves a session, or says the link expired. */
 export async function verifyRecovery(input: { tokenHash: string }): Promise<RecoveryVerified> {
-  if (!(await session.verifyRecoveryOtp(input.tokenHash))) throw new AppError("FORBIDDEN", LINK_GONE);
-  return { verified: true };
+  const userId = await session.verifyRecoveryOtp(input.tokenHash);
+  if (userId === null) throw new AppError("FORBIDDEN", LINK_GONE);
+  return { verified: true, userId };
 }
 
-/** updateUser({ password }) and signOut({ scope: "others" }); then /grupos. */
-export async function setNewPassword(input: { password: string }): Promise<NextStep> {
+/**
+ * updateUser({ password }) and signOut({ scope: "others" }); then /grupos. `userId` is the account that verifyRecovery verified: if the
+ * session of this browser is another one now (somebody signed out and in as another person in another tab), nothing changes.
+ */
+export async function setNewPassword(input: { password: string; userId: string }): Promise<NextStep> {
+  const claims = await session.getClaims();
+  if (claims === null) throw new AppError("FORBIDDEN", SESSION_ENDED);
+  if (claims.userId !== input.userId) throw new AppError("CONFLICT", ACCOUNT_CHANGED);
   await session.updatePassword(input.password);
   await session.signOut("others");
   return { next: STAFF_HOME };

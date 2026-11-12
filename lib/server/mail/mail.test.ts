@@ -67,20 +67,27 @@ describe("getMailSender", () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({ from: "Tiza <hola@usetiza.app>", to: ["profe@colegio.test"], subject: "Asunto" });
   });
 
-  it("in production it does not start without RESEND_API_KEY, whatever the driver", () => {
+  it("in production Resend needs its key and its sender; a local Mailpit needs neither", () => {
     expect(() => getMailSender({ NODE_ENV: "production" })).toThrow(/RESEND_API_KEY/);
-    expect(() => getMailSender({ NODE_ENV: "production", MAIL_DRIVER: "mailpit" })).toThrow(/RESEND_API_KEY/);
+    expect(() => getMailSender({ NODE_ENV: "production", MAIL_DRIVER: "resend", RESEND_API_KEY: "re_clave" })).toThrow(/MAIL_FROM/);
+    expect(() => getMailSender({ NODE_ENV: "production", MAIL_DRIVER: "mailpit" })).not.toThrow();
+    expect(() => getMailSender({ NODE_ENV: "production", MAIL_DRIVER: "mailpit", MAIL_MAILPIT_URL: "http://localhost:54324" })).not.toThrow();
   });
 
-  it("Resend without a key outside production is an error too, and so is an unknown driver", () => {
+  it("in production Mailpit outside localhost is refused", () => {
+    expect(() => getMailSender({ NODE_ENV: "production", MAIL_DRIVER: "mailpit", MAIL_MAILPIT_URL: "https://correo.example.com" })).toThrow(/MAIL_MAILPIT_URL/);
+  });
+
+  it("Resend without key or sender is an error outside production too, and so is an unknown driver", () => {
     expect(() => getMailSender({ MAIL_DRIVER: "resend" })).toThrow();
-    expect(() => getMailSender({ MAIL_DRIVER: "otro" })).toThrow();
+    expect(() => getMailSender({ MAIL_DRIVER: "resend", RESEND_API_KEY: "re_clave" })).toThrow(/MAIL_FROM/);
+    expect(() => getMailSender({ MAIL_DRIVER: "otro" })).toThrow(/MAIL_DRIVER/);
   });
 
   it("a provider that answers an error is UNAVAILABLE with a text for the admin, and logs only the status", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("el correo profe@colegio.test fue rechazado", { status: 422 }));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const failure = await getMailSender({ MAIL_DRIVER: "resend", RESEND_API_KEY: "re_clave" })
+    const failure = await getMailSender({ MAIL_DRIVER: "resend", RESEND_API_KEY: "re_clave", MAIL_FROM: "Tiza <hola@usetiza.app>" })
       .send(MESSAGE)
       .catch((thrown: unknown) => thrown);
     expect(failure).toBeInstanceOf(AppError);

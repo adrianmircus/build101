@@ -154,6 +154,8 @@ test.describe("ver profes e invitaciones", () => {
     await page.getByRole("button", { name: new RegExp(`Revocar la invitación de ${pending}`) }).click();
     await expect(page.getByRole("button", { name: "No, dejarla" })).toBeFocused();
     await page.getByRole("button", { name: "No, dejarla" }).click();
+    // The question goes away with the focused button: the focus comes back to the «Revocar» of this row.
+    await expect(page.getByRole("button", { name: new RegExp(`Revocar la invitación de ${pending}`) })).toBeFocused();
     await checkAccessibility(page, "profes e invitaciones");
   });
 });

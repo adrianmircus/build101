@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { newTeacher } from "./support/accounts";
 import { expect, test } from "./support/fixtures";
 import { checkAccessibility } from "./support/a11y";
-import { recoveryToken, waitForMail } from "./support/mail";
+import { authSiteUrl, recoveryLink, waitForMail } from "./support/mail";
 import { world } from "./support/world";
 
 // Recorridos de punta a punta del login del profe, recuperar la contraseña y la invitación (T2.4, T2.10).
@@ -95,9 +95,16 @@ test.describe("recuperar la contraseña", () => {
     await page.getByRole("button", { name: "Mandarme el enlace" }).click();
     await expect(page.getByRole("status")).toContainText("Si hay una cuenta con");
 
-    // The host of the link is the SiteURL of the Supabase config (not this server's), so only the token is taken from the mail.
-    const token = recoveryToken(await waitForMail(teacher.email));
-    await page.goto(`/ingresar/profesor/nueva#${token}`);
+    // The link as it arrived: the origin is the site_url that Auth has configured and the token travels in the fragment, on the
+    // route of the recovery page. The mail points to the site_url (3000 in the config), the server under test listens on its own
+    // port, so the same route and fragment are opened there. A link to another origin or another route fails here.
+    const link = recoveryLink(await waitForMail(teacher.email));
+    expect(link.origin).toBe(authSiteUrl().origin);
+    expect(link.pathname).toBe("/ingresar/profesor/nueva");
+    expect(link.search).toBe("");
+    expect(link.hash).toMatch(/^#[A-Za-z0-9_-]{10,}$/);
+    const token = link.hash.slice(1);
+    await page.goto(`${link.pathname}${link.hash}`);
     await expect(page.getByRole("heading", { name: "Elegí tu contraseña nueva" })).toBeVisible();
     expect(new URL(page.url()).hash).toBe("");
     await checkAccessibility(page, "recuperar contraseña, elegir la nueva");

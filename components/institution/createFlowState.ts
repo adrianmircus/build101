@@ -19,7 +19,9 @@ export type CreateState = {
   /** Set once the group exists (chosen, or created on the first confirm), so a retry never makes a second one. */
   groupId: string | null;
   createdIds: string[];
-  /** The attempt of the accounts request: kept after an error or a lost answer, renewed only when the content changes. */
+  /** The next free identity for a row. Never goes back: a row that was created keeps its slot forever, so no other row can take it. */
+  nextSlot: number;
+  /** The attempt of the accounts request: kept after an error, a lost answer or a partial result, renewed only when the group changes. */
   attempt: Attempt | null;
   /** The same for createGroup: saved BEFORE the request goes out, so a lost answer is retried with the same opKey. */
   groupAttempt: Attempt | null;
@@ -36,7 +38,7 @@ export type CreateAction =
   | { type: "results"; results: CreatedAccountRow[] };
 
 export function initialCreate(fields: Fields): CreateState {
-  return { step: "paste", fields, rows: [], flags: {}, groupId: null, createdIds: [], attempt: null, groupAttempt: null };
+  return { step: "paste", fields, rows: [], flags: {}, groupId: null, createdIds: [], nextSlot: 0, attempt: null, groupAttempt: null };
 }
 
 export function createReducer(state: CreateState, action: CreateAction): CreateState {
@@ -45,11 +47,18 @@ export function createReducer(state: CreateState, action: CreateAction): CreateS
       // Another group or another name is another request: the group made for the old one is not reused.
       return { ...state, fields: { ...state.fields, [action.name]: action.value }, groupId: action.name === "names" ? state.groupId : null };
     case "reviewing":
-      return { ...state, step: "review", rows: action.rows, flags: {}, createdIds: [], attempt: null };
+      return { ...state, step: "review", rows: action.rows, flags: {}, createdIds: [], nextSlot: Math.max(0, ...action.rows.map((row) => row.slot + 1)), attempt: null };
     case "edit": {
       const flags = { ...state.flags };
       delete flags[action.key];
-      return { ...state, rows: state.rows.map((row) => (row.key === action.key ? { ...row, username: action.value } : row)), flags, attempt: null };
+      // Another username is another student for the server: the row takes a new slot (a new op_key). The rest keep theirs.
+      let nextSlot = state.nextSlot;
+      const rows = state.rows.map((row) => {
+        if (row.key !== action.key) return row;
+        if (normalizeUsername(row.username) === normalizeUsername(action.value)) return { ...row, username: action.value };
+        return { ...row, username: action.value, slot: nextSlot++ };
+      });
+      return { ...state, rows, flags, nextSlot };
     }
     case "back":
       return { ...state, step: "paste", rows: [], flags: {}, attempt: null };
@@ -75,9 +84,10 @@ function applyResults(state: CreateState, results: CreatedAccountRow[]): CreateS
     const result = byIndex.get(index);
     if (result?.outcome === "created" && result.studentId) return void createdIds.push(result.studentId);
     rows.push(row);
-    flags[row.key] = result?.outcome === "username_taken" ? "taken" : "failed";
+    flags[row.key] = result?.outcome === "username_taken" ? "taken" : result?.outcome === "uncertain" ? "uncertain" : "failed";
   });
-  return { ...state, step: rows.length === 0 ? "done" : "review", rows, flags, createdIds, attempt: null };
+  // The attempt stays: the rows that are left keep their slot, so a retry sends the same opKey and each row the same identity.
+  return { ...state, step: rows.length === 0 ? "done" : "review", rows, flags, createdIds };
 }
 
 /** What the admin still has to fix in step one, one message per field (the field ids are the ones of the form). */
@@ -96,7 +106,8 @@ export function pasteProblems(fields: Fields, subjectIds: string[], year: { min:
   return problems;
 }
 
-/** What identifies a request: the same signature means the same accounts for the same group. */
+/** What identifies a request: the same signature means the same group, and so the same opKey. */
 export function requestSignature(state: CreateState): string {
-  return JSON.stringify([state.groupId, state.rows.map((row) => [row.displayName, normalizeUsername(row.username)])]);
+  // The rows do not enter: each one carries its own identity (slot) and an edited one gets a new slot, so the same opKey is safe.
+  return JSON.stringify([state.groupId]);
 }

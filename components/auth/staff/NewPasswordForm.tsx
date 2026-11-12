@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 import type { NextStep } from "@/lib/domain/accounts/results";
 import { callAction } from "@/lib/client/callAction";
+import type { Failure } from "@/lib/errors";
 import { primaryButton } from "@/components/ui/styles";
 import type { ActionFn } from "./actionFn";
 import { ErrorSummary, problemFor, type FieldProblem } from "./ErrorSummary";
@@ -12,13 +13,24 @@ import { PASSWORD_HINT, newPasswordProblems, summaryTitle } from "./passwordRule
 import { PasswordField } from "./PasswordField";
 import { StatusMessage } from "./StatusMessage";
 
-type Props = { setNewPassword: ActionFn<{ password: string }, NextStep>; onExpired: () => void };
+type Props = { setNewPassword: ActionFn<{ password: string; userId: string }, NextStep>; userId: string; onExpired: () => void };
 type Notice = { problems: FieldProblem[]; text: string | null; attempt: number };
 
 const IDS = { password: "new-password", confirm: "new-password-confirm" };
 
+/** What a failed save says: a message of the server for a field it rejected, the text of another account being signed in, or the generic one. */
+function noticeFor(result: Failure, attempt: number): Notice {
+  // Another account is signed in now: the server changed nothing and says so. The person reads it and opens the link again.
+  if (result.code === "CONFLICT") return { problems: [], text: result.message, attempt };
+  if (failureKind(result) === "invalid") {
+    const message = result.fields?.password ?? "La contraseña no sirve: probá con otra.";
+    return { problems: [{ field: IDS.password, message }], text: null, attempt };
+  }
+  return { problems: [], text: failureText(result), attempt };
+}
+
 // «Elegí tu contraseña nueva» (login-profe-a, #nueva). It already has a session from the recovery link.
-export function NewPasswordForm({ setNewPassword, onExpired }: Props) {
+export function NewPasswordForm({ setNewPassword, userId, onExpired }: Props) {
   const router = useRouter();
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState(false);
@@ -33,15 +45,11 @@ export function NewPasswordForm({ setNewPassword, onExpired }: Props) {
     const problems = newPasswordProblems(password, String(form.get("confirm") ?? ""), IDS);
     if (problems.length > 0) return setNotice({ problems, text: null, attempt });
     setPending(true);
-    const result = await callAction(setNewPassword, { password });
+    const result = await callAction(setNewPassword, { password, userId });
     if (result.ok) return router.replace(result.data.next);
     setPending(false);
     if (result.code === "FORBIDDEN" || result.code === "NOT_FOUND") return onExpired();
-    if (failureKind(result) === "invalid") {
-      const message = result.fields?.password ?? "La contraseña no sirve: probá con otra.";
-      return setNotice({ problems: [{ field: IDS.password, message }], text: null, attempt });
-    }
-    setNotice({ problems: [], text: failureText(result), attempt });
+    setNotice(noticeFor(result, attempt));
   }
 
   const problems = notice?.problems ?? [];

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { revokeButtonId, useReturnFocus } from "./useReturnFocus";
 import type { z } from "zod";
 import type { ActionFn } from "@/components/auth/staff/actionFn";
 import { failureText } from "@/components/auth/staff/failureText";
@@ -21,18 +22,25 @@ export const WAITING_TITLE = "esperando-titulo";
 export type RowPhase = "idle" | "confirming" | "busy";
 export type RowMessage = { kind: "ok" | "problem"; text: string; attempt: number };
 
-// What «Reenviar» and «Revocar» do for one invitation. After each one the list is read again (router.refresh), so the
-// row shows the state the server has. If somebody else changed the invitation first (revision), it says so.
-export function useInvitationRow(institutionId: string, item: InvitationView, actions: InvitationActions) {
-  const router = useRouter();
-  const [phase, setPhase] = useState<RowPhase>("idle");
+/** The message under the row and the function that says a new one (each one has its own `attempt`, so it is announced again). */
+function useRowMessage(): [RowMessage | null, (kind: RowMessage["kind"], text: string) => void] {
   const [message, setMessage] = useState<RowMessage | null>(null);
   const [count, setCount] = useState(0);
   const say = (kind: RowMessage["kind"], text: string) => {
     setCount((value) => value + 1);
     setMessage({ kind, text, attempt: count + 1 });
   };
+  return [message, say];
+}
+
+// What «Reenviar» and «Revocar» do for one invitation. After each one the list is read again (router.refresh), so the
+// row shows the state the server has. If somebody else changed the invitation first (revision), it says so.
+export function useInvitationRow(institutionId: string, item: InvitationView, actions: InvitationActions) {
+  const router = useRouter();
+  const [phase, setPhase] = useState<RowPhase>("idle");
+  const [message, say] = useRowMessage();
   const input = { institutionId, invitationId: item.id, revision: item.revision };
+  const giveFocusBack = useReturnFocus(phase, revokeButtonId(item.id));
 
   async function resend() {
     setPhase("busy");
@@ -57,10 +65,14 @@ export function useInvitationRow(institutionId: string, item: InvitationView, ac
       document.getElementById(WAITING_TITLE)?.focus();
       return router.refresh();
     }
+    giveFocusBack();
     setPhase("idle");
     if (result.code === "CONFLICT") router.refresh();
     say("problem", result.code === "CONFLICT" ? "Esta invitación cambió mientras mirabas. Actualizamos la lista." : failureText(result));
   }
 
-  return { phase, message, ask: () => setPhase("confirming"), cancel: () => setPhase("idle"), resend, revoke };
+  return { phase, message, ask: () => setPhase("confirming"), cancel: () => {
+      giveFocusBack();
+      setPhase("idle");
+    }, resend, revoke };
 }

@@ -1,4 +1,5 @@
 ﻿import { describe, expect, it } from "vitest";
+import { getMailSender } from "./mail";
 import { assertStartupConfig, configProblems } from "./startup-config";
 
 const COMPLETE = {
@@ -47,6 +48,45 @@ describe("configProblems", () => {
     expect(configProblems({ ...COMPLETE, NEXT_PUBLIC_SITE_URL: "http://localhost:3100" })).toEqual([]);
     for (const bad of [undefined, "", "usetiza.app", "http://usetiza.app", "javascript:alert(1)"]) {
       expect(configProblems({ ...COMPLETE, NEXT_PUBLIC_SITE_URL: bad }).join()).toContain("NEXT_PUBLIC_SITE_URL");
+    }
+  });
+});
+
+describe("configuración del correo: una sola regla con getMailSender", () => {
+  it("MAIL_DRIVER=mailpit en producción sin RESEND_API_KEY arranca solo si Mailpit es local", () => {
+    const env = { ...COMPLETE, MAIL_DRIVER: "mailpit", RESEND_API_KEY: undefined, MAIL_FROM: undefined };
+    expect(configProblems(env)).toEqual([]);
+    expect(configProblems({ ...env, MAIL_MAILPIT_URL: "http://127.0.0.1:54324" })).toEqual([]);
+    expect(configProblems({ ...env, MAIL_MAILPIT_URL: "https://correo.example.com" }).join()).toContain("MAIL_MAILPIT_URL");
+    expect(configProblems({ ...env, MAIL_MAILPIT_URL: "no es una dirección" }).join()).toContain("MAIL_MAILPIT_URL");
+  });
+
+  it("un driver desconocido no arranca", () => {
+    expect(configProblems({ ...COMPLETE, MAIL_DRIVER: "sendgrid" }).join()).toContain("MAIL_DRIVER");
+  });
+
+  it("un MAIL_FROM que no es una dirección no arranca", () => {
+    expect(configProblems({ ...COMPLETE, MAIL_FROM: "sin direccion" }).join()).toContain("MAIL_FROM");
+  });
+
+  it("si el arranque pasa, getMailSender no falla por configuración (y al revés)", () => {
+    const cases = [
+      COMPLETE,
+      { ...COMPLETE, MAIL_DRIVER: "mailpit", RESEND_API_KEY: undefined, MAIL_FROM: undefined },
+      { ...COMPLETE, MAIL_DRIVER: "mailpit", MAIL_MAILPIT_URL: "https://correo.example.com" },
+      { ...COMPLETE, MAIL_DRIVER: "otro" },
+      { ...COMPLETE, RESEND_API_KEY: "" },
+      { ...COMPLETE, MAIL_FROM: "sin direccion" },
+    ];
+    for (const env of cases) {
+      const starts = configProblems(env).filter((line) => /MAIL|RESEND/.test(line)).length === 0;
+      let builds = true;
+      try {
+        getMailSender(env);
+      } catch {
+        builds = false;
+      }
+      expect(builds).toBe(starts);
     }
   });
 });

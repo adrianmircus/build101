@@ -27,7 +27,7 @@ describe("recuperar la contraseña (login-profe-a)", () => {
   });
 
   it("contraseña nueva: dos campos new-password, con la regla de 10 caracteres a la vista", () => {
-    const html = renderToStaticMarkup(<NewPasswordForm setNewPassword={vi.fn()} onExpired={vi.fn()} />);
+    const html = renderToStaticMarkup(<NewPasswordForm setNewPassword={vi.fn()} userId="u" onExpired={vi.fn()} />);
     expect(html.match(/autoComplete="new-password"|autocomplete="new-password"/gi)).toHaveLength(2);
     expect(html).toContain("Al menos 10 caracteres");
     expect(html).toContain("Contraseña nueva");
