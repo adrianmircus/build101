@@ -617,7 +617,8 @@ Archivos: supabase/migrations/20261114130000_t2_5a_student_accounts.sql (incluye
   con la parte del estudiante), supabase/tests/043_student_accounts.test.sql,
   supabase/tests/030_reasons.test.sql, supabase/tests/006_inventory.test.sql, lib/domain/errors/reasons.ts,
   lib/domain/permissions/erasure.ts, lib/domain/permissions/tables.ts, docs/PRIVACIDAD-DATOS.md,
-  tests/integration/races/access-cards.test.ts, tests/integration/races/provisioning.test.ts.
+  tests/integration/races/access-cards.test.ts, tests/integration/races/provisioning.test.ts, tests/factories/** y
+  tests/integration/support/** (el login de estudiante de las pruebas pasa por el bind, así sigue leyendo datos).
 Criterios: las RPC de «Cuentas de estudiantes» con las reglas comunes; dos emisiones a la vez del mismo estudiante
   terminan con una sola tarjeta activa y la credencial de la última; issue_access_cards borra las sesiones del
   estudiante; internal_get_student_login es la única que devuelve el hash, y solo a service_role; remember concurrente
