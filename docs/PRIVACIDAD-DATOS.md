@@ -546,6 +546,16 @@ Sesión guardada de un profe en una demo.
 |---|---|---|---|
 | `refresh_token_ciphertext`, `claim_token`, `claimed_at`, `consumed_at`, `expires_at`, `owner_user_id`, `id`, `institution_id`, `created_at`, `updated_at` | conserva | no personal | Credencial cifrada y de un solo uso de un profe en una institución de demo. No hay estudiantes reales. |
 
+### `student_rpc_windows`
+
+Regla: `sin datos de estudiantes`.
+
+Marca de una ventana de RPC de estudiante dentro de una transacción. Vive lo que dura esa transacción y no lleva ids de estudiantes.
+
+| Campo | Qué pasa | Después | Por qué |
+|---|---|---|---|
+| `txid`, `id`, `created_at` | conserva | no personal | Id de transacción de la base, uuid aleatorio y fecha. No hay ninguna referencia a un estudiante. |
+
 ## Lo que erasure.ts no cubre
 
 Estas diferencias entre el esquema y `erasure.ts` quedan registradas acá y las fija la prueba. Si se cierran, se actualiza el documento y la lista de la prueba.

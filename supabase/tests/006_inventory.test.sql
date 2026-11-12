@@ -56,7 +56,8 @@ select set_eq(
     ('presets'),
     ('notifications'),
     ('import_runs'),
-    ('sandbox_sessions')
+    ('sandbox_sessions'),
+    ('student_rpc_windows')
     -- inventory:end
   $$,
   'the tables of app are exactly the inventoried ones');
