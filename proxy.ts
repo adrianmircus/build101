@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verify } from "@/lib/auth/signing";
+import { applyRefresh, applyTokenPageHeaders, refreshSession } from "@/lib/server/auth/session-proxy";
 
-// Without a session for the right role, each area redirects to its login screen.
-export function proxy(request: NextRequest) {
+// Without a session for the right role, each area redirects to its login screen. These rules still read the signed
+// cookie of the demo; T2.8 moves them to the Supabase session.
+function areaRules(request: NextRequest): NextResponse | undefined {
   const session = verify(request.cookies.get(SESSION_COOKIE)?.value);
   const { pathname } = request.nextUrl;
   // APIs answer 401 instead of redirecting. Dictation (/api/answers), voice commands (/api/voice) and reading aloud
@@ -29,6 +31,17 @@ export function proxy(request: NextRequest) {
   }
 }
 
+export async function proxy(request: NextRequest) {
+  // The refresh goes first: it updates the cookies of the request that the page will read.
+  const refresh = await refreshSession(request);
+  const response = areaRules(request) ?? NextResponse.next({ request });
+  if (refresh) applyRefresh(response, refresh);
+  applyTokenPageHeaders(request.nextUrl.pathname, response);
+  return response;
+}
+
+// Everything but Next internals, static files and the jobs (which have their own secret). The pages with a token
+// (/invitacion, /t, /ingresar/profesor/nueva) need to be inside to get their headers.
 export const config = {
-  matcher: ["/grupos/:path*", "/materia/:path*", "/estudiante/:path*", "/api/:path*"],
+  matcher: ["/((?!_next/|api/jobs(?:/|$)|.*[.][A-Za-z0-9]+$).*)"],
 };

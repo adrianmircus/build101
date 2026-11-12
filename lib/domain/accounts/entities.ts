@@ -16,7 +16,7 @@ export type StaffInstitution = z.infer<typeof StaffInstitution>;
  */
 export const Actor = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("staff"), userId: Id, institutions: z.array(StaffInstitution) }).strict(),
-  z.object({ kind: z.literal("student"), userId: Id, studentId: Id, institutionId: Id }).strict(),
+  z.object({ kind: z.literal("student"), userId: Id, institutionId: Id }).strict(),
 ]);
 export type Actor = z.infer<typeof Actor>;
 export type StaffActor = Extract<Actor, { kind: "staff" }>;
