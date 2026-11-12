@@ -934,3 +934,54 @@ En la pasada completa no encontré otro bloqueo contractual adicional.
 ### Qué se cambió
 
 Versión 12: student_sessions con FK a auth.sessions on delete cascade (F2C-78); canIssueCards y accountStatus none en list_group_accounts, exigidos antes de cualquier llamada admin (F2C-79); otpExchangeClient en repos/admin/db.ts para el canje del magic link, a cargo de T2.3 (F2C-80).
+
+## Ronda 12
+
+1. **F2C-81 · Alta — La revocación sigue siendo reversible mediante DML.**
+
+   **Dónde:** [sesión vigente, línea 62](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:62), [FK nueva, línea 310](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:310) y [guardias del registro, línea 350](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:350).
+
+   **Escenario:** un profe sale y Auth borra su sesión S. El dueño reinserta S con el mismo usuario. Su JWT anterior, todavía vigente, vuelve a pasar `session_alive()`: para staff alcanza con que exista S.
+
+   Para estudiantes, la FK corrige el escenario exacto de F2C-78: restaurar **solo** `auth.sessions` ya no alcanza. Pero el dueño puede restaurar también el registro eliminado de `student_sessions`: S existe y la credencial conserva su versión. Cumple las condiciones de inserción enumeradas. «Solo escribe el bind» no tiene definido un mecanismo que lo garantice frente al DML del dueño.
+
+   **Cambio propuesto:** conservar memoria de los identificadores de sesión revocados y rechazar su reutilización, tanto en Auth como en el registro estudiantil. Proteger esa memoria frente a modificación, borrado, TRUNCATE y carreras; conservarla al menos mientras pueda existir un JWT correspondiente vigente. Cubrir también cambios de identificador para que no eludan la memoria. Probar restauración de staff y restauración de ambas filas estudiantiles.
+
+2. **F2C-82 · Alta — La FK acredita existencia, pero falta vincular la sesión con su usuario.**
+
+   **Dónde:** [bind, línea 120](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:120), [registro, línea 350](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:350) y [criterio de sesión viva, línea 364](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:364).
+
+   **Escenario:** S es una sesión registrada del estudiante A. El dueño cambia `auth.sessions.user_id` a B, otra cuenta existente. La FK por `id` permanece satisfecha y el registro estudiantil no cambia. Después, `internal_revoke_user_sessions(A)` no encuentra S y no la borra. El JWT de A conserva S y, según las condiciones escritas, sigue pasando: la sesión existe y su registro tiene la versión vigente de A.
+
+   **Cambio propuesto:** exigir explícitamente toda la correspondencia: `JWT.sub = auth.sessions.user_id = cuenta vinculada al estudiante registrado`. El bind y la guardia de inserción deben comprobar esa misma identidad. Proteger también el cambio de titular en `auth.sessions`, o invalidar su registro cuando ocurra, con coordinación concurrente. Agregar la prueba anterior como dueño.
+
+   Una FK solo garantiza la relación entre las columnas que referencia; aquí no incluye al titular. [Restricciones de PostgreSQL](https://www.postgresql.org/docs/17/ddl-constraints.html).
+
+3. **F2C-83 · Baja — `accountStatus: none` describe incorrectamente el sandbox existente.**
+
+   **Dónde:** [salida de `list_group_accounts`, línea 401](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:401), frente a [fase 1, línea 201](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-1.md:201).
+
+   **Escenario:** `create_student` en un sandbox conserva una fila de aprovisionamiento con estado `not_applicable`. La v12 define `none` como «sin fila de aprovisionamiento: un sandbox». Al consultar ese estudiante hay una fila, pero su estado no pertenece al enum de salida. La proyección contractual queda incompleta.
+
+   **Cambio propuesto:** definir expresamente `not_applicable → accountStatus: none`. Distinguir una ausencia inesperada de aprovisionamiento en una escuela. Mantener `canIssueCards: false` y el descarte previo a Auth, que sí están correctamente exigidos.
+
+El estado de los abiertos queda así:
+
+| Hallazgo | Estado en v12 |
+|---|---|
+| **F2C-78** | **Cerrado para su escenario exacto:** la cascada elimina el registro y restaurar solo Auth no lo recupera. La garantía general conserva F2C-81. |
+| **F2C-79** | **Cerrado en autorización y efectos privilegiados:** exige `canIssueCards` y descarta `not_applicable` antes de Auth. Queda la representación de F2C-83. |
+| **F2C-80** | **Cerrado:** fábrica adicional, configuración, timeout y alcance de T2.3 explícitos. |
+| **F2C-9** | **Parcialmente cerrado:** funciona la revocación ordinaria; bajo el modelo de DML indicado permanecen F2C-81 y F2C-82. |
+| **F2C-77** | **Cerrado en la preautorización**, incluido sandbox. |
+| **F2C-75 / F2C-11 / F2C-27** | Mantienen el cierre del bypass público: un OTP directo sin registro no obtiene acceso. |
+
+La FK nueva **no exige conceder acceso general a `app` al rol de Auth**: PostgreSQL ejecuta la cascada con los derechos del dueño de la tabla referenciante. [Implementación de integridad referencial](https://raw.githubusercontent.com/postgres/postgres/REL_17_STABLE/src/backend/utils/adt/ri_triggers.c). También extiende la protección contra TRUNCATE: sin incluir la tabla hija se rechaza por la FK; con `CASCADE`, interviene su `no_truncate`. [Semántica de TRUNCATE](https://www.postgresql.org/docs/17/sql-truncate.html).
+
+La reactivación de la guardia de enlace en toda la suite está asignada expresamente a T2.5a. No considero su estado actual un hallazgo contractual adicional. En la pasada completa no encontré otro bloqueo distinto de los anteriores.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 13: app.revoked_sessions con un trigger AFTER DELETE en auth.sessions, y rechazo de un id revocado al insertar en auth.sessions y en student_sessions (F2C-81); id y user_id de auth.sessions no cambian, y session_alive exige user_id = sub y el registro del mismo estudiante (F2C-82); not_applicable se muestra como none (F2C-83). Lo implementa T2.5a.
