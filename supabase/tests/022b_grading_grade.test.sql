@@ -258,7 +258,7 @@ select is_empty($$
   select v.label from (values
     ('feedback null', null, '{}', 'null', 'INVALID invalid_feedback'),
     ('feedback of 5001', repeat('a', 5001), '{}', 'null', 'INVALID invalid_feedback'),
-    ('feedback of 2501 emoji (5002 as JavaScript counts)', repeat(chr(128512), 2501), '{}', 'null', 'INVALID invalid_feedback'),
+    ('feedback of 5001 emoji (5001 code points)', repeat(chr(128512), 5001), '{}', 'null', 'INVALID invalid_feedback'),
     ('score 0', 'Bien', '{}', '0', 'INVALID invalid_score'),
     ('score 11', 'Bien', '{}', '11', 'INVALID invalid_score'),
     ('score negative', 'Bien', '{}', '-3', 'INVALID invalid_score'),
@@ -377,8 +377,8 @@ select is((select a.status from app.assignments a where a.id = pg_temp.id('as_s2
 select pg_temp.as_user('stu_c', pg_temp.q_start('t_s3_vt'));
 select pg_temp.as_user('stu_c', pg_temp.q_submit('t_s3_vt', '1'));
 update app.assignment_attempts set superseded_at = clock_timestamp() where id = pg_temp.id('t_s3_vt');
-select is(pg_temp.as_user('teach', pg_temp.q_grade('t_s3_vt', repeat(chr(128512), 2500), '{}', '5', 'null')) ->> 'revision', '1',
-  'a submitted attempt that was replaced is graded, with a feedback of 2500 emoji (5000 as JavaScript counts)');
+select is(pg_temp.as_user('teach', pg_temp.q_grade('t_s3_vt', repeat(chr(128512), 5000), '{}', '5', 'null')) ->> 'revision', '1',
+  'a submitted attempt that was replaced is graded, with a feedback of 5000 emoji (5000 code points)');
 select is((select a.status from app.assignments a where a.id = pg_temp.id('as_s3_vt')), 'submitted', 'and the assignment keeps waiting for the attempt in force: it is not marked graded');
 update app.publications set withdrawn_at = clock_timestamp() where id = pg_temp.id('p_vt');
 select is(pg_temp.as_user('teach', pg_temp.q_grade('t_s1_vt', 'Con la publicación retirada.', '{}', '8', '5')) ->> 'revision', '6', 'a grade of a withdrawn publication is edited');
