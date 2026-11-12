@@ -1,4 +1,4 @@
--- T1.3a, widened in T1.3b, T1.4b and T1.4c: reconstruction. A teacher of the group calls every staff RPC that is not
+-- T1.3a, widened in T1.3b, T1.4b, T1.4c and T1.5a: reconstruction. A teacher of the group calls every staff RPC that is not
 -- an audited read and none of the answers may carry a profile, a support, an interest, a review date,
 -- the interface of a student, the configuration of a version, its recipients or the inputs of a
 -- generation: those come out only through the audited reads.
@@ -17,7 +17,7 @@
 -- test fails until it does, comparing full signatures). The student_* reads are not here: a teacher
 -- cannot call them, and 023_student_dto and the leak test cover them.
 begin;
-select plan(47);
+select plan(48);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -207,6 +207,7 @@ insert into specs (name, spec) values
   ('confirm_answer_key', '{"revisionId":"s","number":"s"}'),
   ('approve_answer_key', '{"answerKeyId":"s","approvedRevisionId":"s","revision":"s"}'),
   ('get_answer_key', '{"id":"s","versionId":"s","status":"s","stale":"s","approvedRevisionId":"s","revision":"s","current":{"id":"s","number":"s","source":"s","content":{"exercises":"map","questions":"map"},"versionRevision":"s","exerciseRevisions":"map","questionRevisions":"map","instructionsRevision":"s","createdAt":"s"}}'),
+  ('publish_version', '{"publicationId":"s","attempts":"s"}'),
   ('get_assessment', '{"assessment":{"createdAt":"s","dueAt":"s","generalInstructions":"s","groupId":"s","id":"s","kind":"s","publishAt":"s","revision":"s","sourceFileId":"s","status":"s","subjectId":"s","topic":"s"},"exercises":[{"body":"s","id":"s","label":"s","position":"s","revision":"s","topicId":"s"}]}');
 
 -- A control: the detector does flag the audited read of the same data, so a green result below is not a blind detector.
@@ -298,17 +299,30 @@ select pg_temp.call('edit_answer_key', 'api.edit_answer_key(uuid,jsonb,uuid)', f
 select pg_temp.call('confirm_answer_key', 'api.confirm_answer_key(uuid,uuid)', format('select api.confirm_answer_key(%L, %L)', pg_temp.id('vb'), (select res ->> 'revisionId' from answers where name = 'edit_answer_key')));
 select pg_temp.call('approve_answer_key', 'api.approve_answer_key(uuid,uuid)', format('select api.approve_answer_key(%L, %L)', pg_temp.id('vb'), (select res ->> 'revisionId' from answers where name = 'confirm_answer_key')));
 select pg_temp.call('get_answer_key', 'api.get_answer_key(uuid)', format('select api.get_answer_key(%L)', pg_temp.id('vb')));
+-- Publishing (T1.5a): a version of its own with a recipient that has needs, approved and published. What comes out is the
+-- id of the publication and the number of attempts; the copy is read below, and carries nothing of the configuration.
+insert into ids (k, id) select 'vp', (pg_temp.as_user('teach', format($$ select api.create_version(%L, '{"profiles":["motor"],"supports":["recordatorio"],"interests":["centinela-publicado"]}', 'typed', gen_random_uuid(), null) $$, pg_temp.id('aa'))) ->> 'id')::uuid;
+insert into ids (k, id) select 'xp', ve.id from app.version_exercises ve where ve.version_id = pg_temp.id('vp');
+select pg_temp.as_user('teach', format('select api.update_version_exercise(%L, 1, ''Texto de la publicación'', gen_random_uuid())', pg_temp.id('xp')));
+select pg_temp.as_user('teach', format('select api.set_version_recipients(%L, %s, array[%L]::uuid[], gen_random_uuid())', pg_temp.id('vp'), (select revision from app.versions where id = pg_temp.id('vp')), pg_temp.id('s2')));
+insert into pairs values (pg_temp.id('vp')::text, pg_temp.id('s2')::text);
+select pg_temp.as_user('teach', format('select api.approve_version(%L, %s, gen_random_uuid())', pg_temp.id('vp'), (select revision from app.versions where id = pg_temp.id('vp'))));
+select pg_temp.call('publish_version', 'api.publish_version(uuid,integer,uuid,uuid)', format('select api.publish_version(%L, %s, gen_random_uuid(), null)', pg_temp.id('vp'), (select revision from app.versions where id = pg_temp.id('vp'))));
 select pg_temp.call('archive_assessment','api.archive_assessment(uuid,integer)', format('select api.archive_assessment(%L, 3)', pg_temp.id('aa')));
 
 select is((select count(*) from answers where res ? 'error'), 0::bigint, 'every call worked: none answered an error (so each answer is a real one)');
 select is((select string_agg(a.name, ',' order by a.name) from answers a where pg_temp.verdict(a.res, (select sp.spec from specs sp where sp.name = a.name)) <> ''), null::text,
   'no answer carries a profile, a support, an interest, a review date, an interface, a configuration, inputs or a recipient, and each one conforms to its keys');
 select is((select count(*) from answers a join specs sp on sp.name = a.name), (select count(*) from answers), 'every answer has its spec of keys');
-select is((select count(*) from answers), 46::bigint, 'forty-six RPCs were called');
+select is((select count(*) from answers), 47::bigint, 'forty-seven RPCs were called');
 select is((select res -> 'current' -> 'content' -> 'questions' ->> pg_temp.id('qb')::text from answers where name = 'get_answer_key'), 'B',
   'the answer key read did carry the correct option and the exercise answer (so there was something to leak)');
 select is(pg_temp.verdict((select res || '{"config": {}}'::jsonb from answers where name = 'get_answer_key'), (select spec from specs where name = 'get_answer_key')), 'key,shape',
   'control: a configuration smuggled into the answer key read is flagged');
+select is(pg_temp.verdict((select jsonb_build_object('content', p.content, 'aids', p.aids, 'attempts', (select count(*) from app.assignment_attempts t where t.publication_id = p.id))
+                             from app.publications p where p.id = (select (res ->> 'publicationId')::uuid from answers where name = 'publish_version')),
+                           '{"content":{"generalInstructions":"s","exercises":[{"id":"s","label":"s","body":"s"}],"questions":[{"id":"s","exerciseId":"s","stem":"s","options":[{"id":"s","text":"s"}]}]},"aids":{"readAloud":"s"},"attempts":"s"}'::jsonb), '',
+  'the copy a student receives carries no profile, support, interest, configuration, recipient or pair, and only the keys of its schema; a recipient with needs got its attempt');
 select is(jsonb_array_length((select res -> 'items' from answers where name = 'list_group_students')), 4,
   'and the roster answer did list the students that have needs (so there was something to leak)');
 select is((select string_agg(k, ',' order by k) from (select jsonb_object_keys(res -> 'items' -> 0) k from answers where name = 'list_group_students') t),
