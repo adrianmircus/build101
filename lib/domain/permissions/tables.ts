@@ -1,0 +1,55 @@
+// Every table of the contract, in schema app. None is reachable through the REST API: the matrix
+// test (T1.8) asks PostgREST for each one as every role and expects it not to exist, and the
+// inventory test (T1.9) checks that each one is in docs/PRIVACIDAD-DATOS.md. Which of them hold
+// data about a student, and what erasure does to each, is in erasure.ts.
+// 001_contract.test.sql keeps the database honest about the same list's properties.
+
+export const APP_TABLES = [
+  "app_users",
+  "institutions",
+  "subjects",
+  "memberships",
+  "invitations",
+  "groups",
+  "group_staff",
+  "students",
+  "enrollments",
+  "student_pseudonyms",
+  "account_provisioning",
+  "student_needs",
+  "student_need_events",
+  "student_notes",
+  "files",
+  "syllabi",
+  "consents",
+  "assessments",
+  "assessment_exercises",
+  "versions",
+  "version_exercises",
+  "version_questions",
+  "question_keys",
+  "version_recipients",
+  "generations",
+  "operations",
+  "generation_outputs",
+  "version_events",
+  "answer_keys",
+  "answer_key_revisions",
+  "publications",
+  "assignments",
+  "assignment_attempts",
+  "submissions",
+  "grades",
+  "group_analyses",
+  "feedback_events",
+  "audit_log",
+  "erasures",
+  "rate_limits",
+  "presets",
+  "notifications",
+  "import_runs",
+  "sandbox_sessions",
+  // Bookkeeping of the migration window for student RPCs (20261111131300): no personal data.
+  "student_rpc_windows",
+] as const;
+export type AppTable = (typeof APP_TABLES)[number];

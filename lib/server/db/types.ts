@@ -6,7 +6,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 
 export type Database = {
   
-  "public": {
+  "api": {
           Tables: {
             [_ in never]: never
           }
@@ -14,7 +14,225 @@ export type Database = {
             [_ in never]: never
           }
           Functions: {
-            [_ in never]: never
+            "add_exercise":
+{ Args: { "p_assessment_id": string,"p_body": string,"p_label": string,"p_topic_id"?: string }; Returns: Json
+                           },
+"add_group_staff":
+{ Args: { "p_group_id": string,"p_role": string,"p_user_id": string }; Returns: Json
+                           },
+"approve_answer_key":
+{ Args: { "p_revision_id": string,"p_version_id": string }; Returns: Json
+                           },
+"approve_version":
+{ Args: { "p_op_id": string,"p_revision": number,"p_version_id": string }; Returns: Json
+                           },
+"archive_assessment":
+{ Args: { "p_assessment_id": string,"p_revision": number }; Returns: Json
+                           },
+"archive_group":
+{ Args: { "p_group_id": string,"p_revision": number }; Returns: Json
+                           },
+"archive_student":
+{ Args: { "p_revision": number,"p_student_id": string }; Returns: Json
+                           },
+"archive_student_note":
+{ Args: { "p_note_id": string,"p_revision": number }; Returns: Json
+                           },
+"archive_version":
+{ Args: { "p_revision": number,"p_version_id": string }; Returns: Json
+                           },
+"confirm_answer_key":
+{ Args: { "p_base_revision_id": string,"p_version_id": string }; Returns: Json
+                           },
+"create_assessment":
+{ Args: { "p_general_instructions": string,"p_group_id": string,"p_kind": string,"p_topic": string }; Returns: Json
+                           },
+"create_group":
+{ Args: { "p_institution_id": string,"p_name": string,"p_school_year": number,"p_subject_id": string }; Returns: Json
+                           },
+"create_student":
+{ Args: { "p_display_name": string,"p_group_id": string,"p_op_key": string,"p_username": string }; Returns: Json
+                           },
+"create_student_note":
+{ Args: { "p_body": string,"p_student_id": string }; Returns: Json
+                           },
+"create_version":
+{ Args: { "p_answer_mode": string,"p_assessment_id": string,"p_base_version_id"?: string,"p_config": Json }; Returns: Json
+                           },
+"edit_answer_key":
+{ Args: { "p_base_revision_id"?: string,"p_content": Json,"p_version_id": string }; Returns: Json
+                           },
+"enroll_student":
+{ Args: { "p_group_id": string,"p_student_id": string }; Returns: Json
+                           },
+"get_answer_key":
+{ Args: { "p_version_id": string }; Returns: Json
+                           },
+"get_assessment":
+{ Args: { "p_assessment_id": string }; Returns: Json
+                           },
+"get_attempt_for_grading":
+{ Args: { "p_attempt_id": string }; Returns: Json
+                           },
+"get_group":
+{ Args: { "p_group_id": string }; Returns: Json
+                           },
+"get_group_needs":
+{ Args: { "p_group_id": string }; Returns: Json
+                           },
+"get_student_needs":
+{ Args: { "p_student_ids": (string)[] }; Returns: Json
+                           },
+"get_version":
+{ Args: { "p_version_id": string }; Returns: Json
+                           },
+"grade_attempt":
+{ Args: { "p_attempt_id": string,"p_exercise_results": Json,"p_feedback": string,"p_revision"?: number,"p_score"?: number }; Returns: Json
+                           },
+"internal_add_membership":
+{ Args: { "p_institution_id": string,"p_role": string,"p_user_id": string }; Returns: Json
+                           },
+"internal_create_generation":
+{ Args: { "p_inputs": Json,"p_kind": string,"p_op_key": string,"p_profiles_hash": string,"p_profiles_revision": string,"p_prompt_version": string,"p_requested_by"?: string,"p_required_jobs": number,"p_target_exercise_id"?: string,"p_version_id": string }; Returns: Json
+                           },
+"internal_create_institution":
+{ Args: { "p_code": string,"p_expires_at"?: string,"p_kind": string,"p_name": string,"p_owner_user_id"?: string }; Returns: Json
+                           },
+"internal_finish_generation":
+{ Args: { "p_error_code"?: string,"p_generation_id": string,"p_status": string }; Returns: Json
+                           },
+"internal_link_student_user":
+{ Args: { "p_student_id": string,"p_user_id": string }; Returns: Json
+                           },
+"internal_record_answer_key_revision":
+{ Args: { "p_content": Json,"p_generation_id": string }; Returns: Json
+                           },
+"internal_record_generation_output":
+{ Args: { "p_generation_id": string,"p_kind": string,"p_output": Json,"p_version_exercise_id"?: string }; Returns: Json
+                           },
+"internal_revoke_membership":
+{ Args: { "p_membership_id": string }; Returns: Json
+                           },
+"internal_upsert_app_user":
+{ Args: { "p_display_name"?: string,"p_user_id": string }; Returns: Json
+                           },
+"list_assessment_attempts":
+{ Args: { "p_assessment_id": string }; Returns: Json
+                           },
+"list_assessments":
+{ Args: { "p_group_id": string,"p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number }; Returns: Json
+                           },
+"list_group_students":
+{ Args: { "p_group_id": string,"p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number }; Returns: Json
+                           },
+"list_my_groups":
+{ Args: { "p_include_archived"?: boolean,"p_institution_id": string,"p_limit"?: number,"p_offset"?: number }; Returns: Json
+                           },
+"list_my_institutions":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"list_student_consents":
+{ Args: { "p_student_id": string }; Returns: Json
+                           },
+"list_student_need_events":
+{ Args: { "p_limit"?: number,"p_offset"?: number,"p_student_id": string }; Returns: Json
+                           },
+"list_student_notes":
+{ Args: { "p_student_id": string }; Returns: Json
+                           },
+"list_versions":
+{ Args: { "p_assessment_id": string }; Returns: Json
+                           },
+"publish_version":
+{ Args: { "p_answer_key_revision_id"?: string,"p_op_key": string,"p_revision": number,"p_version_id": string }; Returns: Json
+                           },
+"record_consent":
+{ Args: { "p_file_id"?: string,"p_purpose": string,"p_student_id": string,"p_text_version": string,"p_valid_until"?: string }; Returns: Json
+                           },
+"reject_version":
+{ Args: { "p_op_id": string,"p_reasons": (string)[],"p_revision": number,"p_version_id": string }; Returns: Json
+                           },
+"remove_exercise":
+{ Args: { "p_exercise_id": string,"p_revision": number }; Returns: Json
+                           },
+"remove_group_staff":
+{ Args: { "p_group_id": string,"p_user_id": string }; Returns: Json
+                           },
+"reorder_exercises":
+{ Args: { "p_assessment_id": string,"p_exercise_ids": (string)[],"p_revision": number }; Returns: Json
+                           },
+"restore_group":
+{ Args: { "p_group_id": string,"p_revision": number }; Returns: Json
+                           },
+"restore_student":
+{ Args: { "p_revision": number,"p_student_id": string }; Returns: Json
+                           },
+"revoke_consent":
+{ Args: { "p_consent_id": string,"p_revision": number }; Returns: Json
+                           },
+"set_question_key":
+{ Args: { "p_correct_option_id": string,"p_question_id": string,"p_revision"?: number }; Returns: Json
+                           },
+"set_student_needs":
+{ Args: { "p_interests": (string)[],"p_op_id": string,"p_profiles": (string)[],"p_review_due_on"?: string,"p_revision"?: number,"p_student_id": string,"p_supports": (string)[] }; Returns: Json
+                           },
+"set_version_recipients":
+{ Args: { "p_op_id": string,"p_revision": number,"p_student_ids": (string)[],"p_version_id": string }; Returns: Json
+                           },
+"student_grades":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"student_home":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"student_open_attempt":
+{ Args: { "p_assignment_id": string }; Returns: Json
+                           },
+"student_save_draft":
+{ Args: { "p_answers": Json,"p_attempt_id": string,"p_choices": Json,"p_revision": number }; Returns: Json
+                           },
+"student_start_attempt":
+{ Args: { "p_attempt_id": string }; Returns: Json
+                           },
+"student_submit_attempt":
+{ Args: { "p_attempt_id": string,"p_revision": number }; Returns: Json
+                           },
+"student_task":
+{ Args: { "p_attempt_id": string }; Returns: Json
+                           },
+"student_task_list":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"unenroll_student":
+{ Args: { "p_group_id": string,"p_student_id": string }; Returns: Json
+                           },
+"update_assessment":
+{ Args: { "p_assessment_id": string,"p_general_instructions": string,"p_kind": string,"p_revision": number,"p_topic": string }; Returns: Json
+                           },
+"update_exercise":
+{ Args: { "p_body": string,"p_exercise_id": string,"p_label": string,"p_revision": number,"p_topic_id"?: string }; Returns: Json
+                           },
+"update_group":
+{ Args: { "p_group_id": string,"p_name": string,"p_revision": number,"p_school_year": number }; Returns: Json
+                           },
+"update_student":
+{ Args: { "p_display_name": string,"p_revision": number,"p_student_id": string,"p_username": string }; Returns: Json
+                           },
+"update_student_note":
+{ Args: { "p_body": string,"p_note_id": string,"p_revision": number }; Returns: Json
+                           },
+"update_version_config":
+{ Args: { "p_answer_mode": string,"p_config": Json,"p_revision": number,"p_version_id": string }; Returns: Json
+                           },
+"update_version_exercise":
+{ Args: { "p_body": string,"p_op_id": string,"p_revision": number,"p_version_exercise_id": string }; Returns: Json
+                           },
+"update_version_instructions":
+{ Args: { "p_general_instructions": string,"p_op_id": string,"p_revision": number,"p_version_id": string }; Returns: Json
+                           },
+"update_version_question":
+{ Args: { "p_op_id": string,"p_options": Json,"p_question_id": string,"p_revision": number,"p_stem": string }; Returns: Json
+                           }
           }
           Enums: {
             [_ in never]: never
@@ -27,7 +245,7 @@ export type Database = {
 
 type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "api">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
@@ -131,7 +349,7 @@ export type CompositeTypes<
   : never
 
 export const Constants = {
-  "public": {
+  "api": {
           Enums: {
             
           }
