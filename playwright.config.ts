@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 import { PORT, serverEnv } from "./tests/e2e/support/env";
 
-// Each worktree can pick its own port (E2E_PORT): two checkouts must not test each other's build.
+// Each worktree can pick its own port (E2E_PORT): two checkouts must not test each other's build. The default (3000) is the site_url of
+// supabase/config.toml, so the links of the mails open the server under test; with another port only the test that opens a mail link as it arrived is skipped.
 const CI = !!process.env.CI;
 
 export default defineConfig({

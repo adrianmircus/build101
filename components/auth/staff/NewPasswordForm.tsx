@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { NextStep } from "@/lib/domain/accounts/results";
 import { callAction } from "@/lib/client/callAction";
 import type { Failure } from "@/lib/errors";
@@ -35,6 +35,14 @@ export function NewPasswordForm({ setNewPassword, userId, onExpired }: Props) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState(false);
   const attempts = useRef(0);
+  // Remounting the form empties both passwords and their «mostrar» (the fields are not controlled).
+  const [formKey, setFormKey] = useState(0);
+  const wipe = () => {
+    setPending(false);
+    setFormKey((n) => n + 1);
+  };
+  // Hidden or unmounted (Activity keeps form values): the passwords do not stay behind.
+  useEffect(() => wipe, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,7 +54,10 @@ export function NewPasswordForm({ setNewPassword, userId, onExpired }: Props) {
     if (problems.length > 0) return setNotice({ problems, text: null, attempt });
     setPending(true);
     const result = await callAction(setNewPassword, { password, userId });
-    if (result.ok) return router.replace(result.data.next);
+    if (result.ok) {
+      wipe();
+      return router.replace(result.data.next);
+    }
     setPending(false);
     if (result.code === "FORBIDDEN" || result.code === "NOT_FOUND") return onExpired();
     setNotice(noticeFor(result, attempt));
@@ -54,7 +65,7 @@ export function NewPasswordForm({ setNewPassword, userId, onExpired }: Props) {
 
   const problems = notice?.problems ?? [];
   return (
-    <form onSubmit={onSubmit} noValidate className="mt-6 space-y-6">
+    <form key={formKey} onSubmit={onSubmit} noValidate className="mt-6 space-y-6">
       <PasswordField id={IDS.password} name="password" label="Contraseña nueva" autoComplete="new-password" hint={PASSWORD_HINT} error={problemFor(problems, IDS.password)} />
       <PasswordField id={IDS.confirm} name="confirm" label="Repetí la contraseña" autoComplete="new-password" error={problemFor(problems, IDS.confirm)} />
       {notice && problems.length > 0 && <ErrorSummary key={notice.attempt} title={summaryTitle(problems.length)} problems={problems} />}

@@ -41,6 +41,26 @@ export function initialCreate(fields: Fields): CreateState {
   return { step: "paste", fields, rows: [], flags: {}, groupId: null, createdIds: [], nextSlot: 0, attempt: null, groupAttempt: null };
 }
 
+function editRow(state: CreateState, key: string, value: string): CreateState {
+  // An uncertain row may already exist on the server: its identity (username and slot) does not change until it is sure.
+  if (state.flags[key] === "uncertain") return state;
+  const flags = { ...state.flags };
+  delete flags[key];
+  // Another username is another student for the server: the row takes a new slot (a new op_key). The rest keep theirs.
+  let nextSlot = state.nextSlot;
+  const rows = state.rows.map((row) => {
+    if (row.key !== key) return row;
+    if (normalizeUsername(row.username) === normalizeUsername(value)) return { ...row, username: value };
+    return { ...row, username: value, slot: nextSlot++ };
+  });
+  return { ...state, rows, flags, nextSlot };
+}
+
+/** Going back would drop the attempt and suggest other usernames: with a row that may already exist, the same person could be created twice. */
+function goBack(state: CreateState): CreateState {
+  return hasUncertain(state.flags) ? state : { ...state, step: "paste", rows: [], flags: {}, attempt: null };
+}
+
 export function createReducer(state: CreateState, action: CreateAction): CreateState {
   switch (action.type) {
     case "field":
@@ -48,20 +68,10 @@ export function createReducer(state: CreateState, action: CreateAction): CreateS
       return { ...state, fields: { ...state.fields, [action.name]: action.value }, groupId: action.name === "names" ? state.groupId : null };
     case "reviewing":
       return { ...state, step: "review", rows: action.rows, flags: {}, createdIds: [], nextSlot: Math.max(0, ...action.rows.map((row) => row.slot + 1)), attempt: null };
-    case "edit": {
-      const flags = { ...state.flags };
-      delete flags[action.key];
-      // Another username is another student for the server: the row takes a new slot (a new op_key). The rest keep theirs.
-      let nextSlot = state.nextSlot;
-      const rows = state.rows.map((row) => {
-        if (row.key !== action.key) return row;
-        if (normalizeUsername(row.username) === normalizeUsername(action.value)) return { ...row, username: action.value };
-        return { ...row, username: action.value, slot: nextSlot++ };
-      });
-      return { ...state, rows, flags, nextSlot };
-    }
+    case "edit":
+      return editRow(state, action.key, action.value);
     case "back":
-      return { ...state, step: "paste", rows: [], flags: {}, attempt: null };
+      return goBack(state);
     case "groupReady":
       return { ...state, groupId: action.groupId };
     case "groupAttempt":
@@ -72,6 +82,11 @@ export function createReducer(state: CreateState, action: CreateAction): CreateS
     case "results":
       return applyResults(state, action.results);
   }
+}
+
+/** Is there a row that may or may not exist on the server? While there is, the only way forward is to create again, with the same identity. */
+export function hasUncertain(flags: Flags): boolean {
+  return Object.values(flags).includes("uncertain");
 }
 
 /** The rows created leave the list (and are counted); the others stay with what went wrong, to fix and try again. */

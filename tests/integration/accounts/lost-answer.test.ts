@@ -55,14 +55,15 @@ describe("una respuesta perdida al crear un estudiante", () => {
     expect(await enrolled(s.groupId)).toBe(2);
   });
 
-  it("solo la fila editada es otro estudiante: con otro slot se crea una cuenta nueva", async () => {
+  it("con una sola fila incierta el reintento (misma identidad) devuelve a esa estudiante y no suma otra inscripción", async () => {
     const s = await scene(0);
     const opKey = randomUUID();
     const row = { displayName: "Cami Prueba", username: `cami${unique()}`, slot: 0 };
     lost.next = true;
     expect((await createStudentAccounts({ groupId: s.groupId, opKey, rows: [row] }))[0]?.outcome).toBe("uncertain");
-    const edited = await createStudentAccounts({ groupId: s.groupId, opKey, rows: [{ ...row, username: `cami2${unique()}`, slot: 1 }] });
-    expect(edited[0]?.outcome).toBe("created");
-    expect(await enrolled(s.groupId)).toBe(2);
+    // The screen no longer lets an uncertain row change its username (F2-13): the only way forward is the same identity.
+    const retry = await createStudentAccounts({ groupId: s.groupId, opKey, rows: [row] });
+    expect(retry[0]?.outcome).toBe("created");
+    expect(await enrolled(s.groupId)).toBe(1);
   });
 });

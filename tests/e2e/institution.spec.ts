@@ -116,6 +116,25 @@ test.describe("el profe acepta la invitación desde el correo", () => {
     await expect(page).toHaveURL(/\/grupos/);
   });
 
+  test("«Saltar al contenido» con teclado no pisa el token de la invitación (F2-18)", async ({ page, context }) => {
+    const email = freshEmail("profe.salto");
+    await signInAsAdmin(page);
+    const tokens = await inviteFromPanel(page, [email]);
+    await context.clearCookies();
+    await page.goto(`/invitacion#${tokens.get(email)}`);
+    await expect(page.getByRole("heading", { name: /te invitó a sumarte a/ })).toBeVisible();
+    await page.getByRole("link", { name: "Saltar al contenido" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/#main-content$/);
+    await expect(page.getByRole("heading", { name: /te invitó a sumarte a/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Falta algo en este enlace" })).toHaveCount(0);
+    // The token is still good: she can create the account.
+    await page.getByLabel("Nombre y apellido").fill("Ana Pérez");
+    await page.getByLabel("Contraseña", { exact: true }).fill("una frase para acordarme");
+    await page.getByRole("button", { name: "Crear cuenta y sumarme" }).click();
+    await expect(page.getByRole("status")).toContainText("Ya sos parte de");
+  });
+
   test("con cuenta y sin sesión: entra con su contraseña para aceptar", async ({ page, context }) => {
     const teacher = await newTeacher();
     await signInAsAdmin(page);

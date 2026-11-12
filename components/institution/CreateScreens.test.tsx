@@ -91,6 +91,13 @@ describe("CreateReview", () => {
     expect(html).toContain("Volver a los nombres");
   });
 
+  it("con una fila incierta: usuario de solo lectura, sin volver a los nombres y el botón dice «Volver a crear»", () => {
+    const html = renderToStaticMarkup(<CreateReview {...props} flags={{ "fila-2": "uncertain" }} />);
+    expect(html).toContain("Volver a crear");
+    expect(html).not.toContain("Volver a los nombres");
+    expect(html.match(/readOnly=""/g)).toHaveLength(1);
+  });
+
   it("los repetidos se marcan con texto, aria-invalid y el mensaje enlazado al campo", () => {
     const repeated = rows.map((row, index) => (index === 1 ? { ...row, username: "luciaf" } : row));
     const html = renderToStaticMarkup(<CreateReview {...props} rows={repeated} />);

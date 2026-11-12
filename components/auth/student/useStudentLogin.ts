@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useReducer, type FormEvent } from "react";
+import { useEffect, useReducer, type FormEvent } from "react";
 import { findInstitutionAction } from "@/app/ingresar/estudiante/actions";
 import { callAction } from "@/lib/client/callAction";
 import { rememberSchool, type RememberedSchool } from "@/lib/client/remembered-school";
@@ -21,6 +21,8 @@ type Input = {
 export function useStudentLogin({ school, username }: Input) {
   const router = useRouter();
   const [state, dispatch] = useReducer(loginReducer, { code: school?.code ?? "", username }, initialLoginState);
+  // Hidden or unmounted (Next keeps hidden screens alive with Activity, form values included): no password, no «mostrar», no busy button left.
+  useEffect(() => () => dispatch({ type: "wipe" }), []);
   const lookup = useSchoolLookup(state.code, school === null);
   const code = school?.code ?? state.code.trim().toLowerCase();
 
@@ -43,6 +45,7 @@ export function useStudentLogin({ school, username }: Input) {
     if (outcome.kind === "notice") return dispatch({ type: "notice", notice: outcome.notice });
     const name = await knownName();
     if (name) rememberSchool({ code, name });
+    dispatch({ type: "wipe" });
     router.push(outcome.next);
   }
 

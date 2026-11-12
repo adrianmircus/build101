@@ -4,7 +4,7 @@ import { z } from "zod";
 // What the production server of the e2e run and the global setup share: the local Supabase, Mailpit and a few test values.
 // Nothing here is a secret: the keys are the fixed ones of `supabase start`, and every value is for this machine only.
 
-export const PORT = Number(process.env.E2E_PORT ?? 3100);
+export const PORT = Number(process.env.E2E_PORT ?? 3000);
 
 const Status = z.object({
   API_URL: z.string().min(1),
