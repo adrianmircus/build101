@@ -42,7 +42,7 @@ const cases: Array<[string, string, boolean]> = [
   ["lib/server/services/groups.ts", "@/lib/server/repos/admin/purge", true],
   ["lib/server/repos/groups.ts", "./admin/purge", true],
   ["app/x/actions.ts", "@/lib/server/repos/admin/purge", true],
-  ["tests/a.ts", "@/lib/server/repos/admin/purge", true],
+  ["tests/a.ts", "@/lib/server/repos/admin/purge", false],
   // app/** goes through services
   ["app/x/page.tsx", "@/lib/server/repos/groups", true],
   ["app/x/page.tsx", "../../lib/server/repos/groups", true],

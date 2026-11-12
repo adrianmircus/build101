@@ -1,7 +1,4 @@
 import { describe, expect, it } from "vitest";
-// The layers rule keeps tests out of repos/admin/** (only jobs and admin services go in); this test is the
-// only place that exercises those repos until T2.2 has a caller, so it opts out for this one import.
-// eslint-disable-next-line tiza/layers
 import * as identity from "@/lib/server/repos/admin/identity";
 import {
   addGroupStaff,

@@ -9,7 +9,7 @@ import { importVisitors, packageOf, repoPath, resolveSource, within } from "./im
 // Matched against the package name (packageOf), so "react/jsx-runtime" and "@types/react" both count.
 const DOMAIN_PACKAGES = /^(?:next|react|react-dom)$|^@supabase\//;
 
-const adminOnly = "lib/server/repos/admin/** only goes into lib/server/jobs/** and lib/server/services/admin/**.";
+const adminOnly = "lib/server/repos/admin/** only goes into lib/server/jobs/**, lib/server/services/admin/** and tests/**.";
 
 // Each check returns a message when the import is forbidden, otherwise undefined.
 const checks = [
@@ -32,7 +32,7 @@ const checks = [
       : undefined,
   ({ file, target }) =>
     within(target ?? "", "lib/server/repos/admin") &&
-    !["lib/server/repos/admin", "lib/server/jobs", "lib/server/services/admin"].some((root) => within(file, root))
+    !["lib/server/repos/admin", "lib/server/jobs", "lib/server/services/admin", "tests"].some((root) => within(file, root))
       ? adminOnly
       : undefined,
   ({ file, target }) =>
