@@ -79,6 +79,8 @@ export async function buildClass(): Promise<Class> {
   for (const [account, profile] of [[looking, "motor"], [typing, "dyslexia"]] as const) {
     await must(teacher, "set_student_needs", { p_student_id: account.studentId, p_profiles: [profile], p_supports: [], p_interests: [], p_op_id: randomUUID(), p_revision: null, p_review_due_on: null });
   }
+  // The interface is a setting the staff picks, not something the profile derives (T1.F8): the student who looks has it set.
+  await must(teacher, "set_student_interface", { p_student_id: looking.studentId, p_interface: "gaze", p_revision: 1 });
   const gaze = await publishVersion(o, { students: [looking.studentId], answerMode: "gaze", body: "Ejercicio", profile: "motor" });
   const typed = await publishVersion(o, { students: [typing.studentId], answerMode: "typed", body: "Ejercicio", profile: "dyslexia" });
   return {

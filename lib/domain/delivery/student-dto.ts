@@ -11,7 +11,7 @@ import { Aids, Answers, Choices, ExerciseResultStatus, Score } from "./entities"
 // student's own answers may travel. The leak test (T1.5d) walks the JSON the RPCs return, and
 // later the RSC payload (T4.8), with these lists.
 
-/** How the student answers. Computed by the server; without dictation consent voice is typed. */
+/** The accessibility setting the staff chose for the student (never derived from the profile); without dictation consent voice is standard. */
 export const StudentInterface = z.enum(["standard", "gaze", "voice"]);
 
 export const StudentHome = z

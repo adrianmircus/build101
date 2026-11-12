@@ -166,7 +166,7 @@ select is((select concat_ws('|', e.kind, e.need_revision, e.before is null, e.af
   'set|1|t|{"profiles": ["adhd"], "supports": ["recordatorio"], "interests": ["robótica"], "reviewDueOn": "2027-03-01"}|t|t',
   'and one event with no before, the after, the actor and the op_id');
 select is((select s.interface || ':' || s.revision from app.students s where s.id = pg_temp.id('sn1')), 'standard:1',
-  'an adhd profile leaves the interface standard and does not touch the student revision');
+  'an adhd profile does not touch the interface or the student revision');
 
 -- Idempotency: the identity is the student and the content, kept in the event, answered under the lock.
 select is(pg_temp.setn('teach', 'sn1', '{adhd}', '{recordatorio}', '{robótica}', 'o1', 'null', '''2027-03-01'''),
@@ -184,7 +184,7 @@ select is((select count(*) from app.student_needs where student_id = pg_temp.id(
 
 select is(pg_temp.setn('teach', 'sn1', '{motor,adhd}', '{recordatorio}', '{robótica}', 'o2', '1', '''2027-03-01'''),
   jsonb_build_object('studentId', pg_temp.id('sn1'), 'revision', 2), 'editing with the current revision moves it to 2');
-select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'gaze', 'a motor profile makes the interface gaze');
+select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'standard', 'a motor profile does not change the interface: it is not derived from the profile (T1.F8)');
 select is((select e.before = (select e1.after from app.student_need_events e1 where e1.op_id = pg_temp.id('o1')) and e.after ->> 'profiles' = '["adhd", "motor"]'
              from app.student_need_events e where e.op_id = pg_temp.id('o2')), true,
   'the event keeps the previous content as before, and the profiles sorted');
@@ -202,16 +202,16 @@ select is(pg_temp.setn('teach', 'sn2', '{adhd}', '{}', '{}', 'o3', '1') ->> 'err
 select is(pg_temp.events('sn1') + pg_temp.events('sn2'), 2::bigint, 'the refused calls wrote no event');
 
 select is(pg_temp.setn('teach', 'sn1', '{dysgraphia}', '{}', '{}', 'o4', '2') ->> 'revision', '3', 'dysgraphia: revision 3');
-select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'voice', 'a dysgraphia profile makes the interface voice');
+select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'standard', 'a dysgraphia profile does not change the interface either');
 select is(pg_temp.setn('teach', 'sn1', '{dysgraphia,motor}', '{}', '{}', 'o5', '3') ->> 'revision', '4', 'dysgraphia and motor: revision 4');
-select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'gaze', 'motor wins over dysgraphia');
+select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'standard', 'nor do two profiles together');
 select is(pg_temp.setn('teach', 'sn1', '{dyslexia,asd}', '{ejemplo_resuelto,numeros_simples}', '{}', 'o6', '4') ->> 'revision', '5', 'dyslexia and asd: revision 5');
-select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'standard', 'other profiles go back to the standard interface');
+select is((select s.interface from app.students s where s.id = pg_temp.id('sn1')), 'standard', 'the interface stays what the staff chose, whatever the profiles say');
 select is(pg_temp.setn('teach', 'sn1', '{}', '{}', '{}', 'o7', '5') ->> 'revision', '6', 'clearing everything is an edit too: revision 6');
 select is((select e.kind from app.student_need_events e where e.op_id = pg_temp.id('o7')), 'cleared', 'and its event is cleared');
 select is(pg_temp.setn('teach', 'sn1', '{}', '{preguntas_guia}', '{"  robótica  "}', 'o8', '6') ->> 'revision', '7', 'interests are trimmed like the schema does');
 select is((select n.interests::text from app.student_needs n where n.student_id = pg_temp.id('sn1')), '{robótica}', 'and stored trimmed');
-select is((select s.revision from app.students s where s.id = pg_temp.id('sn1')), 1, 'the student revision never moved: the interface is derived');
+select is((select s.revision from app.students s where s.id = pg_temp.id('sn1')), 1, 'the student revision never moved: needs do not edit the student');
 
 -- ---------------------------------------------------------------------------------------------
 -- Validation: the catalogue and the shape. Nothing changes on any refusal.
@@ -266,7 +266,7 @@ select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''t
 insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select api.create_group(%L, ''Demo'', ''math'', 2026, gen_random_uuid())', pg_temp.id('i_s'))) ->> 'id')::uuid;
 select pg_temp.new_student('ss1', 'visitor', 'g_s');
 select is(pg_temp.setn('visitor', 'ss1', '{motor}', '{}', '{}', 'i1') ->> 'revision', '1', 'the sandbox visitor edits needs in their sandbox, with an op_id used in another institution');
-select is((select s.interface from app.students s where s.id = pg_temp.id('ss1')), 'gaze', 'and the interface follows');
+select is((select s.interface from app.students s where s.id = pg_temp.id('ss1')), 'standard', 'and the interface does not follow');
 select is(pg_temp.setn('visitor', 'ss1', '{motor}', '{}', '{}', 'i1') ->> 'revision', '1', 'repeating it in the sandbox answers the same: sandboxes keep the operation too');
 select is(pg_temp.setn('visitor', 'ss1', '{asd}', '{}', '{}', 'i1') ->> 'error', 'P0001 CONFLICT op_key_reused', 'and another content with that op_id is CONFLICT');
 

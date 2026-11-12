@@ -79,6 +79,9 @@ select is((pg_temp.as_user('teach', format($$ select api.set_student_needs(%L, '
   'the second one a dysgraphia profile');
 select is((pg_temp.as_user('teach', format($$ select api.set_student_needs(%L, '{dyslexia,asd}', '{numeros_simples}', '{centinela-musica}', gen_random_uuid(), null, null) $$, pg_temp.id('s3'))) ->> 'revision'), '1',
   'the third one dyslexia and asd');
+-- The interface is set by the staff, not derived from the profile (T1.F8): the owner sets one per student, so none is the default.
+update app.students set interface = case username when 'est.1' then 'gaze' when 'est.2' then 'voice' else 'standard' end
+ where institution_id = pg_temp.id('inst') and username in ('est.1', 'est.2', 'est.3');
 select is((select string_agg(s.interface, ',' order by s.username) from app.students s where s.institution_id = pg_temp.id('inst') and s.username in ('est.1', 'est.2', 'est.3')),
   'gaze,voice,standard', 'so their interface is not the default one: it would show if a projection returned it');
 
@@ -173,6 +176,7 @@ insert into specs (name, spec) values
   ('update_student', '{"id":"s","revision":"s"}'),
   ('archive_student', '{"id":"s","revision":"s"}'),
   ('restore_student', '{"id":"s","revision":"s"}'),
+  ('set_student_interface', '{"id":"s","revision":"s"}'),
   ('enroll_student', '{"id":"s"}'),
   ('unenroll_student', '{"id":"s"}'),
   ('list_my_groups', '{"items":[{"archivedAt":"s","id":"s","myRole":"s","name":"s","revision":"s","schoolYear":"s","studentCount":"s","subjectId":"s"}],"total":"s"}'),
@@ -239,6 +243,7 @@ insert into ids (k, id) select 's5', (res ->> 'id')::uuid from answers where nam
 select pg_temp.call('update_student', 'api.update_student(uuid,integer,text,text)', format('select api.update_student(%L, 1, ''Estudiante Uno'', ''est.1'')', pg_temp.id('s1')));
 select pg_temp.call('archive_student', 'api.archive_student(uuid,integer)', format('select api.archive_student(%L, 2)', pg_temp.id('s1')));
 select pg_temp.call('restore_student', 'api.restore_student(uuid,integer)', format('select api.restore_student(%L, 3)', pg_temp.id('s1')));
+select pg_temp.call('set_student_interface', 'api.set_student_interface(uuid,text,integer)', format('select api.set_student_interface(%L, ''gaze'', 1)', pg_temp.id('s5')));
 select pg_temp.call('enroll_student', 'api.enroll_student(uuid,uuid)', format('select api.enroll_student(%L, %L)', pg_temp.id('gx'), pg_temp.id('s2')));
 select pg_temp.call('unenroll_student', 'api.unenroll_student(uuid,uuid)', format('select api.unenroll_student(%L, %L)', pg_temp.id('gx'), pg_temp.id('s2')));
 select pg_temp.call('list_my_groups', 'api.list_my_groups(uuid,boolean,integer,integer)', format('select api.list_my_groups(%L, true, 50, 0)', pg_temp.id('inst')));
@@ -329,7 +334,7 @@ select is((select count(*) from answers where res ? 'error'), 0::bigint, 'every 
 select is((select string_agg(a.name, ',' order by a.name) from answers a where pg_temp.verdict(a.res, (select sp.spec from specs sp where sp.name = a.name)) <> ''), null::text,
   'no answer carries a profile, a support, an interest, a review date, an interface, a configuration, inputs or a recipient, and each one conforms to its keys');
 select is((select count(*) from answers a join specs sp on sp.name = a.name), (select count(*) from answers), 'every answer has its spec of keys');
-select is((select count(*) from answers), 49::bigint, 'forty-nine RPCs were called');
+select is((select count(*) from answers), 50::bigint, 'fifty RPCs were called');
 select is((select res -> 'current' -> 'content' -> 'questions' ->> pg_temp.id('qb')::text from answers where name = 'get_answer_key'), 'B',
   'the answer key read did carry the correct option and the exercise answer (so there was something to leak)');
 select is(pg_temp.verdict((select res || '{"config": {}}'::jsonb from answers where name = 'get_answer_key'), (select spec from specs where name = 'get_answer_key')), 'key,shape',

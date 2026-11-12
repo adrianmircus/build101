@@ -71,9 +71,11 @@ select pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)'
   from (values ('s1', 'stu_a'), ('s2', 'stu_b'), ('s3', 'stu_c'), ('s4', 'stu_d')) as l(s, u);
 insert into ids (k, id) select 'i_b', (pg_temp.as_service($$ select api.internal_create_institution('Liceo B', 't1-5d-b', 'school') $$) ->> 'id')::uuid;
 select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''teacher'')', pg_temp.id('i_b'), pg_temp.id('userb')));
--- The profiles decide how each one answers: motor looks, dysgraphia dictates, dyslexia types.
+-- The profiles and the accessibility setting are independent (T1.F8): the staff picks the interface, the profile does not derive it.
 select pg_temp.as_user('teach', format('select api.set_student_needs(%L, %L::text[], array[]::text[], array[]::text[], gen_random_uuid(), null, null)', pg_temp.id(n.s), n.p))
   from (values ('s1', array['motor']), ('s2', array['dyslexia']), ('s3', array['dysgraphia'])) as n(s, p);
+select pg_temp.as_user('teach', format('select api.set_student_interface(%L, %L, 1)', pg_temp.id(n.s), n.i))
+  from (values ('s1', 'gaze'), ('s3', 'voice')) as n(s, i);
 
 -- Builders: everything goes through the RPCs, except the gaze questions (no RPC writes them yet).
 create function pg_temp.mk_asm(p_key text, p_instr text) returns void language plpgsql as $$

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Created, DisplayName, Id, Limit, Offset, Revision, type RpcSpec, Timestamp, Written, page } from "../common";
-import { Username } from "./entities";
+import { StudentInterface, Username } from "./entities";
 
 // RPCs of students and enrollments (20261111131000_rpc_identity_groups.sql), owner T1.2b.
 // The listing is a projection without needs: names are personal, not sensitive, and staff of the
@@ -39,6 +39,12 @@ export const STUDENT_RPCS = {
     args: studentRevision.extend({ p_display_name: DisplayName, p_username: Username }).strict(),
     result: Written,
   },
+  /**
+   * The accessibility setting of the student (standard, gaze or voice), chosen by the staff of the student's group or by
+   * inclusion, like the needs. Independent of the profile: a student who sees "gaze" cannot deduce anything. The same value is
+   * idempotent (the revision does not move); a stale revision is CONFLICT.
+   */
+  set_student_interface: { args: studentRevision.extend({ p_interface: StudentInterface }).strict(), result: Written },
   archive_student: { args: studentRevision, result: Written },
   restore_student: { args: studentRevision, result: Written },
   enroll_student: { args: membership, result: Created },
