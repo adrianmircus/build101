@@ -3,8 +3,6 @@ import { createServerClient } from "@supabase/ssr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createAdminClient } from "@/lib/server/db/admin";
 import { readPublicDbEnv } from "@/lib/server/db/env";
-import { upsertAppUser } from "@/lib/server/repos/admin/identity";
-import { linkStudentUser } from "@/lib/server/repos/admin/students";
 import { callRpc } from "@/lib/server/repos/rpc";
 import {
   createGroup,
@@ -13,7 +11,7 @@ import {
   createSchool,
   type TestUser,
 } from "../../factories";
-import { createStudent } from "../../factories/students";
+import { createLoggedInStudent, createStudent } from "../../factories/students";
 import { readRows } from "../support/db";
 
 // The cookies of the "browser": what the proxy and Supabase leave in the request. getActor reads them through
@@ -29,8 +27,11 @@ vi.mock("next/cache", () => ({ cacheLife: vi.fn() }));
 
 import { getActor, requireAdmin, requireStaff, requireStudent } from "@/lib/server/auth/actor";
 
-/** Signs in like the login does (cookies in a jar) and returns a way to close that session in Auth. */
-async function openSession(credentials: Pick<TestUser, "email" | "password">) {
+type Credentials = Pick<TestUser, "email" | "password"> | { magicLinkEmail: string };
+
+/** Signs in like the login does (cookies in a jar) and returns a way to close that session in Auth. A student has no password in
+ * Auth (docs/contratos/fase-2.md): its session comes from a magic link, as the student login does. */
+async function openSession(credentials: Credentials) {
   const { url, publishableKey } = readPublicDbEnv();
   const jar = new Map<string, string>();
   const client = createServerClient(url, publishableKey, {
@@ -39,10 +40,19 @@ async function openSession(credentials: Pick<TestUser, "email" | "password">) {
       setAll: (toSet) => toSet.forEach(({ name, value }) => jar.set(name, value)),
     },
   });
-  const { error } = await client.auth.signInWithPassword(credentials);
+  const { error } = "magicLinkEmail" in credentials
+    ? await verifyMagicLink(client, credentials.magicLinkEmail)
+    : await client.auth.signInWithPassword(credentials);
   if (error) throw new Error("No se pudo abrir la sesión de prueba.");
   browser.jar = jar;
   return { signOut: () => client.auth.signOut({ scope: "local" }) };
+}
+
+async function verifyMagicLink(client: ReturnType<typeof createServerClient>, email: string) {
+  const link = await createAdminClient().auth.admin.generateLink({ type: "magiclink", email });
+  const tokenHash = link.data.properties?.hashed_token;
+  if (link.error || tokenHash === undefined) throw new Error("No se pudo crear el enlace de prueba.");
+  return client.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
 }
 
 beforeEach(() => {
@@ -100,15 +110,10 @@ describe("getActor contra Supabase local", () => {
     const { admin, institution, teacher } = await createSchool();
     const group = await createGroup(teacher.client, institution.id);
     const student = await createStudent(teacher.client, group.id);
-    const email = `${randomUUID()}@tiza-test.example`;
-    const password = `${randomUUID()}${randomUUID()}`;
-    const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-    if (error) throw new Error("No se pudo crear la cuenta del estudiante de prueba.");
-    await upsertAppUser(admin, data.user.id, student.displayName);
-    await linkStudentUser(admin, student.id, data.user.id);
-    await openSession({ email, password });
+    const { userId } = await createLoggedInStudent(admin, student);
+    await openSession({ magicLinkEmail: `${userId}@estudiantes.usetiza.app` });
 
-    expect(await getActor()).toEqual({ kind: "student", userId: data.user.id, institutionId: institution.id });
+    expect(await getActor()).toEqual({ kind: "student", userId, institutionId: institution.id });
     expect((await requireStudent()).institutionId).toBe(institution.id);
     await expect(requireStaff()).rejects.toMatchObject({ code: "FORBIDDEN", message: "No tenés permiso para hacer esto." });
   });
