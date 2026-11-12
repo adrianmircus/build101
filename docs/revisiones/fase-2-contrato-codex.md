@@ -814,3 +814,71 @@ No ejecuté integración: Docker no fue accesible en esta sesión.
 ### Qué se cambió
 
 Versión 10: un solo trigger en auth.users que toma la fila de account_provisioning FOR SHARE antes del advisory, y el mismo orden en el trigger de account_provisioning y en remember (F2C-70, F2C-71); reconcile recrea las cuentas active que faltan en Auth (F2C-72); un grupo con emisiones no se borra, se archiva, con FK NO ACTION (F2C-73).
+
+## Ronda 10
+
+1. **F2C-74 · Alta · Bloqueante — Una asignación recién confirmada puede quedar sin el `FOR SHARE` que necesita la supresión.**
+
+   **Dónde:** [orden de locks, línea 139](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:139) y [supresión, línea 165](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:165).
+
+   **Escenario:**
+
+   - B recuerda X en una fila cuyo `auth_user_id` era NULL. Tiene la fila y el advisory de X, sin confirmar.
+   - A empieza un INSERT de Auth con X y su correo canónico. Su primer `FOR SHARE WHERE auth_user_id = X` no encuentra la asignación sin confirmar; por tanto, no bloquea esa fila. Después espera el advisory.
+   - B confirma. A obtiene el advisory y sus consultas siguientes encuentran X recordado y no suprimido. Permite el INSERT, normalizando la contraseña a NULL.
+   - A deja su transacción abierta. C marca el aprovisionamiento `deleted`: puede hacerlo porque A nunca tomó el lock de esa fila. C intenta borrar Auth X, todavía invisible por estar sin confirmar, y termina.
+   - A confirma: queda una cuenta de Auth nacida después de la supresión.
+
+   El advisory coordina el nacimiento con **recordar**, pero la supresión que solo actualiza `status` no toma ese advisory. La lectura posterior no adquiere retroactivamente el lock omitido. Es una consecuencia de las [reglas de visibilidad de READ COMMITTED](https://www.postgresql.org/docs/17/transaction-iso.html).
+
+   **Cambio propuesto:** exigir que toda fila usada para autorizar el nacimiento esté efectivamente bloqueada hasta el commit. Una solución compatible con el orden elegido es comprobar, después del advisory, que las filas encontradas coincidan con las bloqueadas inicialmente; si apareció una asignación nueva, abortar con `40001` y reintentar la transacción completa. **Volver a tomar `FOR SHARE` después del advisory sin más reintroduciría F2C-70.** Agregar la carrera de tres conexiones.
+
+2. **F2C-75 · Alta · Bloqueante — El OTP público permite abrir una sesión estudiantil sin pasar por scrypt ni por el bind.**
+
+   **Dónde:** [«Estudiantes: no hay otra puerta»](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:81), [apertura y bind](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:119) y [criterio de sesión viva](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:349).
+
+   **Escenario:** un atacante conoce el correo sintético por una sesión copiada. Un login legítimo genera el magiclink, pero `/verify` devuelve 429 o el proceso cae antes del canje. Queda un token vigente.
+
+   En GoTrue consultado, tanto v2.186.0 como `master`, `generateLink` obtiene ese token de un OTP numérico mediante `GenerateOtp(config.Mailer.OtpLength)`; la configuración commiteada usa **seis dígitos y una hora**. El atacante puede probar códigos directamente en `/auth/v1/verify`, repartiendo los intentos entre IPs. Esos intentos no consumen el límite por sujeto de Tiza. Si acierta, Auth entrega una sesión que nunca pasó por `internal_bind_student_session`, pero que `session_alive()` acepta por existir en `auth.sessions`. Véanse [generación del token](https://github.com/supabase/auth/blob/master/internal/api/mail.go), [canje público](https://github.com/supabase/auth/blob/master/internal/api/verify.go) y [límites de verificación por IP](https://supabase.com/docs/guides/auth/rate-limits).
+
+   Esto no equivale a adivinar un secreto aleatorio de 256 bits: el hash conserva el espacio de búsqueda del OTP.
+
+   **Cambio propuesto:** convertir el bind en una condición persistente de acceso estudiantil. Registrar las sesiones habilitadas exclusivamente por el servidor después de verificar scrypt y exigir ese registro en las RPC, vinculado al usuario y a la versión vigente. Una sesión obtenida directamente de Auth debe carecer de acceso a datos. Esto requiere definir almacenamiento, guardias y responsabilidades antes de repartir. Aumentar solamente el límite de `/verify` para soportar al colegio agrava este camino.
+
+3. **F2C-76 · Media · Resoluble en T2.5b — `provisionStudent(provisioningId)` no recibe la identidad necesaria para completar el recorrido.**
+
+   **Dónde:** [RPC de cuentas](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:388) y [firma del servicio](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:423).
+
+   **Escenario:** la primera emisión llama a `provisionStudent` con el id de aprovisionamiento. El paso 1 consulta `internal_get_student_accounts`, que recibe **ids de estudiantes**. Al terminar, `internal_link_student_user` también necesita el id del estudiante. La firma no lo entrega y no hay una búsqueda acotada por `provisioningId` definida para obtenerlo.
+
+   **Cambio propuesto:** pasar `studentId` y `provisioningId`, o recibir `studentId` y resolver su aprovisionamiento con la RPC existente. Los llamadores ya conocen ambos datos. Es un ajuste de interfaz local a T2.5b; no necesita otra decisión de arquitectura ni una RPC global de búsqueda.
+
+4. **F2C-77 · Media · Resoluble en T2.5b — La autorización aparece después de los primeros efectos privilegiados.**
+
+   **Dónde:** [emisión, pasos 1 y 3](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:178).
+
+   **Escenario:** un pedido manipulado incluye estudiantes de otro grupo o institución. Siguiendo literalmente la secuencia, el servicio consulta las RPC internas y aprovisiona sus cuentas antes de que `issue_access_cards` rechace el pedido. No obtiene tarjetas, pero ya produjo altas y vínculos con `service_role` sin autorización del actor sobre esos estudiantes.
+
+   **Cambio propuesto:** antes de aprovisionar, llamar con la sesión a `list_group_accounts` y exigir que todos los ids solicitados pertenezcan al conjunto autorizado. Si alguno no corresponde, terminar antes de invocar los servicios admin. La emisión mantiene su autorización final. La RPC y los archivos necesarios ya están dentro del alcance de T2.5b; agregar una prueba que compruebe **cero llamadas administrativas** ante un pedido ajeno.
+
+El estado de los abiertos queda así:
+
+| Hallazgo | Estado en v10 |
+|---|---|
+| **F2C-70** | **Cerrado para el interbloqueo denunciado:** fila antes del advisory y un único trigger de Auth. La fila que aparece después abre F2C-74. |
+| **F2C-71** | **Cerrado:** `remember` toma la exclusión antes de comprobar; el caso incompatible devuelve `{ok:false}`. |
+| **F2C-72** | **Cerrado:** selector y servicio incluyen expresamente cuentas `active` ausentes de Auth y conservan el UUID. |
+| **F2C-73** | **Cerrado:** FK `NO ACTION` y conservación de emisiones alineadas con archivar el grupo. |
+| **F2C-54** | **Reabierto parcialmente por F2C-74:** permanece el nacimiento tardío cuando el primer lock no vio la asignación. |
+| **F2C-11 / F2C-27** | **Reabiertos respecto del acceso directo por OTP**, según F2C-75. La prueba de contraseñas contra `/token` sí queda eliminada. |
+| **F2C-65 a F2C-69** | Mantienen su cierre contractual. |
+
+En la pasada completa no encontré otro bloqueo de diseño. Las referencias residuales a «dos triggers en `auth.users`» —líneas 330 y 611— se pueden corregir en la revisión del ticket: el algoritmo principal define inequívocamente uno solo.
+
+No ejecuté integración: el acceso a Docker está denegado. Las carreras descritas son análisis del protocolo contractual; las conclusiones sobre OTP están contrastadas con el código oficial de Auth.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 11: el trigger de account_provisioning toma el advisory también cuando cambia el status, así marcar deleted espera a un INSERT en Auth sin confirmar (F2C-74); app.student_sessions registra las sesiones que abrió el servidor y session_alive las exige para cuentas de estudiante, así una sesión obtenida adivinando el OTP de un magic link no lee nada (F2C-75); provisionStudent recibe studentId (F2C-76); issueAccessCards autoriza con list_group_accounts antes de cualquier llamada admin (F2C-77).

@@ -2,7 +2,7 @@
 
 Este documento fija cómo entran a Tiza los profes, los admins y los estudiantes con cuentas de verdad: las tablas y RPC nuevas, los servicios, las rutas, las pantallas y los tickets. Lo escribe el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 9 de Codex (F2C-1 a F2C-73, `docs/revisiones/fase-2-contrato-codex.md`).
+Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 10 de Codex (F2C-1 a F2C-77, `docs/revisiones/fase-2-contrato-codex.md`).
 
 Archivos del contrato (los escribe el orquestador, ningún ticket los edita):
 
@@ -119,11 +119,12 @@ Sale Upstash. Los contadores viven en `app.rate_limits` (ya existe) y se tocan s
    - un cliente de Supabase **sin cookies** (`persistSession: false`, solo en el servidor) hace `verifyOtp({ type: 'magiclink', token_hash })` y recibe la sesión: los tokens y su `session_id`.
 5. `internal_bind_student_session(p_auth_user_id, p_session_id, p_version)` bloquea al estudiante (el mismo lock que toma `issue_access_cards`) y compara `p_version` con la versión vigente de su credencial.
    - Si son distintas (se emitió una tarjeta entre la verificación y este paso), borra esa sesión de `auth.sessions` y da `ok: false`: el servicio responde el error genérico.
-   - Si son iguales, da `ok: true`.
+   - Si son iguales, **registra la sesión** en `app.student_sessions` (`session_id`, `student_id`, `version`) y da `ok: true`.
 6. Recién entonces el cliente de sesión del pedido hace `setSession` con esos tokens y deja las cookies.
 7. Limpia los contadores del sujeto.
 
-- **Por qué alcanza.** Si la tarjeta nueva se emite antes del paso 5, la versión no coincide y la sesión se borra. Si se emite después, `issue_access_cards` borra todas las sesiones del estudiante, también esta, y su token deja de leer datos. No hay un orden en que la contraseña vieja deje una sesión viva.
+- **Una sesión de estudiante sin registro no lee nada (F2C-75).** Para una cuenta de estudiante, `app.session_alive()` exige además que su `session_id` esté en `app.student_sessions` con la versión vigente de su credencial. Una sesión que alguien obtuvo directo de Auth, sin pasar por nuestro servidor, nunca tiene registro: por ejemplo, adivinando en `/auth/v1/verify` el código de un magic link que quedó sin canjear, que GoTrue arma con un OTP de 6 dígitos. Esa sesión existe en `auth.sessions`, pero toda RPC la rechaza con `FORBIDDEN no_session`, y `getActor()` la trata como sin sesión. El registro solo lo escribe el bind, con `service_role`.
+- **Por qué alcanza.** Si la tarjeta nueva se emite antes del paso 5, la versión no coincide: la sesión se borra y no se registra. Si se emite después, `issue_access_cards` sube la versión, borra las sesiones del estudiante y sus registros, y esa sesión deja de leer datos. No hay un orden en que la contraseña vieja, o un código adivinado, deje una sesión con acceso.
 - Los tokens nunca salen del servidor salvo en las cookies del paso 6, y no se loguean. Los clientes de Supabase se crean con `debug: false` (con `debug`, `auth-js` registra sesiones completas). La prueba de fugas lo verifica.
 - Si Auth responde 429 en `/verify`, el error es «Probá de nuevo en un minuto» (F2C-63). La contraseña ya se verificó bien, así que cuenta como un acierto: el servicio limpia las claves del sujeto igual que en el paso 7, y el reintento no queda bloqueado por nuestros contadores (F2C-69).
 
@@ -134,7 +135,7 @@ Sale Upstash. Los contadores viven en `app.rate_limits` (ya existe) y se tocan s
   
   **En un INSERT de una cuenta recordada, el trigger pone `encrypted_password` en NULL** en vez de rechazarla (F2C-65): `auth.admin.createUser` sin contraseña igual genera una al azar y guarda su hash, así que rechazarla haría imposible crear la cuenta. Como nadie conoce esa contraseña y el trigger la borra antes de guardar, la cuenta nace sin contraseña. La prueba de integración crea una cuenta con `createUser` contra el Auth local y lee el valor guardado.
 - **Las dos puntas de la relación (F2C-67).** Que un id quede recordado y que exista una fila de Auth con ese id se controla de los dos lados, con un mismo lock:
-  - un trigger en `account_provisioning` (`BEFORE INSERT OR UPDATE OF auth_user_id`) exige que, si ya hay una fila en `auth.users` con ese id, tenga la forma fija (correo canónico y sin contraseña). Si no la tiene, da P0004, también contra un UPDATE directo del dueño;
+  - un trigger en `account_provisioning` (`BEFORE INSERT OR UPDATE OF auth_user_id, status`) toma el advisory del id recordado (el viejo y el nuevo, en orden) **también cuando cambia el `status`**. Así marcar `deleted` espera a un INSERT en Auth de ese id que todavía no confirmó, y la supresión recién después borra la cuenta de Auth, que ya se ve (F2C-74). Además exige que, si ya hay una fila en `auth.users` con ese id, tenga la forma fija (correo canónico y sin contraseña). Si no la tiene, da P0004, también contra un UPDATE directo del dueño;
   - los dos lados toman `pg_advisory_xact_lock` sobre el id (`hashtextextended('student_auth:' || id, 0)`). Así un INSERT en Auth y un «recordar» del mismo id nunca corren a la vez: el segundo espera a que el primero confirme, y en READ COMMITTED su consulta siguiente ya lo ve;
   - **orden de los locks (F2C-70): siempre la fila de `account_provisioning` primero y el advisory después.** Del lado de `account_provisioning`, la fila ya está bloqueada por el propio UPDATE o INSERT cuando corre el trigger, que toma el advisory. Del lado de `auth.users` hay **un solo trigger**, `app.student_auth_guard` (`BEFORE INSERT OR UPDATE`), que hace todo en este orden: `FOR SHARE` de las filas de `account_provisioning` con el id viejo y el nuevo (si existen), después el advisory de esos ids en orden, y recién después todas las comprobaciones (forma fija, `deleted`, cambio de id). Sale `app.student_auth_birth_guard`: sus reglas pasan a este trigger. Si no hay fila recordada, el lado de Auth solo toma el advisory, y no puede haber un ciclo;
   - `internal_remember_student_account` toma los mismos locks en el mismo orden (estudiante, su fila `FOR UPDATE` y el advisory) antes de su comprobación previa, así que una cuenta incompatible que aparece en el medio da `{ok: false}` y no P0004 (F2C-71). El P0004 queda para el DML directo;
@@ -175,7 +176,7 @@ La cuenta de Auth de un estudiante tiene un id que se decide y se recuerda antes
 
 Emitir tarjetas es **una sola transacción** en la base: no escribe en Auth.
 
-1. El servicio aprovisiona a quien le falte la cuenta (ver «Aprovisionar»). Los que no quedan `active` no entran en la emisión y vuelven en `others`: como `failed` si Auth rechazó o la fila no sirve, como `uncertain` si Auth no confirmó (F2C-64).
+1. **Autoriza antes de tocar nada con el cliente admin (F2C-77).** Con la sesión, `list_group_accounts(p_group_id)`: todos los estudiantes pedidos tienen que estar en esa lista. Si alguno no está, termina con `NOT_FOUND` sin ninguna llamada admin. Después aprovisiona a quien le falte la cuenta (ver «Aprovisionar»). Los que no quedan `active` no entran en la emisión y vuelven en `others`: como `failed` si Auth rechazó o la fila no sirve, como `uncertain` si Auth no confirmó (F2C-64).
 2. Genera por estudiante un token de tarjeta y una contraseña, y calcula el hash de cada una.
 3. `issue_access_cards(p_group_id, p_cards, p_op_key)`, con la sesión, en una transacción:
    - autoriza;
@@ -301,6 +302,17 @@ create table app.student_credentials (
   foreign key (institution_id, issue_id) references app.access_card_issues (institution_id, id) on delete cascade
 );
 
+-- Las sesiones de estudiante que abrió nuestro servidor después de verificar la contraseña (F2C-75). Solo el bind escribe
+-- acá; issue_access_cards borra las del estudiante. Sin fila, la sesión de un estudiante no lee nada.
+create table app.student_sessions (
+  session_id uuid primary key,
+  institution_id uuid not null references app.institutions (id) on delete cascade,
+  student_id uuid not null,
+  version integer not null check (version >= 1),
+  created_at timestamptz not null default now(),
+  foreign key (institution_id, student_id) references app.students (institution_id, id) on delete cascade
+);
+
 -- Registro de todo hash de invitación que existió alguna vez. Un hash entra una sola vez, por el índice único, y no
 -- se borra mientras exista la institución: así nunca vuelve a nacer, ni de a pasos ni con dos conexiones (F2C-39).
 create table app.invitation_tokens (
@@ -327,16 +339,17 @@ Guardias (P0004, como en la fase 1; entran DML y TRUNCATE de cualquier rol, incl
 - **Rotación de una invitación (F2C-29, F2C-39).** El `token_hash` de una invitación cambia solo en ese paso a `pending`. Todo `token_hash` que nace o llega a una invitación se inserta en `app.invitation_tokens` en la misma sentencia (trigger `AFTER INSERT OR UPDATE OF token_hash`), con un `insert` simple: si el hash ya estuvo alguna vez, el índice único lo rechaza (y espera a una transacción concurrente que lo esté insertando, en cualquier nivel de aislamiento). El trigger convierte ese `unique_violation` en P0004. No hay estado «vigente» ni «gastado»: el vigente es el que tiene la invitación, y todos los demás son historia.
 - **Nacimiento.** Una tarjeta nace `active`. Una invitación nace `pending`, sin `accepted_by` (fase 1).
 - **`deleted` es final (F2C-48).** En `account_provisioning`, una fila `deleted` no cambia de estado nunca más, también contra el dueño (P0004).
-- **Las cuentas de Auth de los estudiantes (F2C-47, F2C-53, F2C-54).** Dos triggers en `auth.users`, descritos en «Cómo entra un estudiante» y en «Aprovisionar»:
+- **Las cuentas de Auth de los estudiantes (F2C-47, F2C-53, F2C-54).** Un trigger en `auth.users` y uno en `account_provisioning`, descritos en «Cómo entra un estudiante» y en «Aprovisionar»:
   - un solo trigger, `app.student_auth_guard` (`BEFORE INSERT OR UPDATE`), con la forma fija de una cuenta de estudiante y la regla de que una cuenta cuyo id está recordado en una fila `deleted` no nace ni se arma por UPDATE, en el orden de locks de «Las dos puntas»;
-  - en `account_provisioning`, `app.student_auth_link_guard` (`BEFORE INSERT OR UPDATE OF auth_user_id`), que toma el advisory y exige la forma fija de una cuenta de Auth que ya existe con ese id.
+  - en `account_provisioning`, `app.student_auth_link_guard` (`BEFORE INSERT OR UPDATE OF auth_user_id, status`), que toma el advisory y exige la forma fija de una cuenta de Auth que ya existe con ese id.
 - **La marca de supresión se conserva (F2C-59).** Una fila `deleted` de `account_provisioning` no se borra mientras exista su institución.
   
   Las cuentas de staff no se tocan. Supabase permite triggers propios en `auth.users` desde una migración, sin cambiar el dueño de la tabla.
+- **Sesiones registradas.** En `student_sessions` no cambia nada: se inserta (el bind) o se borra (la emisión, o la cascada del estudiante).
 - **Credenciales (F2C-61).** `student_credentials` solo se escribe dentro de `issue_access_cards`, y no se borra mientras exista su estudiante: se va con él por la cascada. `password_hash`, `issue_id` y `version` cambian juntos o no cambian: un UPDATE que cambia alguno tiene que cambiar `issue_id` a otra emisión y subir `version` exactamente en uno. `institution_id` y `student_id` no cambian.
 - **Memoria (F2C-19, F2C-28).** Mientras exista su institución, no se borran las invitaciones ni las filas de `invitation_tokens`, y esas filas no cambian. Las tarjetas no se borran mientras exista su estudiante: solo se van con él, por la cascada. Las emisiones no se borran mientras exista su institución, y un grupo con emisiones no se borra: se archiva (F2C-73). Así un hash revocado no vuelve a nacer vigente por `DELETE` e `INSERT`. La retención de la fase 9 borra el correo de una invitación vieja con una redacción, sin borrar la fila. Para eso la fase 9 suma, en una migración nueva, una excepción acotada a la guardia del correo de `invitations_frozen` (T1.F15): solo en modo de supresión o retención, solo para invitaciones `accepted`, `revoked` o `expired` con más de 90 días, y solo hacia un valor redactado; con su prueba (F2C-42).
 
-**Inventario.** `access_cards` y `student_credentials` tienen datos de estudiantes (el id, el hash del token y el de la contraseña); al borrar al estudiante se van por la cascada. `student_credentials` es una credencial: ninguna proyección la devuelve y ningún log la lleva. `access_card_issues` no tiene ningún dato de un estudiante. Se suman a `docs/PRIVACIDAD-DATOS.md`, `lib/domain/permissions/tables.ts` y `006_inventory.test.sql`. `invitations.email` es un dato personal de un adulto; su retención (redactar 90 días después de aceptada, revocada o vencida) la programa la fase 9. `invitation_tokens` no tiene datos personales.
+**Inventario.** `access_cards`, `student_credentials` y `student_sessions` tienen datos de estudiantes (el id, el hash del token y el de la contraseña); al borrar al estudiante se van por la cascada. `student_credentials` es una credencial: ninguna proyección la devuelve y ningún log la lleva. `access_card_issues` no tiene ningún dato de un estudiante. Se suman a `docs/PRIVACIDAD-DATOS.md`, `lib/domain/permissions/tables.ts` y `006_inventory.test.sql`. `invitations.email` es un dato personal de un adulto; su retención (redactar 90 días después de aceptada, revocada o vencida) la programa la fase 9. `invitation_tokens` no tiene datos personales.
 
 ## RPC nuevas
 
@@ -346,7 +359,7 @@ Siguen las reglas de la fase 1: `perform app.rpc_begin();` primero, errores con 
 
 | RPC o función | Quién | Qué |
 |---|---|---|
-| `app.session_alive()` → `boolean` | ver «Sesión vigente en la base» | `true` si no hay `session_id` en los claims o si esa sesión existe en `auth.sessions` |
+| `app.session_alive()` → `boolean` | ver «Sesión vigente en la base» | `true` si no hay `session_id` en los claims, o si esa sesión existe en `auth.sessions` y, para una cuenta de estudiante, además está en `app.student_sessions` con la versión vigente de su credencial (F2C-75; la parte del estudiante la suma T2.5a) |
 | `app.rpc_begin()` (cambia) | todas | Suma: si `app.session_alive()` es falso, `FORBIDDEN no_session` |
 | `internal_revoke_user_sessions(p_user_id uuid)` → `{revoked}` | service_role | Borra las sesiones de ese usuario en `auth.sessions` |
 
@@ -420,7 +433,7 @@ Los cuerpos del contrato levantan `AppError("UNAVAILABLE", "Todavía no está di
 | `services/staff-auth.ts` | `signInStaff({email, password, ip})`, `requestPasswordReset({email, ip, origin})`, `verifyRecovery({tokenHash})`, `setNewPassword({password})`, `signOut()` | `repos/auth-session.ts`, `services/rate-limit.ts` | T2.3 |
 | `services/invitations.ts` | `inviteStaff({institutionId, emails, role, opKey, origin})` (resultado por correo), `resendInvitation`, `revokeInvitation`, `readInvitation({token, ip})` (con la relación de la sesión: `none`, `same` u `other`), `acceptInvitation({token})`, `acceptInvitationAsNewUser({token, displayName, password, ip})` | `repos/invitations.ts`, `services/admin/invitation-signup.ts`, `lib/server/mail/` | T2.3 |
 | `services/institution.ts` | `getInstitutionSummary(id)`, `listStaff(id)`, `listInvitations(id)`, `listGroups(id)`, `listSubjects()`, `createGroup({institutionId, name, subjectId, schoolYear, opKey})` | `repos/institution.ts`, `repos/groups.ts` | T2.3 |
-| `services/admin/provisioning.ts` | `provisionStudent(provisioningId)` (devuelve `active`, `failed` o `uncertain`), `reconcile(limit)` | `repos/admin/student-accounts.ts`, `repos/admin/students.ts`, `repos/admin/auth-users.ts` | T2.5b |
+| `services/admin/provisioning.ts` | `provisionStudent({studentId, provisioningId})` (devuelve `active`, `failed` o `uncertain`), `reconcile(limit)` | `repos/admin/student-accounts.ts`, `repos/admin/students.ts`, `repos/admin/auth-users.ts` | T2.5b |
 | `services/admin/student-login.ts` | `studentLogin(code, username)` (con el hash y la versión), `openStudentSession(authUserId, version)` (generateLink, verifyOtp sin cookies y bind; devuelve los tokens o nada), `findInstitution(code)`, `resolveAccessCard(tokenHash)` | `repos/admin/student-accounts.ts`, `repos/admin/auth-users.ts` | T2.5b |
 | `services/student-accounts.ts` | `previewUsernames({institutionId, names})`, `createStudentAccounts({groupId, rows, opKey})`, `listGroupAccounts(groupId)`, `issueAccessCards({groupId, studentIds, opKey, origin})` | `repos/student-accounts.ts`, `repos/students.ts`, `services/admin/provisioning.ts` | T2.5b |
 | `services/student-auth.ts` | `findInstitution({code, ip})`, `signInStudent({code, username, password, ip})`, `readAccessCard({token, ip})` | `services/admin/student-login.ts`, `repos/auth-session.ts`, `services/rate-limit.ts` | T2.5b |
@@ -600,7 +613,8 @@ Agente: backend          Tanda: 3        Depende de: T2.3
 Turno de base: sí
 Objetivo: la base emite tarjetas en una transacción, guarda la contraseña del estudiante, aprovisiona sin duplicar
   cuentas, resuelve un login de estudiante y lista las cuentas de un grupo.
-Archivos: supabase/migrations/20261114130000_t2_5a_student_accounts.sql, supabase/tests/043_student_accounts.test.sql,
+Archivos: supabase/migrations/20261114130000_t2_5a_student_accounts.sql (incluye el CREATE OR REPLACE de app.session_alive
+  con la parte del estudiante), supabase/tests/043_student_accounts.test.sql,
   supabase/tests/030_reasons.test.sql, supabase/tests/006_inventory.test.sql, lib/domain/errors/reasons.ts,
   lib/domain/permissions/erasure.ts, lib/domain/permissions/tables.ts, docs/PRIVACIDAD-DATOS.md,
   tests/integration/races/access-cards.test.ts, tests/integration/races/provisioning.test.ts.
@@ -608,12 +622,14 @@ Criterios: las RPC de «Cuentas de estudiantes» con las reglas comunes; dos emi
   terminan con una sola tarjeta activa y la credencial de la última; issue_access_cards borra las sesiones del
   estudiante; internal_get_student_login es la única que devuelve el hash, y solo a service_role; remember concurrente
   devuelve un solo id y con la fila deleted da ok falso; fail no deshace un active; una tarjeta vieja no resuelve; un
-  archivado no resuelve ni entra; audit_log con el conjunto; los dos triggers de auth.users en cada caso de «Cómo entra un estudiante» y «Aprovisionar» (INSERT con contraseña que queda en NULL, INSERT con un correo externo o
+  archivado no resuelve ni entra; audit_log con el conjunto; el trigger de auth.users y el de account_provisioning en cada caso de «Cómo entra un estudiante» y «Aprovisionar» (INSERT con contraseña que queda en NULL, INSERT con un correo externo o
   con otro correo sintético, las dos puntas con dos conexiones y el 40001 en REPEATABLE READ, UPDATE de id hacia uno suprimido, correo sintético con otro id, DELETE de la marca deleted seguido
   del INSERT, y con dos conexiones un INSERT que espera a una supresión en curso y después la ve); el bind con otra
   versión borra la sesión; el orden de locks sin ciclos (la secuencia de F2C-70 con dos conexiones); remember con una
   cuenta incompatible que aparece en el medio da ok falso; un grupo con emisiones no se borra; reconcile lista una cuenta
-  active que falta en Auth.
+  active que falta en Auth; la carrera de tres conexiones de F2C-74 (recordar, insertar en Auth y suprimir) termina sin
+  cuenta viva; una sesión de estudiante sin fila en student_sessions, o con otra versión, da FORBIDDEN no_session en una
+  RPC student_* y en list_my_institutions.
 ```
 
 ```
@@ -642,7 +658,8 @@ Criterios: un reintento después de cada paso del aprovisionamiento converge en 
   estudiante suprimido (deleted) no se recrea, y una que desapareció de Auth sin supresión se recrea con el mismo id;
   getUserById antes de createUser; dos issueAccessCards del mismo estudiante a la vez dejan andando solo la contraseña
   de la última; un login con la contraseña vieja frenado entre scrypt y el bind, con una tarjeta emitida en el medio,
-  no deja ninguna sesión viva; generateLink con un id distinto del recordado no abre sesión; la contraseña nueva anda, la vieja no, y la sesión abierta del estudiante deja de leer datos; el
+  no deja ninguna sesión viva; generateLink con un id distinto del recordado no abre sesión; una sesión abierta con verifyOtp directo, sin el
+  servidor, no lee datos; un pedido de tarjetas con un estudiante de otro grupo termina sin ninguna llamada admin; la contraseña nueva anda, la vieja no, y la sesión abierta del estudiante deja de leer datos; el
   estudiante entra sin que su cuenta de Auth tenga contraseña (generateLink y verifyOtp) y ningún correo sale; PUT
   /auth/v1/user con su sesión no le pone contraseña; login con espacios o mayúsculas anda; código inexistente da el
   error con nombre; usuario inexistente y contraseña mal dan el genérico, los dos pasando por scrypt; los límites de
