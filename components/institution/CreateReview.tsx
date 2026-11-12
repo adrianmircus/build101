@@ -7,7 +7,7 @@ import { primaryButton, textLink } from "@/components/ui/styles";
 import { FlowTop } from "./FlowTop";
 import { ReviewTable, type ReviewLine } from "./ReviewTable";
 import { UsernameInput } from "./UsernameInput";
-import { hasUncertain } from "./createFlowState";
+import { hasUnsettled } from "./createFlowState";
 import { createLabel, noteFor, problemText, problemsTitle, rowProblems, type DraftRow, type Flags } from "./usernameReview";
 
 type Props = {
@@ -30,7 +30,7 @@ type Props = {
 export function CreateReview({ groupName, institutionName, homeHref, rows, flags, someCreated, pending, summary, notice, onBack, onEdit, onConfirm }: Props) {
   const problems = rowProblems(rows, flags);
   // Some row may already exist on the server: nobody changes its username or goes back to the names until it is sure.
-  const unsure = hasUncertain(flags);
+  const unsure = hasUnsettled(flags);
   const lines: ReviewLine[] = rows.map((row) => {
     const problem = problems[row.key];
     const id = `usr-${row.key}`;
@@ -38,7 +38,7 @@ export function CreateReview({ groupName, institutionName, homeHref, rows, flags
     return {
       key: row.key,
       first: row.displayName,
-      second: <UsernameInput id={id} studentName={row.displayName} value={row.username} error={problem ? text ?? undefined : undefined} locked={flags[row.key] === "uncertain"} onChange={(value) => onEdit(row.key, value)} />,
+      second: <UsernameInput id={id} studentName={row.displayName} value={row.username} error={problem ? text ?? undefined : undefined} locked={flags[row.key] === "uncertain" || flags[row.key] === "sending"} onChange={(value) => onEdit(row.key, value)} />,
       note: text ? { text, kind: problem ? "problem" : "info", id: problem ? `${id}-error` : undefined } : null,
     };
   });

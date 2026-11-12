@@ -145,6 +145,38 @@ test.describe("login del estudiante", () => {
     await expect(page).toHaveURL(/\/estudiante$/);
   });
 
+  test("otro QR con el login de la tarjeta anterior en el aire: ese login queda viejo, no entra como A y muestra la tarjeta B (F2-21)", async ({ page }) => {
+    const { cards, qrLinks } = await groupWithIssuedCards(page, 2);
+    await page.context().clearCookies();
+    const cardOf = (link: string) => cards.find((one) => one.qrPath === qrPathFor(link));
+    const [a, b] = qrLinks.map((link) => ({ link, card: cardOf(link) }));
+    if (!a?.card || !b?.card) throw new Error("No se pudo emparejar cada QR con su tarjeta.");
+    await page.goto(qrAddress(a.link));
+    await expect(page.getByText(`Usuario ${a.card.username}`)).toBeVisible();
+    await page.getByLabel("Contraseña").fill(a.card.password);
+    // The answer of the login of A is held back: the second card arrives while it is still on its way.
+    let held = false;
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      if (!held && request.method() === "POST" && request.headers()["next-action"]) {
+        held = true;
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+      }
+      await route.continue();
+    });
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.evaluate((hash) => {
+      location.hash = hash;
+    }, new URL(b.link).hash);
+    // The old login ends well, but it does not take anybody anywhere: the new card is the one that shows up, with its password empty.
+    await expect(page.getByText(`Usuario ${b.card.username}`)).toBeVisible({ timeout: 30_000 });
+    expect(new URL(page.url()).pathname).toBe("/t");
+    await expect(page.getByLabel("Contraseña")).toHaveValue("");
+    // And the session of A was closed: the home of the student does not open without logging in.
+    await page.goto("/estudiante");
+    await expect(page).toHaveURL(/\/ingresar\/estudiante$/);
+  });
+
   test("/t con una tarjeta que no sirve: aviso neutro y el login normal", async ({ page }) => {
     await page.goto(`/t#${"A".repeat(43)}`);
     await expect(page.locator("[role=alert]:not(#__next-route-announcer__)")).toContainText("No pudimos usar esta tarjeta");
