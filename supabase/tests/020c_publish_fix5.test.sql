@@ -260,9 +260,9 @@ select is(pg_temp.uvq('q_ved1', pg_temp.og(format('{"functions":[],"points":[%s]
 select is(pg_temp.uvq('q_ved1', pg_temp.og(format('{"functions":[{"expr":"%s"}],"points":[]}', repeat('x', 201)))) ->> 'error', 'P0001 INVALID invalid_options', 'an expression of 201 characters');
 select is(pg_temp.uvq('q_ved1', pg_temp.og(format('{"functions":[{"expr":"x","label":"%s"}],"points":[]}', repeat('l', 61)))) ->> 'error', 'P0001 INVALID invalid_options', 'a label of 61 characters');
 select is(pg_temp.uvq('q_ved1', pg_temp.og('{"functions":[{"expr":"x","label":null}],"points":[]}')) ->> 'error', 'P0001 INVALID invalid_options', 'a null label (zod does not accept it)');
-select is(pg_temp.uvq('q_ved1', format('[{"id":"A","text":"%s"},{"id":"B","text":"Dos"}]', repeat('😀', 1001))) ->> 'error', 'P0001 INVALID invalid_options', 'a text counted as zod counts it: 1001 emojis are 2002 UTF-16 units, over the limit of 2000');
+select is(pg_temp.uvq('q_ved1', format('[{"id":"A","text":"%s"},{"id":"B","text":"Dos"}]', repeat('😀', 2001))) ->> 'error', 'P0001 INVALID invalid_options', 'a text counted by code points, as zod does: 2001 emojis are 2001 characters, over the limit of 2000');
 select is((select o from before_opts) = pg_temp.opts_of('ved'), true, 'no refusal changed the options of the question');
-select is(pg_temp.uvq('q_ved1', format('[{"id":"A","text":"%s"},{"id":"B","text":"Dos"}]', repeat('😀', 1000))) ->> 'error', null, 'but 1000 emojis, which are exactly 2000 units, are accepted');
+select is(pg_temp.uvq('q_ved1', format('[{"id":"A","text":"%s"},{"id":"B","text":"Dos"}]', repeat('😀', 2000))) ->> 'error', null, 'but 2000 emojis, which are exactly 2000 characters, are accepted');
 select is(pg_temp.uvq('q_ved1', pg_temp.og('{"functions":[{"expr":"x^2 - 2*x","label":"f"}],"points":[{"x":0,"y":0,"label":"raíz"},{"x":2,"y":0}],"window":{"xMin":-1,"xMax":3,"yMin":-2,"yMax":2}}')) ->> 'error', null,
   'a complete valid graph is accepted');
 select is(pg_temp.opts_of('ved') -> 0 -> 'graph' -> 'window', '{"xMin":-1,"xMax":3,"yMin":-2,"yMax":2}'::jsonb, 'and stored');

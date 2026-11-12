@@ -13,7 +13,7 @@ import { at, OPTIONS } from "./races/version-ops-support";
 export type Learner = { studentId: string; actor: Actor; userId: string; assignmentId: string; attemptId: string };
 export type Class = { o: Original; gaze: Learner; typed: Learner; versions: string[]; questions: string[]; keyIds: string[] };
 
-const CONFIG = JSON.stringify({ profiles: ["motor"], supports: [], interests: [] });
+const configOf = (profile: string): string => JSON.stringify({ profiles: [profile], supports: [], interests: [] });
 
 export async function must(actor: Actor, rpc: string, args: Record<string, string | number | null | string[]>): Promise<Record<string, unknown>> {
   const outcome = await runRpc(actor, rpc, args);
@@ -34,10 +34,10 @@ async function revisionOf(version: string): Promise<number> {
 }
 
 /** A version of `answerMode` for the students, with the adapted text `body`, approved and published. Gaze: two questions and a key. */
-export type PublishOptions = { students: string[]; answerMode: "typed" | "gaze"; body: string };
-export async function publishVersion(o: Original, { students, answerMode, body }: PublishOptions): Promise<{ version: string; questions: string[]; key: string[] }> {
+export type PublishOptions = { students: string[]; answerMode: "typed" | "gaze"; body: string; profile: string };
+export async function publishVersion(o: Original, { students, answerMode, body, profile }: PublishOptions): Promise<{ version: string; questions: string[]; key: string[] }> {
   const actor = teacherOf(o.world);
-  const version = idOf(await runRpc(actor, "create_version", { p_assessment_id: o.assessmentId, p_config: CONFIG, p_answer_mode: answerMode, p_op_key: randomUUID(), p_base_version_id: null }));
+  const version = idOf(await runRpc(actor, "create_version", { p_assessment_id: o.assessmentId, p_config: configOf(profile), p_answer_mode: answerMode, p_op_key: randomUUID(), p_base_version_id: null }));
   const exercises = await readRows<{ id: string }>(
     "select ve.id from app.version_exercises ve join app.assessment_exercises e on e.id = ve.exercise_id where ve.version_id = $1 order by e.position",
     [version],
@@ -79,8 +79,8 @@ export async function buildClass(): Promise<Class> {
   for (const [account, profile] of [[looking, "motor"], [typing, "dyslexia"]] as const) {
     await must(teacher, "set_student_needs", { p_student_id: account.studentId, p_profiles: [profile], p_supports: [], p_interests: [], p_op_id: randomUUID(), p_revision: null, p_review_due_on: null });
   }
-  const gaze = await publishVersion(o, { students: [looking.studentId], answerMode: "gaze", body: "Ejercicio" });
-  const typed = await publishVersion(o, { students: [typing.studentId], answerMode: "typed", body: "Ejercicio" });
+  const gaze = await publishVersion(o, { students: [looking.studentId], answerMode: "gaze", body: "Ejercicio", profile: "motor" });
+  const typed = await publishVersion(o, { students: [typing.studentId], answerMode: "typed", body: "Ejercicio", profile: "dyslexia" });
   return {
     o,
     gaze: await learner(o, looking),

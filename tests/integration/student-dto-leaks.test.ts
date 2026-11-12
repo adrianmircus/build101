@@ -112,7 +112,7 @@ describe("the planted leaks fail", () => {
 
   it("a version whose text names the profile (the real read of a published version)", async () => {
     const third = await withAccount(c.o);
-    await publishVersion(c.o, { students: [third.studentId], answerMode: "typed", body: "Ejercicio adaptado para dislexia" });
+    await publishVersion(c.o, { students: [third.studentId], answerMode: "typed", body: "Ejercicio adaptado para dislexia", profile: "dyslexia" });
     const reader = await learner(c.o, third);
     const task = await call(reader, "student_task", reader.attemptId);
     const leaks = checkStudentDto("student_task", task, await optionsFor(c, c.typed));
