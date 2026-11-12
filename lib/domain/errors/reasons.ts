@@ -68,6 +68,7 @@ export const REASON_MESSAGES: Record<string, string> = {
   correct_option_removed: "No se puede sacar la opción correcta. Cambiá primero la respuesta correcta.",
   options_repeated: "Hay opciones repetidas. Cada opción tiene que tener una letra distinta.",
   invalid_options: "Revisá las opciones: tiene que haber de 2 a 4, cada una con una letra mayúscula y un texto de hasta 2000 caracteres.",
+  invalid_option_graph: "Una pregunta tiene un gráfico con datos que no son válidos, y no se puede publicar así. Abrí esa pregunta, revisá el gráfico y volvé a guardarla.",
   invalid_stem: "Escribí el enunciado de la pregunta, de hasta 5000 caracteres.",
   invalid_reasons: "Elegí entre 1 y 10 motivos del rechazo.",
   invalid_kind: "Elegí si es un práctico o una prueba.",
