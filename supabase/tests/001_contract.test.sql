@@ -62,7 +62,7 @@ $$, 'every table with updated_at runs app.touch_row');
 select is_empty($$
   select c.relname::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'app' and c.relkind = 'r'
-     and c.relname not in ('app_users', 'institutions', 'subjects', 'rate_limits')
+     and c.relname not in ('app_users', 'institutions', 'subjects', 'rate_limits', 'student_rpc_windows')
      and not exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'institution_id' and a.attnotnull)
 $$, 'every non-global table has a non-null institution_id');
 

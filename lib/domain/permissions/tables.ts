@@ -49,5 +49,7 @@ export const APP_TABLES = [
   "notifications",
   "import_runs",
   "sandbox_sessions",
+  // Bookkeeping of the migration window for student RPCs (20261111131300): no personal data.
+  "student_rpc_windows",
 ] as const;
 export type AppTable = (typeof APP_TABLES)[number];
