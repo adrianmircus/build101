@@ -1,4 +1,6 @@
 import "server-only";
+import { z } from "zod";
+import { createSessionClient } from "../db/client";
 import { unavailable } from "../unavailable";
 
 // Every call to Supabase Auth made with the session of the user (the publishable key and the cookies), the only way
@@ -8,9 +10,20 @@ import { unavailable } from "../unavailable";
 export type SessionClaims = { userId: string; sessionId: string | null; email: string | null };
 export type SignOutScope = "local" | "others" | "global";
 
-/** The verified claims of the current session (getClaims), or null without a session. */
+const Claims = z.object({ sub: z.guid(), session_id: z.guid().optional(), email: z.string().optional() });
+
+/**
+ * The verified claims of the current session (getClaims), or null without a session: no cookie, an expired or forged
+ * token, or Auth out of reach. Only the signature and the expiry are checked here; the database confirms that the
+ * session is still alive on every RPC (app.rpc_begin).
+ */
 export async function getClaims(): Promise<SessionClaims | null> {
-  return unavailable();
+  const client = await createSessionClient();
+  const { data, error } = await client.auth.getClaims();
+  if (error || !data) return null;
+  const claims = Claims.safeParse(data.claims);
+  if (!claims.success) return null;
+  return { userId: claims.data.sub, sessionId: claims.data.session_id ?? null, email: claims.data.email ?? null };
 }
 
 /** signInWithPassword; null when Auth refuses the pair. Leaves the session cookies. */
