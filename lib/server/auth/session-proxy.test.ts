@@ -15,7 +15,7 @@ vi.mock("@supabase/ssr", () => ({
 }));
 vi.mock("@/lib/server/db/env", () => ({ readPublicDbEnv: () => ({ url: "http://localhost:54321", publishableKey: "pk" }) }));
 
-import { applyRefresh, applyTokenPageHeaders, refreshSession, shouldRefresh } from "./session-proxy";
+import { applyRefresh, applyTokenPageHeaders, kindOfClaims, refreshSession, shouldRefresh } from "./session-proxy";
 
 const request = (path: string, cookie?: string) =>
   new NextRequest(`http://localhost${path}`, { headers: cookie ? { cookie } : undefined });
@@ -36,12 +36,12 @@ describe("shouldRefresh", () => {
 
 describe("refreshSession", () => {
   it("sin cookie de Supabase no llama a Auth (la demo y los visitantes no cuestan)", async () => {
-    expect(await refreshSession(request("/grupos", "tiza_session=x"))).toBeNull();
+    expect(await refreshSession(request("/grupos", "tiza_session=x"))).toEqual({ refresh: null, kind: null });
     expect(supabase.getClaims).not.toHaveBeenCalled();
   });
 
   it("no llama a Auth en un camino salteado", async () => {
-    expect(await refreshSession(request("/api/jobs/run", "sb-x-auth-token=a"))).toBeNull();
+    expect(await refreshSession(request("/api/jobs/run", "sb-x-auth-token=a"))).toEqual({ refresh: null, kind: null });
     expect(supabase.getClaims).not.toHaveBeenCalled();
   });
 
@@ -51,7 +51,7 @@ describe("refreshSession", () => {
       return { data: null, error: null };
     });
     const req = request("/grupos", "sb-x-auth-token=viejo");
-    const refresh = await refreshSession(req);
+    const { refresh } = await refreshSession(req);
     expect(refresh?.cookies).toEqual([{ name: "sb-x-auth-token", value: "nuevo", options: { path: "/" } }]);
     expect(req.cookies.get("sb-x-auth-token")?.value).toBe("nuevo");
 
@@ -73,7 +73,29 @@ describe("refreshSession", () => {
 
   it("si Auth falla, el pedido sigue sin sesión y no se corta", async () => {
     supabase.getClaims.mockRejectedValue(new Error("sin red"));
-    expect(await refreshSession(request("/grupos", "sb-x-auth-token=a"))).toBeNull();
+    expect(await refreshSession(request("/grupos", "sb-x-auth-token=a"))).toEqual({ refresh: null, kind: null });
+  });
+
+  it("el tipo sale de los claims: correo sintético es estudiante, cualquier otro es staff", async () => {
+    supabase.getClaims.mockResolvedValue({ data: { claims: { email: "6a1b2c3d-0000-4000-8000-000000000001@estudiantes.usetiza.app" } }, error: null });
+    expect((await refreshSession(request("/estudiante", "sb-x-auth-token=a"))).kind).toBe("student");
+    supabase.getClaims.mockResolvedValue({ data: { claims: { email: "profe@colegio.edu.uy" } }, error: null });
+    expect((await refreshSession(request("/grupos", "sb-x-auth-token=a"))).kind).toBe("staff");
+  });
+
+  it("sin claims verificados no hay tipo", async () => {
+    supabase.getClaims.mockResolvedValue({ data: null, error: { message: "x" } });
+    expect((await refreshSession(request("/grupos", "sb-x-auth-token=a"))).kind).toBeNull();
+  });
+});
+
+describe("kindOfClaims", () => {
+  it("sin correo o con algo raro no hay tipo", () => {
+    for (const claims of [null, undefined, {}, { email: "" }, { email: 7 }, "x"]) expect(kindOfClaims(claims)).toBeNull();
+  });
+  it("distingue mayúsculas y espacios del dominio sintético", () => {
+    expect(kindOfClaims({ email: " X@Estudiantes.Usetiza.App " })).toBe("student");
+    expect(kindOfClaims({ email: "x@estudiantes.usetiza.app.evil.com" })).toBe("staff");
   });
 });
 

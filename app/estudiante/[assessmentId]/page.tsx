@@ -4,7 +4,8 @@ import { SolveAssessment } from "@/components/solve/SolveAssessment";
 import { Logo } from "@/components/ui/Logo";
 import { Loading } from "@/components/ui/States";
 import { PageTransition } from "@/components/ui/transitions";
-import { requireStudent } from "@/lib/auth/dal";
+import { redirect } from "next/navigation";
+import { requireViewer } from "../viewer";
 
 // Same as the student home: nothing about accessibility or adaptations in the title.
 export const metadata: Metadata = { title: "Resolver", description: "Resolvé tu práctico o parcial de matemática." };
@@ -23,6 +24,8 @@ export default function SolvePage() {
 }
 
 async function Content() {
-  const student = await requireStudent();
-  return <SolveAssessment studentId={student.id} groupId={student.groupId} />;
+  const viewer = await requireViewer();
+  // A real student has nothing to solve until phase 4: back to the home, which says so.
+  if (viewer.kind === "real") redirect("/estudiante");
+  return <SolveAssessment studentId={viewer.student.id} groupId={viewer.student.groupId} />;
 }

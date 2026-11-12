@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { startTransition, useEffect, useSyncExternalStore } from "react";
-import { demoViewAs } from "@/lib/auth/actions";
+import { demoViewAs } from "@/app/demo/actions";
 import { isDemo } from "@/lib/demo/mode";
 import { STAGES, STEPS } from "@/lib/demo/steps";
 import { restartTour, setTour, useTour, type TourState } from "@/lib/demo/tour";
