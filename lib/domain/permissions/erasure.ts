@@ -18,15 +18,25 @@ import { APP_TABLES, type AppTable } from "./tables";
 // revisions, the publication, the generation's inputs) reject UPDATE. T9.5 runs the whole erasure
 // in one transaction opened with app.begin_erasure(<marked erasure>): only there do the guards let
 // a redaction through (20261111130800_platform.sql), and 004_contract_redaction proves it.
+//
+// Order of an erasure (T9.5), so that what is kept is never personal:
+//   1. mark it (erasures, status 'marked') and unlink the pseudonym;
+//   2. delete the student's Storage objects, then the rows by these rules, with redactions inside
+//      app.begin_erasure;
+//   3. delete the Auth account with the admin API: that cascades app_users and memberships, and
+//      leaves account_provisioning.auth_user_id pointing at no account;
+//   4. only then move the erasure to 'done' and copy it out of the database.
 
 export type ErasureRule = "delete" | "unlink" | "redact" | "keep" | "by_version";
 export type ErasureEntry = { rule: ErasureRule; why: string };
 
 export const ERASURE_RULES = {
+  app_users: { rule: "delete", why: "Su usuario de la plataforma; se va en cascada al borrar la cuenta de Auth (paso 3)." },
+  memberships: { rule: "delete", why: "Su membresía de estudiante; se va en cascada con app_users al borrar la cuenta de Auth." },
   students: { rule: "delete", why: "Es el estudiante." },
   enrollments: { rule: "delete", why: "Dice en qué grupos estuvo." },
   student_pseudonyms: { rule: "unlink", why: "Mantiene la integridad de lo que se conserva; sin el vínculo no lleva a nadie, pero lo que quede atado sigue siendo personal salvo justificación." },
-  account_provisioning: { rule: "keep", why: "La marca deleted impide que reconcile_accounts recree la cuenta. Sin nombre ni vínculo con el estudiante." },
+  account_provisioning: { rule: "keep", why: "La marca deleted impide que reconcile_accounts recree la cuenta. Sin nombre ni vínculo con el estudiante; auth_user_id deja de ser personal porque la cuenta de Auth se borra antes de cerrar la supresión (paso 3)." },
   student_needs: { rule: "delete", why: "Dato de salud." },
   student_need_events: { rule: "delete", why: "Historial de un dato de salud." },
   student_notes: { rule: "delete", why: "Notas privadas sobre el estudiante." },
@@ -39,7 +49,7 @@ export const ERASURE_RULES = {
   question_keys: { rule: "by_version", why: "Clave de las preguntas de su versión." },
   generations: { rule: "by_version", why: "Entradas de la IA: configuración, intereses e instrucciones; en una compartida se redacta el texto libre que lo nombre." },
   generation_outputs: { rule: "by_version", why: "Salida de la IA para su versión; en una compartida se redacta si lo nombra." },
-  version_events: { rule: "by_version", why: "Feedback de su versión; en una compartida se le saca de recipients_changed y se redacta el texto que lo nombre." },
+  version_events: { rule: "by_version", why: "Feedback de su versión; en una compartida se le saca de recipients_changed (data) y se redacta el texto que lo nombre, también en result." },
   answer_keys: { rule: "by_version", why: "Clave de su versión." },
   answer_key_revisions: { rule: "by_version", why: "Revisiones de la clave de su versión." },
   publications: { rule: "by_version", why: "Copia de su versión; una compartida se conserva para los demás." },
@@ -50,6 +60,8 @@ export const ERASURE_RULES = {
   group_analyses: { rule: "redact", why: "Se borra su parte del resultado y su etiqueta del mapa de seudónimos; el resto es del grupo." },
   operations: { rule: "redact", why: "El resultado del análisis de un grupo tiene su parte; un documento leído puede nombrarlo." },
   assessment_exercises: { rule: "redact", why: "El original es del profe; si su texto nombra al estudiante, se redacta." },
+  assessments: { rule: "redact", why: "El tema y las instrucciones generales son texto libre del profe: si nombran al estudiante, se redactan." },
+  presets: { rule: "redact", why: "El nombre y la configuración son texto libre del profe (por ejemplo «Paula TDAH»): si nombran al estudiante, se redactan." },
   feedback_events: { rule: "delete", why: "Señales de uso por seudónimo: no hay justificación para tratarlas como disociadas." },
   audit_log: { rule: "keep", why: "Registro de accesos, cinco años. Sus ids ya no llevan a nadie." },
   erasures: { rule: "keep", why: "Es el registro de la supresión, sin datos personales." },
