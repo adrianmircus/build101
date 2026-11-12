@@ -3,7 +3,7 @@
 -- the way the factories will) and the whole file is rolled back, so it depends on no other test and
 -- clobbers none.
 begin;
-select plan(182);
+select plan(227);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched
 -- with SET LOCAL ROLE. Returns the jsonb result, or {"error": "<sqlstate> <message> <detail>"}.
@@ -54,7 +54,7 @@ create function pg_temp.keys(p_obj jsonb) returns text language sql
 -- Users. Auth rows first (the real ones are made by Auth), app_users through the RPC.
 insert into ids (k, id) select k, gen_random_uuid() from unnest(array[
   'admin', 'teach', 'other', 'incl', 'userb', 'visitor', 'nobody', 'ghost',
-  'stu_c', 'stu_u', 'stu_e', 'stu_l', 'stu_l2', 'stu_p'
+  'stu_c', 'stu_u', 'stu_e', 'stu_l', 'stu_l2', 'stu_p', 'stu_r1', 'stu_r2', 'stu_r3', 'stu_r4'
 ]) as k;
 insert into auth.users (id, email) select id, k || '@t1-2b.invalid' from ids where k <> 'ghost';
 do $$
@@ -163,8 +163,8 @@ insert into ids (k, id) select 'g_s', (pg_temp.as_user('visitor', format('select
 insert into ids (k, id) select 'ss1', (pg_temp.new_student('visitor', 'g_s', 'Demo Uno', 'demo.uno') ->> 'id')::uuid;
 select is(pg_temp.new_student('visitor', 'g_s', 'Demo Dos', 'demo.dos') -> 'provisioningId', 'null'::jsonb,
   'in a sandbox provisioningId is null');
-select is((select count(*) from app.account_provisioning where institution_id = pg_temp.id('i_s')), 0::bigint,
-  'and no provisioning row exists');
+select is((select string_agg(distinct ap.status, ',') || ':' || count(*) from app.account_provisioning ap where ap.institution_id = pg_temp.id('i_s')),
+  'not_applicable:2', 'and its provisioning rows are not_applicable: the key is remembered, no real account is made');
 select is((select count(*) from app.student_pseudonyms where institution_id = pg_temp.id('i_s'))
           + (select count(*) from app.enrollments where institution_id = pg_temp.id('i_s')), 4::bigint,
   'but the students still get their pseudonym and enrollment');
@@ -345,7 +345,7 @@ select is(pg_temp.link('sl2', 'stu_l2') ->> 'id', pg_temp.id('sl2')::text, 'a fa
 select is((select ap.status || ':' || coalesce(ap.error_code, 'none') from app.account_provisioning ap where ap.student_id = pg_temp.id('sl2')), 'active:none',
   'and its error is cleared');
 -- A sandbox student has no provisioning row: the link still works (the factories use it).
-select is((select count(*) from app.account_provisioning where student_id = pg_temp.id('ss1')), 0::bigint, 'the sandbox student has no provisioning');
+select is((select ap.status from app.account_provisioning ap where ap.student_id = pg_temp.id('ss1')), 'not_applicable', 'the sandbox student has a not_applicable provisioning');
 select is(
   (select string_agg(left(pg_temp.rpc(u.uid, u.role, format('select api.internal_link_student_user(%L, %L)', pg_temp.id('sl1'), pg_temp.id('stu_l'))) ->> 'error', 5), ',' order by u.n)
      from (values (1, pg_temp.id('teach'), 'authenticated'), (2, null::uuid, 'anon')) as u(n, uid, role)),
@@ -485,6 +485,160 @@ select is(pg_temp.as_user('teach', format('select api.list_group_students(%L)', 
 select is((select count(*) from app.student_needs where student_id = pg_temp.id('sp1')), 1::bigint, 'the student has a profile stored');
 select is(position('adhd' in (pg_temp.roster('teach')::text || pg_temp.grp('teach')::text || pg_temp.mine('teach')::text)), 0,
   'and no projection mentions it');
+
+-- ---------------------------------------------------------------------------------------------
+-- T1.2b-fix (docs/revisiones/fase-1-t1-2b-codex.md)
+-- ---------------------------------------------------------------------------------------------
+select pg_temp.mk('f');
+select pg_temp.as_service(format('select api.internal_add_membership(%L, %L, ''student'')', pg_temp.id('i_f'), pg_temp.id(u)))
+  from unnest(array['stu_r1', 'stu_r2']) as u;
+insert into ids (k, id) select 'sf1', (pg_temp.new_student('teach', 'g_f', 'Lola', 'lola.f') ->> 'id')::uuid;
+insert into ids (k, id) select 'sf2', (pg_temp.new_student('other', 'go_f', 'Mati', 'mati.f') ->> 'id')::uuid;
+insert into ids (k, id) select 'sf3', (pg_temp.new_student('teach', 'g_f', 'Nico', 'nico.f') ->> 'id')::uuid;
+do $$ begin
+  perform pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('sf1'), pg_temp.id('stu_r1')));
+  perform pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('sf2'), pg_temp.id('stu_r2')));
+end $$;
+
+-- W2-1: the identity of an op_key is the original group and username, not what the student is now.
+insert into ids (k, id) values ('opf', gen_random_uuid());
+insert into ids (k, id) select 'sf4', (pg_temp.new_student('teach', 'g_f', 'Olga', 'olga.f', pg_temp.id('opf')) ->> 'id')::uuid;
+select is((select ap.op_identity ~ '^[0-9a-f]{64}$' from app.account_provisioning ap where ap.student_id = pg_temp.id('sf4')), true,
+  'the creation stores the identity of the call (a sha256, not the username)');
+do $$ begin
+  perform pg_temp.as_user('admin', format('select api.enroll_student(%L, %L)', pg_temp.id('go_f'), pg_temp.id('sf4')));
+end $$;
+select is(pg_temp.new_student('other', 'go_f', 'Olga', 'olga.f', pg_temp.id('opf')) ->> 'error', 'P0001 CONFLICT op_key_reused',
+  'created in G1, enrolled in G2: reusing the op_key in G2 is CONFLICT op_key_reused');
+select is((select count(*) from app.students where institution_id = pg_temp.id('i_f') and username = 'olga.f'), 1::bigint, 'and creates nothing');
+select is(pg_temp.upd('teach', 1, 'Olga P.', 'olga.nueva', 'sf4') ->> 'revision', '2', 'the teacher renames the student afterwards');
+select is(pg_temp.new_student('teach', 'g_f', 'Olga', 'olga.f', pg_temp.id('opf')),
+  jsonb_build_object('id', pg_temp.id('sf4'), 'revision', 1,
+                     'provisioningId', (select ap.id from app.account_provisioning ap where ap.student_id = pg_temp.id('sf4'))),
+  'after the rename, the exact original request answers the original result');
+select is(pg_temp.new_student('teach', 'g_f', 'Olga', 'olga.nueva', pg_temp.id('opf')) ->> 'error', 'P0001 CONFLICT op_key_reused',
+  'and the current username is not the identity of the operation');
+do $$ begin
+  perform pg_temp.as_user('teach', format('select api.unenroll_student(%L, %L)', pg_temp.id('g_f'), pg_temp.id('sf4')));
+end $$;
+select is(pg_temp.new_student('admin', 'g_f', 'Olga', 'olga.f', pg_temp.id('opf')) ->> 'id', pg_temp.id('sf4')::text,
+  'nor is the enrollment: the original request answers the same after the student left the group');
+update app.account_provisioning set op_identity = null where student_id = pg_temp.id('sf4');
+select is(pg_temp.new_student('admin', 'g_f', 'Olga', 'olga.f', pg_temp.id('opf')) ->> 'error', 'P0001 CONFLICT op_key_reused',
+  'a row with no stored identity is never answered by guesswork');
+
+-- W2-2: a sandbox remembers the operation too, without provisioning anything.
+update app.institutions set expires_at = now() + interval '1 day' where id = pg_temp.id('i_s');
+insert into ids (k, id) values ('ops', gen_random_uuid());
+insert into ids (k, id) select 'ss3', (pg_temp.new_student('visitor', 'g_s', 'Demo Cuatro', 'demo.cuatro', pg_temp.id('ops')) ->> 'id')::uuid;
+select is((select ap.status from app.account_provisioning ap where ap.institution_id = pg_temp.id('i_s') and ap.op_key = pg_temp.id('ops')),
+  'not_applicable', 'the sandbox creation stores its op_key');
+select is(pg_temp.new_student('visitor', 'g_s', 'Demo Cuatro', 'demo.cuatro', pg_temp.id('ops')),
+  jsonb_build_object('id', pg_temp.id('ss3'), 'revision', 1, 'provisioningId', null),
+  'repeating it exactly in a sandbox answers the same, not username_taken');
+select is(pg_temp.new_student('visitor', 'g_s', 'Otro', 'demo.otro', pg_temp.id('ops')) ->> 'error', 'P0001 CONFLICT op_key_reused',
+  'the same op_key with another username in a sandbox is CONFLICT op_key_reused');
+select is((select count(*) from app.students where institution_id = pg_temp.id('i_s') and username in ('demo.cuatro', 'demo.otro')), 1::bigint,
+  'and no second student is created');
+select is(pg_temp.link('ss3', 'stu_r3') ->> 'id', pg_temp.id('ss3')::text, 'a sandbox student can be linked to an account');
+select is((select ap.status || ':' || coalesce(ap.auth_user_id::text, 'none') from app.account_provisioning ap where ap.student_id = pg_temp.id('ss3')),
+  'not_applicable:none', 'and its row stays not_applicable, with no auth account recorded');
+
+-- W2-6: nulls are INVALID, never a silent success.
+select is(pg_temp.as_user('teach', format('select api.create_student(%L, null, ''nulo.f'', gen_random_uuid())', pg_temp.id('g_f'))) ->> 'error',
+  'P0001 INVALID invalid_name', 'create_student with a null name is INVALID');
+select is(pg_temp.as_user('teach', format('select api.create_student(%L, ''Nulo'', null, gen_random_uuid())', pg_temp.id('g_f'))) ->> 'error',
+  'P0001 INVALID invalid_username', 'with a null username is INVALID');
+select is(pg_temp.as_user('teach', format('select api.create_student(%L, ''Nulo'', ''nulo.f'', null)', pg_temp.id('g_f'))) ->> 'error',
+  'P0001 INVALID invalid_op_key', 'with a null op_key is INVALID');
+select is((select count(*) from app.students where institution_id = pg_temp.id('i_f') and username = 'nulo.f'), 0::bigint, 'and none of them creates a student');
+select is(pg_temp.as_user('teach', format('select api.update_student(%L, 1, null, ''lola.f'')', pg_temp.id('sf1'))) ->> 'error',
+  'P0001 INVALID invalid_name', 'update_student with a null name is INVALID');
+select is(pg_temp.as_user('teach', format('select api.update_student(%L, 1, ''Lola'', null)', pg_temp.id('sf1'))) ->> 'error',
+  'P0001 INVALID invalid_username', 'with a null username is INVALID');
+select is(pg_temp.as_user('teach', format('select api.update_student(%L, null, ''Lola'', ''lola.f'')', pg_temp.id('sf1'))) ->> 'error',
+  'P0001 INVALID revision_required', 'with a null revision is INVALID');
+select is((select revision from app.students where id = pg_temp.id('sf1')), 1, 'and the student did not change');
+
+-- W2-4: the account lock is by account alone, and a second student cannot take an account in use,
+-- inside the institution or in another one.
+select pg_temp.mk('g');
+insert into ids (k, id) select 'sg1', (pg_temp.new_student('teach', 'g_g', 'Pablo', 'pablo.g') ->> 'id')::uuid;
+select is(pg_temp.link('sg1', 'stu_r1') ->> 'error', 'P0001 CONFLICT op_key_reused',
+  'an account already tied to a student of another institution is CONFLICT op_key_reused (never a raw 23505)');
+select is(pg_temp.link('sf3', 'stu_r1') ->> 'error', 'P0001 CONFLICT op_key_reused', 'and so is one tied to a student of the same institution');
+select is((select s.user_id from app.students s where s.id in (pg_temp.id('sg1'), pg_temp.id('sf3')) and s.user_id is not null limit 1), null,
+  'and neither student got the account');
+select is(pg_temp.link('sf3', 'teach') ->> 'error', 'P0001 CONFLICT role_conflict',
+  'a staff account is CONFLICT role_conflict (the T1.2a trigger), the only way left to refuse it');
+
+-- Locks. pgTAP runs in one session: the races cannot be staged here, so the test checks that each
+-- RPC takes, before touching rows, the advisory lock every competing RPC takes (as in 010). The
+-- keys are those of fresh pairs, so nothing taken earlier in this transaction can fake a pass.
+create function pg_temp.holds(p_key text) returns boolean language sql as $$
+  select exists (
+    select 1 from pg_locks l
+     where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.objsubid = 1
+       and l.classid = ((k.k >> 32) & 4294967295)::oid and l.objid = (k.k & 4294967295)::oid
+  ) from (select hashtextextended(p_key, 0) as k) k
+$$;
+create function pg_temp.enr_key(p_group text, p_student text) returns text language sql as $$
+  select 'tiza.enrollment:' || pg_temp.id(p_group)::text || ':' || pg_temp.id(p_student)::text $$;
+select ok(not pg_temp.holds(pg_temp.enr_key('g_f', 'sf2')), 'nothing holds the enrollment lock of a fresh pair');
+select is(pg_temp.enr('teach', 'g_f', 'sf2') ->> 'error', null, 'enroll_student enrolls');
+select ok(pg_temp.holds(pg_temp.enr_key('g_f', 'sf2')), 'and takes the (group, student) lock');
+select ok(not pg_temp.holds(pg_temp.enr_key('go_f', 'sf3')), 'nothing holds the lock of the pair that will leave');
+select is(pg_temp.enr('admin', 'go_f', 'sf3') ->> 'error', null, 'enrolling in the other group');
+select is(pg_temp.enr('admin', 'go_f', 'sf3', 'unenroll_student') ->> 'error', null, 'and unenrolling');
+select ok(pg_temp.holds(pg_temp.enr_key('go_f', 'sf3')), 'both take the same lock for the pair: they cannot interleave');
+insert into ids (k, id) values ('opl', gen_random_uuid());
+select ok(not pg_temp.holds('tiza.create_student:' || pg_temp.id('i_f')::text || ':' || pg_temp.id('opl')::text), 'nothing holds the lock of a fresh op_key');
+select is(pg_temp.new_student('teach', 'g_f', 'Quique', 'quique.f', pg_temp.id('opl')) ->> 'error', null, 'create_student creates');
+select ok(pg_temp.holds('tiza.create_student:' || pg_temp.id('i_f')::text || ':' || pg_temp.id('opl')::text),
+  'and takes the (institution, op_key) lock, before looking the key up');
+select ok(not pg_temp.holds('tiza.student_account:' || pg_temp.id('stu_r4')::text), 'nothing holds the lock of an account nobody linked');
+select is(pg_temp.link('sf3', 'stu_r4') ->> 'id', pg_temp.id('sf3')::text, 'internal_link_student_user links it');
+select ok(pg_temp.holds('tiza.student_account:' || pg_temp.id('stu_r4')::text),
+  'and takes the lock of the account alone (not of the institution), so it also serializes across institutions');
+
+-- W2-5: the permission matrix by RPC. Each role that must be denied, with code and reason, and the
+-- proof that nothing changed (a digest of the institution before and after).
+create function pg_temp.digest(p_inst text) returns text language sql as $$
+  select md5(coalesce((select string_agg(concat_ws('|', s.id, s.revision, s.display_name, s.username, s.archived_at, s.user_id), ';' order by s.id)
+                         from app.students s where s.institution_id = pg_temp.id(p_inst)), '')
+          || coalesce((select string_agg(concat_ws('|', e.id, e.revision, e.group_id, e.student_id, e.ended_at), ';' order by e.id)
+                         from app.enrollments e where e.institution_id = pg_temp.id(p_inst)), '')
+          || coalesce((select string_agg(concat_ws('|', a.id, a.revision, a.status), ';' order by a.id)
+                         from app.account_provisioning a where a.institution_id = pg_temp.id(p_inst)), ''))
+$$;
+-- Calls p_sql (with %L for the user's own student left to the caller) as each denied role.
+create function pg_temp.denied(p_sql text) returns text language plpgsql as $$
+declare
+  v_before text := pg_temp.digest('i_f');
+  v_out text;
+begin
+  select string_agg(r.k || '=' || coalesce(pg_temp.as_user(r.k, p_sql) ->> 'error', 'ALLOWED'), ';' order by r.n) into v_out
+    from (values (1, 'incl'), (2, 'stu_r1'), (3, 'stu_r2'), (4, 'other'), (5, 'userb'), (6, 'nobody')) as r(n, k);
+  return v_out || ' changed=' || (v_before <> pg_temp.digest('i_f'))::text;
+end
+$$;
+create function pg_temp.expect(p_incl text, p_stu text, p_stu2 text) returns text language sql as $$
+  select 'incl=P0001 ' || p_incl || ';stu_r1=P0001 ' || p_stu || ';stu_r2=P0001 ' || p_stu2
+         || ';other=P0001 NOT_FOUND not_found;userb=P0001 NOT_FOUND not_found;nobody=P0001 NOT_FOUND not_found changed=false'
+$$;
+-- sf1 is in g_f (stu_r1 is sf1); sf2 is in go_f only (stu_r2 is sf2); 'other' teaches go_f, not g_f. A student of the institution gets FORBIDDEN from the group RPCs (they see the group) and NOT_FOUND from another student's record.
+select is(pg_temp.denied(format('select api.create_student(%L, ''Zeta'', ''zeta.f'', gen_random_uuid())', pg_temp.id('g_f'))),
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'FORBIDDEN forbidden'), 'create_student: every denied role gets its code and nothing changes');
+select is(pg_temp.denied(format('select api.update_student(%L, 1, ''Z'', ''zeta.f'')', pg_temp.id('sf1'))),
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'update_student: same');
+select is(pg_temp.denied(format('select api.archive_student(%L, 1)', pg_temp.id('sf1'))),
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'archive_student: same');
+select is(pg_temp.denied(format('select api.restore_student(%L, 1)', pg_temp.id('sf1'))),
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'restore_student: same');
+select is(pg_temp.denied(format('select api.enroll_student(%L, %L)', pg_temp.id('g_f'), pg_temp.id('sf2'))),
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'FORBIDDEN forbidden'), 'enroll_student: same');
+select is(pg_temp.denied(format('select api.unenroll_student(%L, %L)', pg_temp.id('g_f'), pg_temp.id('sf1'))),
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'FORBIDDEN forbidden'), 'unenroll_student: same');
 
 select * from finish();
 rollback;
