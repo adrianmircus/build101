@@ -43,6 +43,20 @@ export const newCode = [
       ],
     },
   },
+  // @types/react declares a global React namespace, so `React.ReactNode` compiles without any import.
+  // The domain is pure: no React types either.
+  {
+    files: ["lib/domain/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Identifier[name=/^(?:React|JSX)$/]",
+          message: "lib/domain es puro: no usa tipos de React (ni el namespace global React o JSX).",
+        },
+      ],
+    },
+  },
   // The layers are .ts and .tsx only: other extensions (.mts, .cts, .js…) would sit outside the rules
   // and the strict program while tsconfig still compiles them.
   {

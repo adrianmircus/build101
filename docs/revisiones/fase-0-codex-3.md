@@ -156,3 +156,20 @@ No confirmé otros problemas nuevos de alta/media fuera de las revisiones anteri
 Pasaron lint, **447 pruebas** y ambos chequeos de tipos. Sin modificaciones; árbol limpio.
 
 Veredicto: no listo
+
+## Ronda 13
+
+**R2: parcial.** `packageOf()` bloquea los casos anteriores, incluido `types="@types/react"`, pero reproduje otro bypass **media** en [layers.mjs:48](/C:/Users/adrim/build101/.claude/worktrees/fase-0/eslint/rules/layers.mjs:48).
+
+En un archivo virtual `lib/domain/probe.ts`:
+
+```ts
+export type View = React.ReactNode;
+export type Element = React.JSX.Element;
+```
+
+ESLint devuelve **cero mensajes** y el programa estricto completo, **cero diagnósticos**. TypeScript obtiene ambos tipos del namespace global de `@types/react`; el visitante solo revisa imports y directivas. Es sintaxis habitual, plausible para un implementador honesto: incumple la pureza del dominio sin recurrir a sintaxis adversarial.
+
+No confirmé otros problemas nuevos de alta/media fuera de las revisiones previas. Pasaron lint, **451 pruebas** y ambos chequeos de tipos. Sin modificaciones; árbol limpio.
+
+Veredicto: no listo

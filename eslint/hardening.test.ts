@@ -112,6 +112,9 @@ describe("every way TypeScript can name a module", () => {
     ['/// <reference types="@types/react-dom" />\nexport const y = 1;\n', LAYERS],
     ['export type V = import("../../node_modules/@types/react/index").ReactNode;\n', LAYERS],
     ['import type { ReactNode } from "react/jsx-runtime";\nexport type V = ReactNode;\n', LAYERS],
+    // No import at all: @types/react's global namespace.
+    ["export type View = React.ReactNode;\n", "no-restricted-syntax"],
+    ["export type El = React.JSX.Element;\n", "no-restricted-syntax"],
   ])("lib/domain/a.ts with %j trips %s", async (code, rule) => {
     expect(await ruleIdsFor(code, "lib/domain/a.ts")).toContain(rule);
   });
