@@ -2,7 +2,7 @@
 -- Everything is created here with its own institutions (through the internal RPCs, the same way the
 -- factories will) and rolled back, so the file depends on no other test and clobbers none.
 begin;
-select plan(117);
+select plan(146);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched
 -- with SET LOCAL ROLE. Returns the jsonb result, or {"error": "<sqlstate> <message> <detail>"}.
@@ -48,14 +48,14 @@ create function pg_temp.as_service(p_sql text) returns jsonb language sql
 
 -- Users. Auth rows come first (the real ones are made by Auth); app_users through the RPC.
 insert into ids (k, id) select k, gen_random_uuid() from unnest(array[
-  'admin', 'owner', 'co', 'other', 'incl', 'stud', 'userb', 'visitor', 'nobody', 'ghost'
+  'admin', 'owner', 'co', 'other', 'incl', 'stud', 'userb', 'visitor', 'nobody', 'ghost', 'late'
 ]) as k;
 insert into auth.users (id, email) select id, k || '@t1-2a.invalid' from ids where k <> 'ghost';
 do $$
 declare
   k text;
 begin
-  foreach k in array array['admin', 'owner', 'co', 'other', 'incl', 'stud', 'userb', 'visitor', 'nobody'] loop
+  foreach k in array array['admin', 'owner', 'co', 'other', 'incl', 'stud', 'userb', 'visitor', 'nobody', 'late'] loop
     perform pg_temp.as_service(format('select api.internal_upsert_app_user(%L, %L)', pg_temp.id(k), 'Persona ' || k));
   end loop;
 end
@@ -129,25 +129,25 @@ select is(left(pg_temp.as_service(format($$ select api.internal_add_membership(%
   '23514', 'an unknown role is refused by the table check');
 
 -- A person is not a student and staff in the same institution, whichever side comes second.
-select is(left(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'student') $$, pg_temp.id('instA'), pg_temp.id('owner'))) ->> 'error', 5),
-  '23514', 'a teacher cannot also become a student of the institution');
-select is(left(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'inclusion') $$, pg_temp.id('instA'), pg_temp.id('stud'))) ->> 'error', 5),
-  '23514', 'a student cannot also become staff of the institution');
+select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'student') $$, pg_temp.id('instA'), pg_temp.id('owner'))) ->> 'error',
+  'P0001 CONFLICT role_conflict', 'a teacher cannot also become a student of the institution');
+select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'inclusion') $$, pg_temp.id('instA'), pg_temp.id('stud'))) ->> 'error',
+  'P0001 CONFLICT role_conflict', 'a student cannot also become staff of the institution');
 -- The admin also teaches (two staff memberships), so turning one of them into a student role is refused.
-select is(left(pg_temp.err(format($$ update app.memberships set role = 'student' where id = %L $$, pg_temp.id('m_admin'))), 5),
-  '23514', 'changing a staff membership into a student one is refused too');
+select is(pg_temp.err(format($$ update app.memberships set role = 'student' where id = %L $$, pg_temp.id('m_admin'))),
+  'P0001 CONFLICT role_conflict', 'changing a staff membership into a student one is refused too');
 -- The same account may be a student in one institution and staff in another.
 select ok(pg_temp.add_member('instB', 'stud', 'teacher') is not null,
   'the rule is per institution: a student of one can teach in another');
 -- A student row already tied to the account blocks staff roles before the membership exists.
 insert into app.students (id, institution_id, display_name, username, user_id)
   values (gen_random_uuid(), pg_temp.id('instB'), 'Est B', 'est.b.t1', null);
-select is(left(pg_temp.err(format($$ update app.students set user_id = %L where username = 'est.b.t1' and institution_id = %L $$,
-    pg_temp.id('userb'), pg_temp.id('instB'))), 5),
-  '23514', 'a student row cannot be tied to an account that is staff in that institution');
+select is(pg_temp.err(format($$ update app.students set user_id = %L where username = 'est.b.t1' and institution_id = %L $$,
+    pg_temp.id('userb'), pg_temp.id('instB'))),
+  'P0001 CONFLICT role_conflict', 'a student row cannot be tied to an account that is staff in that institution');
 update app.students set user_id = pg_temp.id('nobody') where username = 'est.b.t1' and institution_id = pg_temp.id('instB');
-select is(left(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'teacher') $$, pg_temp.id('instB'), pg_temp.id('nobody'))) ->> 'error', 5),
-  '23514', 'an account tied to a student row cannot become staff of that institution');
+select is(pg_temp.as_service(format($$ select api.internal_add_membership(%L, %L, 'teacher') $$, pg_temp.id('instB'), pg_temp.id('nobody'))) ->> 'error',
+  'P0001 CONFLICT role_conflict', 'an account tied to a student row cannot become staff of that institution');
 
 -- ---------------------------------------------------------------------------------------------
 -- internal_revoke_membership
@@ -165,6 +165,40 @@ select is(pg_temp.as_service(format($$ select api.internal_revoke_membership(%L)
 -- After revoking, the same role can be granted again as a new row.
 select isnt(pg_temp.add_member('instB', 'visitor', 'inclusion'), pg_temp.id('m_temp'),
   'a revoked role can be granted again as a new membership');
+select ok(pg_temp.add_member('instB', 'visitor', 'inclusion') is not null,
+  'repeating an add of an active membership returns its row, never a null id');
+
+-- W1-2: a membership never changes owner (reassigning it would skip the student/staff check).
+select throws_ok(format($$ update app.memberships set user_id = %L where id = %L $$, pg_temp.id('stud'), pg_temp.id('m_owner')),
+  'P0004', null, 'a staff membership cannot be reassigned to a student account');
+select throws_ok(format($$ update app.memberships set user_id = %L where id = %L $$, pg_temp.id('nobody'), pg_temp.id('m_owner')),
+  'P0004', null, 'nor to any other account');
+select is((select user_id from app.memberships where id = pg_temp.id('m_owner')), pg_temp.id('owner'),
+  'and the membership kept its owner');
+
+-- W1-3: add and revoke serialize on the same advisory lock (institution, user), taken before any
+-- row lock. pgTAP runs in one session, so the race itself cannot be staged here (no dblink or
+-- pg_background); what is checked is that both RPCs take the lock the triggers take.
+create function pg_temp.holds_identity_lock(p_inst text, p_user text) returns boolean language sql as $$
+  select exists (
+    select 1 from pg_locks l
+     where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.objsubid = 1
+       and l.classid = ((k.k >> 32) & 4294967295)::oid and l.objid = (k.k & 4294967295)::oid
+  ) from (select hashtextextended('tiza.identity:' || pg_temp.id(p_inst)::text || ':' || pg_temp.id(p_user)::text, 0) as k) k
+$$;
+select ok(not pg_temp.holds_identity_lock('instB', 'late'), 'nothing holds the identity lock of a pair nobody touched yet');
+insert into ids (k, id) values ('m_late', pg_temp.add_member('instB', 'late', 'inclusion'));
+select ok(pg_temp.holds_identity_lock('instB', 'late'), 'internal_add_membership takes the identity lock');
+select ok(not pg_temp.holds_identity_lock('instA', 'late'), 'the lock is per institution and user');
+-- A membership written without the trigger, so only the revoke RPC can have taken the lock.
+alter table app.memberships disable trigger memberships_student_xor_staff;
+insert into ids (k, id) values ('m_raw', gen_random_uuid());
+insert into app.memberships (id, institution_id, user_id, role) select id, pg_temp.id('instA'), pg_temp.id('late'), 'inclusion' from ids where k = 'm_raw';
+alter table app.memberships enable trigger memberships_student_xor_staff;
+select ok(not pg_temp.holds_identity_lock('instA', 'late'), 'a row written around the trigger holds no lock');
+select is(pg_temp.as_service(format($$ select api.internal_revoke_membership(%L) $$, pg_temp.id('m_raw'))) ->> 'id', pg_temp.id('m_raw')::text,
+  'internal_revoke_membership revokes it');
+select ok(pg_temp.holds_identity_lock('instA', 'late'), 'internal_revoke_membership takes the same identity lock before the row lock');
 
 -- ---------------------------------------------------------------------------------------------
 -- internal_* are for service_role only
@@ -342,7 +376,19 @@ select is(pg_temp.remove_staff('owner', 'other') ->> 'id', pg_temp.id('staff_oth
 select is(pg_temp.upd('other', 5) ->> 'error', 'P0001 NOT_FOUND not_found', 'once removed, they no longer see the group');
 select is(pg_temp.add_staff('other', 'nobody') ->> 'error', 'P0001 NOT_FOUND not_found', 'a teacher of another group cannot add staff');
 select is(pg_temp.remove_staff('other', 'co') ->> 'error', 'P0001 NOT_FOUND not_found', 'nor remove it');
-select is(pg_temp.remove_staff('owner', 'nobody') ->> 'error', 'P0001 NOT_FOUND not_found', 'removing someone who was never staff is NOT_FOUND');
+select is(pg_temp.remove_staff('owner', 'nobody') ->> 'error', 'P0001 INVALID not_a_member', 'removing someone with no membership who was never staff is INVALID not_a_member');
+select is(pg_temp.remove_staff('owner', 'ghost') ->> 'error', 'P0001 INVALID not_a_member', 'a user that does not exist is not a member either');
+select is(pg_temp.remove_staff('owner', 'incl') ->> 'error', 'P0001 INVALID not_a_member', 'nor is inclusion (not a teacher or admin)');
+select is(pg_temp.remove_staff('owner', 'userb') ->> 'error', 'P0001 INVALID not_a_member', 'nor a teacher of another institution');
+-- A teacher of the institution who was never in this group's staff.
+insert into ids (k, id) values ('m_late_a', pg_temp.add_member('instA', 'late', 'teacher'));
+select is(pg_temp.remove_staff('owner', 'late') ->> 'error', 'P0001 NOT_FOUND not_found', 'removing a member who was never staff is NOT_FOUND');
+-- Idempotence survives losing the membership: added, removed, revoked, removed again.
+insert into ids (k, id) select 'staff_late', (pg_temp.add_staff('owner', 'late') ->> 'id')::uuid;
+select is(pg_temp.remove_staff('owner', 'late') ->> 'id', pg_temp.id('staff_late')::text, 'a member is removed from the staff');
+do $$ begin perform pg_temp.as_service(format($q$ select api.internal_revoke_membership(%L) $q$, pg_temp.id('m_late_a'))); end $$;
+select is(pg_temp.remove_staff('owner', 'late') ->> 'id', pg_temp.id('staff_late')::text,
+  'removing someone already out of the staff answers the same even if their membership was revoked since');
 select is(pg_temp.remove_staff('co', 'owner') ->> 'error', 'P0001 FORBIDDEN forbidden', 'a co-teacher cannot remove staff');
 select is(pg_temp.remove_staff('incl', 'co') ->> 'error', 'P0001 FORBIDDEN forbidden', 'inclusion cannot remove staff');
 select is(pg_temp.remove_staff('userb', 'co') ->> 'error', 'P0001 NOT_FOUND not_found', 'a user of another institution gets NOT_FOUND');
@@ -357,9 +403,16 @@ do $$ begin
 end $$;
 select is(pg_temp.upd('co', 8) ->> 'error', 'P0001 NOT_FOUND not_found', 'after it is revoked, the group is gone for them');
 select is(pg_temp.add_staff('owner', 'co') ->> 'error', 'P0001 INVALID not_a_member', 'a revoked teacher cannot be added again');
+select is(pg_temp.remove_staff('owner', 'co') ->> 'error', 'P0001 INVALID not_a_member', 'nor removed from the staff while their membership is revoked');
+select ok((select removed_at is null from app.group_staff where group_id = pg_temp.id('g') and user_id = pg_temp.id('co')),
+  'and the refused removal changed nothing');
 -- Archived group: staff is frozen until it is restored.
 do $$ begin perform pg_temp.arch('owner', 8); end $$;
 select is(pg_temp.add_staff('owner', 'co') ->> 'error', 'P0001 INVALID archived', 'staff cannot be added to an archived group');
+select is(pg_temp.remove_staff('owner', 'admin') ->> 'error', 'P0001 INVALID archived', 'nor removed from an archived group');
+select is(pg_temp.remove_staff('admin', 'admin') ->> 'error', 'P0001 INVALID archived', 'not even by an admin');
+select ok((select removed_at is null from app.group_staff where group_id = pg_temp.id('g') and user_id = pg_temp.id('admin')),
+  'and the staff row is untouched');
 do $$ begin perform pg_temp.arch('owner', 9, 'restore_group'); end $$;
 
 -- Sandbox: the visitor is a teacher and owner of their group, but never adds or removes staff.
@@ -381,6 +434,40 @@ select is(
        'select api.update_group(gen_random_uuid(), 1, ''x'', 2026)'
      ]) as s),
   '42501,42501,42501', 'anon cannot execute the staff or update RPCs');
+
+-- ---------------------------------------------------------------------------------------------
+-- Every role denied, and another institution, on EVERY group RPC (a fresh group, owner as only staff).
+-- A teacher of another group, a user of another institution and a member who is not enrolled get
+-- NOT_FOUND (the group is not revealed); inclusion and an enrolled student see it but are
+-- FORBIDDEN; no app user is no_session.
+-- ---------------------------------------------------------------------------------------------
+insert into ids (k, id) select 'gm', (pg_temp.new_group('owner', 'instA', 'Grupo matriz') ->> 'id')::uuid;
+insert into app.enrollments (institution_id, group_id, student_id)
+  select pg_temp.id('instA'), pg_temp.id('gm'), s.id from app.students s where s.username = 'est.a.t1' and s.institution_id = pg_temp.id('instA');
+create function pg_temp.matrix(p_sql_fmt text) returns text language sql as $$
+  select string_agg(u || '=' || coalesce(replace(pg_temp.rpc(pg_temp.id(u), 'authenticated', format(p_sql_fmt, pg_temp.id('gm'), pg_temp.id('late'))) ->> 'error', 'P0001 ', ''), 'ALLOWED'), ',' order by ord)
+    from unnest(array['other', 'incl', 'stud', 'userb', 'nobody', 'ghost']) with ordinality as t(u, ord)
+$$;
+select is(pg_temp.matrix('select api.update_group(%1$L, 1, ''x'', 2026)'),
+  'other=NOT_FOUND not_found,incl=FORBIDDEN forbidden,stud=FORBIDDEN forbidden,userb=NOT_FOUND not_found,nobody=NOT_FOUND not_found,ghost=FORBIDDEN no_session',
+  'update_group: every denied role and another institution, by code and reason');
+select is(pg_temp.matrix('select api.archive_group(%1$L, 1)'),
+  'other=NOT_FOUND not_found,incl=FORBIDDEN forbidden,stud=FORBIDDEN forbidden,userb=NOT_FOUND not_found,nobody=NOT_FOUND not_found,ghost=FORBIDDEN no_session',
+  'archive_group: every denied role and another institution, by code and reason');
+select is(pg_temp.matrix('select api.restore_group(%1$L, 1)'),
+  'other=NOT_FOUND not_found,incl=FORBIDDEN forbidden,stud=FORBIDDEN forbidden,userb=NOT_FOUND not_found,nobody=NOT_FOUND not_found,ghost=FORBIDDEN no_session',
+  'restore_group: every denied role and another institution, by code and reason');
+select is(pg_temp.matrix('select api.add_group_staff(%1$L, %2$L, ''co_teacher'')'),
+  'other=NOT_FOUND not_found,incl=FORBIDDEN forbidden,stud=FORBIDDEN forbidden,userb=NOT_FOUND not_found,nobody=NOT_FOUND not_found,ghost=FORBIDDEN no_session',
+  'add_group_staff: every denied role and another institution, by code and reason');
+select is(pg_temp.matrix('select api.remove_group_staff(%1$L, %2$L)'),
+  'other=NOT_FOUND not_found,incl=FORBIDDEN forbidden,stud=FORBIDDEN forbidden,userb=NOT_FOUND not_found,nobody=NOT_FOUND not_found,ghost=FORBIDDEN no_session',
+  'remove_group_staff: every denied role and another institution, by code and reason');
+select is(pg_temp.as_user('co', format('select api.restore_group(%L, 1)', pg_temp.id('gm'))) ->> 'error', 'P0001 NOT_FOUND not_found',
+  'a teacher whose membership was revoked cannot restore the group either');
+select is((select revision || ':' || (archived_at is null)::text from app.groups where id = pg_temp.id('gm')), '1:true',
+  'none of the refused calls changed the group');
+select is((select count(*) from app.group_staff where group_id = pg_temp.id('gm')), 1::bigint, 'nor its staff');
 
 select * from finish();
 rollback;
