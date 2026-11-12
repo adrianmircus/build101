@@ -2,7 +2,7 @@
 
 Este documento fija cómo entran a Tiza los profes, los admins y los estudiantes con cuentas de verdad: las tablas y RPC nuevas, los servicios, las rutas, las pantallas y los tickets. Lo escribe el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 8 de Codex (F2C-1 a F2C-69, `docs/revisiones/fase-2-contrato-codex.md`).
+Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 9 de Codex (F2C-1 a F2C-73, `docs/revisiones/fase-2-contrato-codex.md`).
 
 Archivos del contrato (los escribe el orquestador, ningún ticket los edita):
 
@@ -135,7 +135,9 @@ Sale Upstash. Los contadores viven en `app.rate_limits` (ya existe) y se tocan s
   **En un INSERT de una cuenta recordada, el trigger pone `encrypted_password` en NULL** en vez de rechazarla (F2C-65): `auth.admin.createUser` sin contraseña igual genera una al azar y guarda su hash, así que rechazarla haría imposible crear la cuenta. Como nadie conoce esa contraseña y el trigger la borra antes de guardar, la cuenta nace sin contraseña. La prueba de integración crea una cuenta con `createUser` contra el Auth local y lee el valor guardado.
 - **Las dos puntas de la relación (F2C-67).** Que un id quede recordado y que exista una fila de Auth con ese id se controla de los dos lados, con un mismo lock:
   - un trigger en `account_provisioning` (`BEFORE INSERT OR UPDATE OF auth_user_id`) exige que, si ya hay una fila en `auth.users` con ese id, tenga la forma fija (correo canónico y sin contraseña). Si no la tiene, da P0004, también contra un UPDATE directo del dueño;
-  - los dos triggers, el de `auth.users` y el de `account_provisioning`, toman primero `pg_advisory_xact_lock` sobre el id (`hashtextextended('student_auth:' || id, 0)`). Así un INSERT en Auth y un «recordar» del mismo id nunca corren a la vez: el segundo espera a que el primero confirme, y en READ COMMITTED su consulta siguiente ya lo ve;
+  - los dos lados toman `pg_advisory_xact_lock` sobre el id (`hashtextextended('student_auth:' || id, 0)`). Así un INSERT en Auth y un «recordar» del mismo id nunca corren a la vez: el segundo espera a que el primero confirme, y en READ COMMITTED su consulta siguiente ya lo ve;
+  - **orden de los locks (F2C-70): siempre la fila de `account_provisioning` primero y el advisory después.** Del lado de `account_provisioning`, la fila ya está bloqueada por el propio UPDATE o INSERT cuando corre el trigger, que toma el advisory. Del lado de `auth.users` hay **un solo trigger**, `app.student_auth_guard` (`BEFORE INSERT OR UPDATE`), que hace todo en este orden: `FOR SHARE` de las filas de `account_provisioning` con el id viejo y el nuevo (si existen), después el advisory de esos ids en orden, y recién después todas las comprobaciones (forma fija, `deleted`, cambio de id). Sale `app.student_auth_birth_guard`: sus reglas pasan a este trigger. Si no hay fila recordada, el lado de Auth solo toma el advisory, y no puede haber un ciclo;
+  - `internal_remember_student_account` toma los mismos locks en el mismo orden (estudiante, su fila `FOR UPDATE` y el advisory) antes de su comprobación previa, así que una cuenta incompatible que aparece en el medio da `{ok: false}` y no P0004 (F2C-71). El P0004 queda para el DML directo;
   - en REPEATABLE READ o SERIALIZABLE esa consulta no vería lo confirmado, así que los dos triggers dan `40001` (serialization_failure) si la transacción no está en READ COMMITTED, como aceptó la fase 1 para sus carreras. GoTrue y nuestras RPC usan READ COMMITTED;
   - la prueba corre los dos órdenes con dos conexiones: insertar en Auth con contraseña mientras otro recuerda el id, y al revés.
   - en un UPDATE, cambia el `id` de una fila cuyo `id` viejo o nuevo está recordado, o cuyo correo viejo o nuevo es del dominio sintético;
@@ -160,7 +162,7 @@ La cuenta de Auth de un estudiante tiene un id que se decide y se recuerda antes
 4. `internal_upsert_app_user` e `internal_link_student_user` (existen).
 
 - **Crear es seguro de repetir.** Como la cuenta no tiene contraseña ni nada que se pueda pisar, dos aprovisionamientos a la vez convergen en la misma cuenta: uno la crea y el otro la encuentra.
-- **Suprimir gana (F2C-25, F2C-54, F2C-58, F2C-59).** Un trigger `BEFORE INSERT OR UPDATE OF id` en `auth.users` (`app.student_auth_birth_guard`, `SECURITY DEFINER`, dueño `postgres`) busca el id que queda en `account_provisioning.auth_user_id` con `FOR SHARE`.
+- **Suprimir gana (F2C-25, F2C-54, F2C-58, F2C-59).** El mismo trigger `app.student_auth_guard` de `auth.users` busca el id que queda en `account_provisioning.auth_user_id` con `FOR SHARE`.
   - Si la fila está `deleted`, da P0004: una cuenta suprimida no vuelve a nacer, ni por un `createUser` atrasado, ni por un `INSERT` directo del dueño, ni por un `UPDATE` que le pone ese id a otra fila.
   - La marca no se pierde: una fila `deleted` de `account_provisioning` no se borra mientras exista su institución, aunque su estudiante ya no exista. Lo cambia la migración de contrato en `app.account_provisioning_kept` (T1.F12), con su prueba de `DELETE` seguido del `INSERT` en Auth, también con dos conexiones.
   - El `FOR SHARE` espera a una supresión en curso, que bloquea esa fila `FOR UPDATE`, y después lee el estado ya confirmado.
@@ -260,7 +262,9 @@ create table app.access_card_issues (
   created_at timestamptz not null default now(),
   unique (institution_id, id),
   unique (institution_id, op_key),
-  foreign key (institution_id, group_id) references app.groups (institution_id, id) on delete cascade
+  -- Sin cascada (F2C-73): un grupo con emisiones no se borra, se archiva. NO ACTION y no RESTRICT, para que borrar la
+  -- institución entera, que se lleva todo en la misma sentencia, siga andando.
+  foreign key (institution_id, group_id) references app.groups (institution_id, id)
 );
 
 -- Una tarjeta de acceso: el QR que completa el colegio y el usuario. Una sola activa por estudiante.
@@ -324,13 +328,13 @@ Guardias (P0004, como en la fase 1; entran DML y TRUNCATE de cualquier rol, incl
 - **Nacimiento.** Una tarjeta nace `active`. Una invitación nace `pending`, sin `accepted_by` (fase 1).
 - **`deleted` es final (F2C-48).** En `account_provisioning`, una fila `deleted` no cambia de estado nunca más, también contra el dueño (P0004).
 - **Las cuentas de Auth de los estudiantes (F2C-47, F2C-53, F2C-54).** Dos triggers en `auth.users`, descritos en «Cómo entra un estudiante» y en «Aprovisionar»:
-  - `app.student_auth_guard` (`BEFORE INSERT OR UPDATE`): la forma fija de una cuenta de estudiante;
-  - `app.student_auth_birth_guard` (`BEFORE INSERT OR UPDATE OF id`): una cuenta cuyo id está recordado en una fila `deleted` no nace ni se arma por UPDATE.
+  - un solo trigger, `app.student_auth_guard` (`BEFORE INSERT OR UPDATE`), con la forma fija de una cuenta de estudiante y la regla de que una cuenta cuyo id está recordado en una fila `deleted` no nace ni se arma por UPDATE, en el orden de locks de «Las dos puntas»;
+  - en `account_provisioning`, `app.student_auth_link_guard` (`BEFORE INSERT OR UPDATE OF auth_user_id`), que toma el advisory y exige la forma fija de una cuenta de Auth que ya existe con ese id.
 - **La marca de supresión se conserva (F2C-59).** Una fila `deleted` de `account_provisioning` no se borra mientras exista su institución.
   
   Las cuentas de staff no se tocan. Supabase permite triggers propios en `auth.users` desde una migración, sin cambiar el dueño de la tabla.
 - **Credenciales (F2C-61).** `student_credentials` solo se escribe dentro de `issue_access_cards`, y no se borra mientras exista su estudiante: se va con él por la cascada. `password_hash`, `issue_id` y `version` cambian juntos o no cambian: un UPDATE que cambia alguno tiene que cambiar `issue_id` a otra emisión y subir `version` exactamente en uno. `institution_id` y `student_id` no cambian.
-- **Memoria (F2C-19, F2C-28).** Mientras exista su institución, no se borran las invitaciones ni las filas de `invitation_tokens`, y esas filas no cambian. Las tarjetas y las emisiones no se borran mientras exista su estudiante o su grupo: solo se van con ellos, por la cascada. Así un hash revocado no vuelve a nacer vigente por `DELETE` e `INSERT`. La retención de la fase 9 borra el correo de una invitación vieja con una redacción, sin borrar la fila. Para eso la fase 9 suma, en una migración nueva, una excepción acotada a la guardia del correo de `invitations_frozen` (T1.F15): solo en modo de supresión o retención, solo para invitaciones `accepted`, `revoked` o `expired` con más de 90 días, y solo hacia un valor redactado; con su prueba (F2C-42).
+- **Memoria (F2C-19, F2C-28).** Mientras exista su institución, no se borran las invitaciones ni las filas de `invitation_tokens`, y esas filas no cambian. Las tarjetas no se borran mientras exista su estudiante: solo se van con él, por la cascada. Las emisiones no se borran mientras exista su institución, y un grupo con emisiones no se borra: se archiva (F2C-73). Así un hash revocado no vuelve a nacer vigente por `DELETE` e `INSERT`. La retención de la fase 9 borra el correo de una invitación vieja con una redacción, sin borrar la fila. Para eso la fase 9 suma, en una migración nueva, una excepción acotada a la guardia del correo de `invitations_frozen` (T1.F15): solo en modo de supresión o retención, solo para invitaciones `accepted`, `revoked` o `expired` con más de 90 días, y solo hacia un valor redactado; con su prueba (F2C-42).
 
 **Inventario.** `access_cards` y `student_credentials` tienen datos de estudiantes (el id, el hash del token y el de la contraseña); al borrar al estudiante se van por la cascada. `student_credentials` es una credencial: ninguna proyección la devuelve y ningún log la lleva. `access_card_issues` no tiene ningún dato de un estudiante. Se suman a `docs/PRIVACIDAD-DATOS.md`, `lib/domain/permissions/tables.ts` y `006_inventory.test.sql`. `invitations.email` es un dato personal de un adulto; su retención (redactar 90 días después de aceptada, revocada o vencida) la programa la fase 9. `invitation_tokens` no tiene datos personales.
 
@@ -384,7 +388,7 @@ Razones nuevas: `already_member`, `invitation_pending`, `invitation_closed`, `in
 | `internal_get_student_accounts(p_student_ids uuid[])` → `{items: [{studentId, provisioningId, status, authUserId}]}` | service_role | Hasta 60 |
 | `internal_remember_student_account(p_provisioning_id uuid, p_auth_user_id uuid)` → `{ok: true, authUserId}` o `{ok: false}` (F2C-46) | service_role | `ok: false` si la fila está `deleted`. Guarda el id si no había; si había, devuelve el guardado. Bajo el lock del estudiante y después el de la fila, en ese orden |
 | `internal_fail_student_account(p_provisioning_id uuid, p_error_code text)` → `{status, attempts}` | service_role | Solo `pending` → `failed` o `failed` → `failed`; con `active` o `deleted` no cambia nada |
-| `internal_list_unfinished_accounts(p_limit integer)` → `{items: [{studentId, provisioningId, status, authUserId}]}` | service_role | `pending` y `failed` con `authUserId` recordado (un aprovisionamiento que empezó y no terminó) y menos de 5 intentos, sin archivar. Nunca `deleted` |
+| `internal_list_unfinished_accounts(p_limit integer)` → `{items: [{studentId, provisioningId, status, authUserId}]}` | service_role | Dos casos, sin archivar y nunca `deleted`: `pending` y `failed` con `authUserId` recordado (un aprovisionamiento que empezó y no terminó) y menos de 5 intentos; y `active` cuyo `authUserId` ya no está en `auth.users` (una cuenta que alguien borró a mano, F2C-72) |
 | `internal_bind_student_session(p_auth_user_id uuid, p_session_id uuid, p_version integer)` → `{ok}` | service_role | Ver «Cómo entra un estudiante». Bloquea al estudiante como `issue_access_cards`. Con otra versión borra esa sesión y da `ok: false` |
 | `internal_find_institution(p_code text)` → `{code, name}` o `NOT_FOUND` | service_role | Solo escuelas |
 | `internal_get_student_login(p_code text, p_username text)` → `{institutionFound, authUserId, passwordHash, version}` | service_role | Ver «Cómo entra un estudiante». Los tres últimos solo si el estudiante existe, no está archivado, su cuenta está `active` y tiene credencial; si no, los tres `null`. Es la única RPC que devuelve un hash de contraseña, y solo a `service_role` |
@@ -428,7 +432,7 @@ Tipos en `lib/domain/accounts/`: `Actor`, `AccessCard`, `InvitationView`, `Staff
 
 **Emitir tarjetas** (`issueAccessCards`): aprovisiona a quien le falte la cuenta, genera por estudiante un token y una contraseña con sus hashes, y llama a `issue_access_cards`. Devuelve `{cards: [{studentId, displayName, username, institutionCode, institutionName, password, qrUrl}], others: [{studentId, outcome}]}`, con `outcome` en `failed` (no se le pudo crear la cuenta) o `uncertain` (Auth no confirmó; se puede probar de nuevo enseguida). Esa respuesta no se cachea, no se loguea y no pasa por ningún error.
 
-**Reconciliar** (`reconcile`): `internal_list_unfinished_accounts` y el mismo aprovisionamiento. Solo reintenta filas `failed` o `pending` que ya tienen `authUserId` recordado, o sea, aprovisionamientos que empezaron y no terminaron. Hasta la fase 3 corre a mano con `npm run admin:reconcile`.
+**Reconciliar** (`reconcile`): `internal_list_unfinished_accounts` y el mismo aprovisionamiento. Una cuenta `active` que desapareció de Auth se recrea con el mismo id y el estudiante vuelve a entrar con su contraseña de siempre, que vive en nuestra base (F2C-72). Solo reintenta filas `failed` o `pending` que ya tienen `authUserId` recordado, o sea, aprovisionamientos que empezaron y no terminaron. Hasta la fase 3 corre a mano con `npm run admin:reconcile`.
 
 **Encabezados de las páginas con token.** `/invitacion`, `/t` e `/ingresar/profesor/nueva` responden con `Cache-Control: no-store` y `Referrer-Policy: no-referrer`. Los pone `proxy.ts` (T2.1), porque un Client Component no puede.
 
@@ -607,7 +611,9 @@ Criterios: las RPC de «Cuentas de estudiantes» con las reglas comunes; dos emi
   archivado no resuelve ni entra; audit_log con el conjunto; los dos triggers de auth.users en cada caso de «Cómo entra un estudiante» y «Aprovisionar» (INSERT con contraseña que queda en NULL, INSERT con un correo externo o
   con otro correo sintético, las dos puntas con dos conexiones y el 40001 en REPEATABLE READ, UPDATE de id hacia uno suprimido, correo sintético con otro id, DELETE de la marca deleted seguido
   del INSERT, y con dos conexiones un INSERT que espera a una supresión en curso y después la ve); el bind con otra
-  versión borra la sesión.
+  versión borra la sesión; el orden de locks sin ciclos (la secuencia de F2C-70 con dos conexiones); remember con una
+  cuenta incompatible que aparece en el medio da ok falso; un grupo con emisiones no se borra; reconcile lista una cuenta
+  active que falta en Auth.
 ```
 
 ```

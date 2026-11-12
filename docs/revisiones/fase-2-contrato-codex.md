@@ -752,3 +752,65 @@ No ejecuté integración contra GoTrue local porque Docker no fue accesible; la 
 ### Qué se cambió
 
 Versión 9: el INSERT de una cuenta recordada pone encrypted_password en NULL en vez de rechazarla, con prueba contra el Auth local (F2C-65); correo canónico obligatorio para todo id recordado, también en INSERT (F2C-66); trigger en account_provisioning y advisory lock común por id en los dos lados, con 40001 fuera de READ COMMITTED (F2C-67); salida única de internal_get_student_login con version (F2C-68); un 429 de /verify con la contraseña bien limpia el sujeto (F2C-69); supresión con borrado duro en Auth.
+
+## Ronda 9
+
+1. **F2C-70 · Media — Falta fijar el orden entre el advisory lock y `FOR SHARE`.**
+
+   **Dónde:** [locks comunes, línea 138](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:138) y [guardia de nacimiento, línea 163](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:163).
+
+   **Escenario:** X ya está recordado y su cuenta de Auth falta. Si el INSERT de Auth ejecuta primero la guardia que toma el advisory, puede ocurrir:
+   - A toma el advisory de X.
+   - B ejecuta `UPDATE account_provisioning SET auth_user_id = auth_user_id`: bloquea la fila y su trigger espera el advisory.
+   - A llega al `FOR SHARE` y espera esa fila.
+
+   Hay un interbloqueo. El contrato no fija el orden de ejecución de las dos guardias de Auth; PostgreSQL lo determina por **nombre del trigger**, no por nombre de función ni orden de creación. No afirmo que toda implementación vaya a caer: falta excluir contractualmente esta implementación. [Orden de triggers](https://www.postgresql.org/docs/17/trigger-definition.html).
+
+   **Cambio propuesto:** fijar el orden completo, incluidos los locks de fila anteriores al trigger. Para la fila recordada existente, ejecutar su `FOR SHARE` antes del advisory de Auth, y conservar la comprobación de forma posterior al advisory. Establecer los nombres que garantizan ese orden y probar el escenario anterior con dos conexiones.
+
+2. **F2C-71 · Baja — El chequeo previo de `remember` todavía puede terminar en P0004 en vez de `{ok:false}`.**
+
+   **Dónde:** [“El otro orden”, línea 145](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:145).
+
+   **Escenario:** `internal_remember_student_account` comprueba que Auth X no existe. Antes de que su UPDATE llegue al trigger, otra transacción inserta Auth X con correo externo y contraseña, y confirma. Como X todavía no estaba recordado, ese INSERT es válido. El trigger de aprovisionamiento adquiere después el advisory, encuentra la cuenta incompatible y levanta P0004.
+
+   La integridad queda protegida, pero no se cumple la respuesta contractual `{ok:false}` “antes de llegar al trigger”.
+
+   **Cambio propuesto:** exigir que la RPC adquiera la misma exclusión antes de su comprobación previa, siguiendo el orden resuelto en F2C-70. Mantener P0004 para el DML directo y probar que esta carrera mediante la RPC devuelve `{ok:false}`.
+
+3. **F2C-72 · Media — La recuperación prometida para una cuenta `active` desaparecida no tiene un recorrido definido.**
+
+   **Dónde:** [recreación, línea 169](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:169), [selector de reconciliación, línea 387](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:387) y [servicio, línea 431](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:431).
+
+   **Escenario:** se borra manualmente Auth de un estudiante cuyo aprovisionamiento sigue `active`. `reconcile` lo excluye porque solo selecciona `pending` y `failed`. Emitir tarjetas tampoco exige comprobar Auth para cada cuenta `active`: permite interpretar “aprovisionar a quien le falte” según ese estado. El estudiante puede quedar sin poder entrar y sin recuperación mediante el comando previsto.
+
+   **Cambio propuesto:** incluir expresamente en la reconciliación las filas `active` cuyo UUID recordado falta en `auth.users`, y exigir su recreación con ese mismo UUID. Probarlo mediante `admin:reconcile`.
+
+4. **F2C-73 · Media — La cascada del grupo contradice la conservación de la credencial.**
+
+   **Dónde:** [FK de emisiones al grupo, línea 263](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:263), [FK de credenciales a emisiones, línea 297](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:297) y [guardia de conservación, línea 332](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:332).
+
+   **Escenario:** un estudiante pertenece a A y B; su credencial vigente proviene de una emisión de A. El dueño borra A, conservando al estudiante. La cascada intenta borrar emisión y credencial, pero la guardia prohíbe borrar esta última mientras exista el estudiante. O se rechaza la eliminación que el documento contempla por cascada, o se debilita esa conservación. Los triggers también se ejecutan durante las cascadas. [Comportamiento de PostgreSQL](https://www.postgresql.org/docs/17/trigger-definition.html).
+
+   **Cambio propuesto:** definir expresamente que un grupo con emisiones referenciadas por credenciales solo se archiva, y alinear la regla de memoria y las pruebas con esa prohibición de DELETE. Si debe poder eliminarse, habrá que conservar la emisión y desacoplarla de esa cascada.
+
+El estado de los abiertos solicitados es:
+
+| Hallazgo | Estado en v9 |
+|---|---|
+| **F2C-57** | **Cerrado respecto de la forma fija:** no encontré una secuencia admitida que confirme correo no canónico o contraseña persistida. |
+| **F2C-65** | **Cerrado en el diseño:** normalizar el INSERT a NULL evita el rechazo anterior. |
+| **F2C-66** | **Cerrado:** exige correo canónico para todo UUID recordado, incluido INSERT y NULL. |
+| **F2C-67** | **Cerrado para integridad concurrente.** Quedan los problemas de orden y respuesta de F2C-70/71. |
+| **F2C-68** | **Cerrado:** salida única y versión tomada de la misma lectura del hash. |
+| **F2C-69** | **Cerrado:** el 429 cuenta como acierto; el ajuste de `clearSubject` aporta la IP para limpiar también el par. |
+
+Sobre **GoTrue y el NULL**: no encontré una incompatibilidad nueva en el código consultado. Después de crear el usuario, el alta actualiza rol, metadatos y confirmación mediante escrituras parciales; esas operaciones no vuelven a guardar `encrypted_password`. La autenticación contempla expresamente una contraseña NULL. Esto respalda el cambio, aunque la prueba contra Auth local sigue siendo necesaria. [Alta administrativa](https://raw.githubusercontent.com/supabase/auth/v2.186.0/internal/api/admin.go), [modelo de usuario](https://raw.githubusercontent.com/supabase/auth/v2.186.0/internal/models/user.go).
+
+No ejecuté integración: Docker no fue accesible en esta sesión.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 10: un solo trigger en auth.users que toma la fila de account_provisioning FOR SHARE antes del advisory, y el mismo orden en el trigger de account_provisioning y en remember (F2C-70, F2C-71); reconcile recrea las cuentas active que faltan en Auth (F2C-72); un grupo con emisiones no se borra, se archiva, con FK NO ACTION (F2C-73).
