@@ -58,3 +58,49 @@
     **Cambiaría:** conservar un solo `main` y comprobar accesibilidad sobre la página completa.
 
 **Veredicto: necesita otra ronda.**
+
+## Ronda 2
+
+1. **F2-12 — Media — Los E2E nuevos no pueden arrancar en CI.**  
+   **Dónde:** [playwright.config.ts:42](/C:/Users/adrim/build101/.claude/worktrees/fase-1/playwright.config.ts:42), [support/env.ts:27](/C:/Users/adrim/build101/.claude/worktrees/fase-1/tests/e2e/support/env.ts:27), [ci.yml:40](/C:/Users/adrim/build101/.claude/worktrees/fase-1/.github/workflows/ci.yml:40).  
+   **Escenario:** cargar la configuración de Playwright ejecuta `supabase status`. El job `punta-a-punta` instala dependencias y Chromium, pero no levanta Supabase ni Mailpit. El stack del job `base` corre en otro runner. La suite falla antes de comenzar, incluida la demo guiada.  
+   **Cambiaría:** preparar el stack local, con Mailpit y las migraciones aplicadas, dentro del job de Playwright.
+
+2. **F2-13 — Media — Una respuesta perdida al crear un estudiante todavía permite duplicarlo.**  
+   **Dónde:** [student-accounts.ts:49](/C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/services/student-accounts.ts:49), [createFlowState.ts:80](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/createFlowState.ts:80).  
+   **Escenario:** `create_student` confirma, pero su respuesta se pierde. El servicio convierte esa incertidumbre en una fila `failed`; el reducer elimina el intento. Al reintentar se manda otra clave y aparece `username_taken`. Si el admin sigue la indicación de cambiar el usuario, crea otro estudiante para la misma persona. Reproduje la secuencia con el servicio y el reducer reales, simulando la pérdida de respuesta.  
+   **Cambiaría:** conservar la identidad de cada fila ante resultados inciertos. Reintentar debe recuperar el estudiante ya creado, manteniendo su clave y su índice originales. La prueba actual de respuesta perdida cubre la acción completa, no esta pérdida entre servidor y RPC.
+
+3. **F2-14 — Media — Recuperar la contraseña puede terminar cambiando la de otra cuenta.**  
+   **Dónde:** [RecoveryFlow.tsx:31](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/RecoveryFlow.tsx:31), [staff-auth.ts:74](/C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/services/staff-auth.ts:74).  
+   **Escenario:** se verifica el enlace de A y queda abierto el formulario. En otra pestaña del mismo navegador se sale de A y se entra como B. Al guardar desde el formulario original, `setNewPassword` cambia la contraseña de B y cierra sus otras sesiones: solo recibe la contraseña y usa la sesión actual. La verificación de A no está vinculada a esa escritura.  
+   **Cambiaría:** vincular la recuperación al usuario y a la sesión verificados mediante un contexto opaco validado en servidor; rechazar el envío si cambiaron. Agregaría el recorrido con dos pestañas. Evitar consumir dos veces el token, como hace T2.10, debe conservar esa vinculación.
+
+4. **F2-15 — Media — El E2E de recuperación corrige el enlace que debería comprobar.**  
+   **Dónde:** [staff-auth.spec.ts:99](/C:/Users/adrim/build101/.claude/worktrees/fase-1/tests/e2e/staff-auth.spec.ts:99), [recovery.html:6](/C:/Users/adrim/build101/.claude/worktrees/fase-1/supabase/templates/recovery.html:6), [config.toml:164](/C:/Users/adrim/build101/.claude/worktrees/fase-1/supabase/config.toml:164).  
+   **Escenario:** Playwright usa por defecto el puerto 3100, pero el correo se arma con `SiteURL`, configurado en 3000. La prueba extrae únicamente el token y construye otra URL sobre el servidor probado. Pasa aunque abrir el correo lleve a un servidor inexistente o a otro checkout.  
+   **Cambiaría:** alinear la configuración del origen y los redirects permitidos, y navegar a la URL completa recibida en Mailpit. Esa prueba debe fallar si el enlace apunta al destino equivocado.
+
+5. **F2-16 — Baja — Cancelar la revocación pierde el foco.**  
+   **Dónde:** [InvitationRow.tsx:42](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/InvitationRow.tsx:42), [useInvitationRow.ts:65](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/useInvitationRow.ts:65).  
+   **Escenario:** con teclado, se abre «Revocar» y se activa «No, dejarla». El botón enfocado se desmonta y no se devuelve el foco al disparador. El E2E comprueba el foco inicial y luego corre axe; ninguna comprobación detecta esta pérdida.  
+   **Cambiaría:** devolver el foco al botón «Revocar» de esa fila y comprobarlo después de cancelar.
+
+El estado de los anteriores queda así:
+
+| Hallazgo | Estado |
+|---|---|
+| F2-1 y F2-2 | Cerrados por la exclusión explícita del modelo de amenazas. |
+| F2-3 | Cerrado: las rutas de IA consultan al actor antes de llamar al proveedor. |
+| F2-4 | Corregido: limpieza al desactivar y descarte de respuestas tardías; impresión fuera del efecto. Falta el E2E de navegación y regreso. |
+| F2-5 | Corregido: el login consulta al actor y dispone de limpieza sin volver al área protegida por los claims solos. |
+| F2-6 | Cerrado para la creación del **grupo**. F2-13 describe el problema restante en estudiantes. |
+| F2-7 | Corregida la geometría de los ancestros. Las pruebas todavía no verifican un PDF de cuatro y cinco tarjetas desde la ruta completa. |
+| F2-8 | Cerrada la deshabilitación: los recorridos están activos y usan servicios locales reales. F2-12 bloquea su ejecución en CI. |
+| F2-9 | Pendiente aceptado para T1.0; no lo considero bloqueante. |
+| F2-10 | **Parcialmente abierto**, por la divergencia explicada abajo. |
+| F2-11 | Cerrado: queda un único `main` en tarjetas. |
+
+**F2-10 conserva un escenario concreto:** con `NODE_ENV=production`, `MAIL_DRIVER=mailpit`, sitio y secreto válidos, pero sin `RESEND_API_KEY`, [startup-config.ts:30](/C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/startup-config.ts:30) permite arrancar. Después, [mail/index.ts:26](/C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/mail/index.ts:26) exige esa clave en toda producción y rechaza el envío. Lo confirmé con una sonda en memoria. Unificaría la validación del arranque y la selección del emisor; también rechazaría drivers desconocidos.
+
+Pasaron los dos chequeos de TypeScript con `--noEmit --incremental false`. Las sondas usaron dependencias simuladas y no escribieron datos. No ejecuté build, pgTAP ni Playwright, por lo que la impresión, la accesibilidad y la demo no tienen validación nueva de navegador en esta revisión.
