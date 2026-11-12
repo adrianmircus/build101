@@ -532,7 +532,7 @@ Lo que la prueba garantiza, y con qué:
 - Un id prohibido (otro estudiante, un seudónimo, un perfil, una clave, una versión no asignada) no aparece en ningún lado: ni como valor, ni como clave, ni metido en un texto («Referencia: <id>»), tampoco en lo que escribió el estudiante (`forbiddenIds`).
 - Ninguna palabra de perfil (`PROFILE_WORDS`, sin importar mayúsculas ni tildes) aparece en texto que escribió el servidor. Lo que escribió el estudiante (`ownContent`) queda exento solo de esta búsqueda.
 - La opción correcta no aparece en ningún campo de id fuera de la lista de opciones (`questions.*.options.*.id`) y de la elección propia del estudiante (`draft.choices.*`) (`correctOptionIds`).
-- El SQL de las RPC del estudiante nunca lee la clave: `001_contract` falla si una RPC `student_*`, o una función de `app` que llame, nombra `question_keys`, `answer_keys` o `answer_key_revisions`.
+- El SQL de las RPC del estudiante nunca lee la clave: `001_contract` calcula, con un CTE recursivo, el cierre de llamadas de cada RPC `student_*` (toda función de `app` o `api` que su cuerpo nombra, a cualquier profundidad) y falla si alguna nombra `question_keys`, `answer_keys` o `answer_key_revisions`, o usa SQL dinámico (`EXECUTE`, `format(`), que ningún chequeo estático puede seguir. La misma prueba crea una cadena de dos saltos y una RPC con SQL dinámico, y comprueba que el chequeo las atrapa.
 
 El aviso, aparte (`lib/domain/delivery/reveal.ts`):
 
