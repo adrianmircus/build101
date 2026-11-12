@@ -675,3 +675,80 @@ No encontré exigencias residuales de reservas, leases, `begin/finish`, esperas 
 ### Qué se cambió
 
 Versión 8: versión de la credencial y internal_bind_student_session bajo el lock de la emisión, con verifyOtp en un cliente sin cookies y setSession recién después del bind (F2C-56); forma fija de las cuentas de estudiantes en auth.users para INSERT y UPDATE, incluido el id y el correo sintético con otro id (F2C-57, F2C-58, F2C-60); la marca deleted no se borra mientras exista la institución (F2C-59); issue_id vigente que cambia junto con el hash y la versión (F2C-61); parámetros de scrypt con maxmem y validación estricta (F2C-62); límites de /verify en T2.7 y 429 sin contar intento (F2C-63); uncertain contra failed al aprovisionar (F2C-64).
+
+## Ronda 8
+
+1. **F2C-65 · Alta — `createUser` sin contraseña no crea una cuenta sin contraseña.**
+
+   **Dónde:** [aprovisionamiento, paso 3](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:150), frente al rechazo de `encrypted_password` en la línea 132.
+
+   **Escenario:** se recuerda correctamente el UUID y el servicio llama a `auth.admin.createUser` omitiendo `password`. GoTrue **genera una contraseña aleatoria y calcula su hash** antes del INSERT. El trigger encuentra el UUID recordado y rechaza ese hash con P0004. Falla el primer aprovisionamiento de cada estudiante y también la recreación de una cuenta desaparecida.
+
+   Este comportamiento está tanto en [GoTrue v2.186.0](https://raw.githubusercontent.com/supabase/auth/v2.186.0/internal/api/admin.go) como en el [código actual de `adminUserCreate`](https://github.com/supabase/auth/blob/master/internal/api/admin.go). Enviar `password: ""` tampoco lo evita.
+
+   **Cambio propuesto:** definir un alta compatible con GoTrue. Una opción es que el `BEFORE INSERT`, después de validar la identidad estudiantil, **normalice incondicionalmente `NEW.encrypted_password` a NULL**; el UPDATE seguiría rechazando cualquier incorporación de contraseña. Eso exige cambiar expresamente el criterio de rechazo del INSERT. Si se quiere conservar ese rechazo, hace falta elegir otro mecanismo de alta, concretarlo y probarlo. Agregar una prueba contra Auth real que compruebe el valor persistido.
+
+2. **F2C-66 · Alta — La “forma fija” todavía permite nacer con un correo externo.**
+
+   **Dónde:** [condiciones de `student_auth_guard`](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:130).
+
+   **Escenario:** existe un UUID X recordado, no suprimido y sin fila en Auth. El dueño inserta `auth.users` con X, sin contraseña y con `email = 'persona@dominio-real.example'`.
+
+   Ninguna condición enumerada lo rechaza: el correo no es sintético, la contraseña está ausente y las otras dos condiciones corresponden a UPDATE. La cuenta nace incumpliendo el correo canónico; posteriormente tampoco puede corregirse por UPDATE. Este es un caso residual de **F2C-57**.
+
+   **Cambio propuesto:** agregar la implicación que falta: **todo UUID recordado exige que el correo resultante sea exactamente `<id>@estudiantes.usetiza.app`**, también en INSERT. Rechazar NULL y cualquier otro dominio. Probarlo independientemente de la contraseña.
+
+3. **F2C-67 · Alta — El orden inverso solo se controla dentro de la RPC y conserva una carrera.**
+
+   **Dónde:** [“El otro orden”](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:137) y [reglas de `internal_remember_student_account`](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:377).
+
+   **Escenario por DML:** existe una cuenta X con correo real y contraseña. Un estudiante pendiente todavía tiene `auth_user_id = NULL`. El dueño actualiza directamente `account_provisioning.auth_user_id = X`. No ejecuta `internal_remember_student_account`; tampoco modifica `auth.users`, por lo que sus triggers no intervienen. Las guardias heredadas permiten recordar el primer UUID y no comprueban esa forma.
+
+   **Escenario concurrente:** incluso agregando esa comprobación al lado de `account_provisioning`, dos conexiones pueden eludir comprobaciones basadas solo en consultas: A inserta Auth X con contraseña sin confirmar; B recuerda X y no ve ese INSERT; A tampoco ve la asignación de B. Ambas confirman. `FOR SHARE` no coordina una fila que todavía no coincide con el UUID buscado. La visibilidad descrita corresponde a [Read Committed de PostgreSQL](https://www.postgresql.org/docs/current/transaction-iso.html).
+
+   **Cambio propuesto:** exigir guardias en **ambos lados** de la relación, incluyendo INSERT/UPDATE directo de `account_provisioning`, y definir una exclusión común por UUID que cubra también la ausencia de fila. Probar ambos órdenes y la carrera con dos conexiones, bajo los niveles de aislamiento admitidos. El lock del estudiante dentro de la RPC no alcanza contra el INSERT directo de Auth.
+
+4. **F2C-68 · Media — El protocolo de login omite la versión que necesita el bind.**
+
+   **Dónde:** [paso 2 del login](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:115), frente a la firma de la RPC en la línea 382.
+
+   **Escenario:** quien implementa el protocolo sigue la salida `{institutionFound, authUserId, passwordHash}`. Después debe llamar al bind con `p_version`, pero esa salida no la suministra. Quien sigue la tabla implementa otra forma. Además, la tabla conserva “los dos últimos” como campos condicionales: ahora serían `passwordHash` y `version`, dejando ambiguo `authUserId`.
+
+   **Cambio propuesto:** fijar una sola salida `{institutionFound, authUserId, passwordHash, version}` y establecer que **los tres últimos** son NULL cuando no hay una cuenta elegible. La versión usada por el bind debe provenir de la misma lectura que devolvió el hash verificado.
+
+5. **F2C-69 · Baja — La excepción del 429 no tiene una semántica definida en los contadores.**
+
+   **Dónde:** [conteo previo obligatorio](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:71), frente a [429 de `/verify`](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:128).
+
+   **Escenario:** un estudiante presenta la contraseña correcta, pero `/verify` devuelve 429 repetidamente. Cada intento ya incrementó las cuotas antes de scrypt. Tras diez respuestas puede quedar bloqueado durante quince minutos, aunque la pantalla le diga que pruebe en un minuto y el contrato indique “sin contar como intento fallido”. No existe un contador separado de fallos ni una operación de compensación.
+
+   **Cambio propuesto:** elegir explícitamente si esos intentos consumen cuota. Si la consumen, aclararlo y devolver el plazo efectivo. Si se reintegran, definir una compensación atómica del intento concreto; borrar todas las claves con `clearSubject` también borraría intentos concurrentes ajenos.
+
+El estado de los abiertos queda así, evaluando el **diseño contractual**, no la implementación todavía en curso:
+
+| Hallazgo | Estado en v8 |
+|---|---|
+| **F2C-54** | **Cerrado** para el UUID ya recordado: lock con supresión, protección por UPDATE y conservación de la marca mientras exista la institución. |
+| **F2C-56** | **Cerrado en el algoritmo** de versión y bind. Falta unificar su interfaz según F2C-68. |
+| **F2C-57** | **Parcialmente cerrado**: persisten F2C-66 y F2C-67. |
+| **F2C-58** | **Cerrado**: se protege el cambio de UUID, incluido el destino suprimido. |
+| **F2C-59** | **Cerrado**: la marca sobrevive al estudiante mientras exista la institución. |
+| **F2C-60** | **Cerrado**: el correo sintético con otro UUID se rechaza y se valida la respuesta administrativa. |
+| **F2C-61** | **Cerrado**: `issue_id` identifica la emisión vigente y cambia junto con la versión. |
+| **F2C-62** | **Cerrado**: parámetros, memoria, longitudes y señuelo quedan definidos. |
+| **F2C-63** | **Cerrado respecto de capacidad y configuración de `/verify`**; queda precisar la excepción del 429 en F2C-69. |
+| **F2C-64** | **Cerrado**: protocolo, servicio y pantalla distinguen `failed` de `uncertain`. |
+
+Sobre **bind y `setSession`**: sí, `setSession` puede escribir cookies desde una Server Action. Lo comprobé con las versiones instaladas (`@supabase/ssr` 0.12.7 y `auth-js` 2.119.0), usando tokens ficticios y transporte simulado: ejecutó `GET /auth/v1/user` y después `cookies.setAll`. El SDK emite `SIGNED_IN` y SSR aplica el almacenamiento pendiente. Next permite escribir cookies en Server Functions. Véanse el [SDK instalado](/C:/Users/adrim/build101/.claude/worktrees/fase-1/node_modules/@supabase/ssr/src/createServerClient.ts:187) y la [guía local de cookies](/C:/Users/adrim/build101/.claude/worktrees/fase-1/node_modules/next/dist/docs/01-app/03-api-reference/04-functions/cookies.md).
+
+No encontré una reapertura de F2C-56 en el intervalo **bind → setSession**: si la emisión ocurre ahí, elimina la sesión ya creada. `setSession` no vuelve a canjear el magiclink; si necesita refrescar, GoTrue rechaza una sesión ausente. [Recorrido de refresh](https://github.com/supabase/auth/blob/master/internal/tokens/service.go).
+
+Sobre los **recorridos legítimos de GoTrue**, el bloqueo concreto es F2C-65. Para cuentas correctamente formadas y confirmadas, no encontré otro rechazo obligatorio en generateLink, verifyOtp o refresh: sus escrituras normales no cambian el correo ni la contraseña. Staff conserva sus recorridos mientras su UUID no quede indebidamente recordado, caso cubierto por F2C-67. El borrado **duro** es compatible; el borrado **lógico** de Auth modifica el correo y sería rechazado, por lo que conviene fijar expresamente que la supresión usa `deleteUser(..., false)`. [Implementación del borrado](https://github.com/supabase/auth/blob/master/internal/api/admin.go).
+
+No ejecuté integración contra GoTrue local porque Docker no fue accesible; la comprobación de cookies fue simulada y las conclusiones sobre GoTrue se apoyan en su código oficial.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 9: el INSERT de una cuenta recordada pone encrypted_password en NULL en vez de rechazarla, con prueba contra el Auth local (F2C-65); correo canónico obligatorio para todo id recordado, también en INSERT (F2C-66); trigger en account_provisioning y advisory lock común por id en los dos lados, con 40001 fuera de READ COMMITTED (F2C-67); salida única de internal_get_student_login con version (F2C-68); un 429 de /verify con la contraseña bien limpia el sujeto (F2C-69); supresión con borrado duro en Auth.

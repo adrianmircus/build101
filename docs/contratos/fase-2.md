@@ -2,7 +2,7 @@
 
 Este documento fija cómo entran a Tiza los profes, los admins y los estudiantes con cuentas de verdad: las tablas y RPC nuevas, los servicios, las rutas, las pantallas y los tickets. Lo escribe el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 7 de Codex (F2C-1 a F2C-64, `docs/revisiones/fase-2-contrato-codex.md`).
+Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 8 de Codex (F2C-1 a F2C-69, `docs/revisiones/fase-2-contrato-codex.md`).
 
 Archivos del contrato (los escribe el orquestador, ningún ticket los edita):
 
@@ -112,7 +112,7 @@ Sale Upstash. Los contadores viven en `app.rate_limits` (ya existe) y se tocan s
 ### Cómo entra un estudiante (F2C-11, F2C-27, F2C-47)
 
 1. El servicio aplica el límite de intentos al sujeto (colegio, usuario) y a la IP.
-2. `internal_get_student_login(p_code, p_username)` devuelve `{institutionFound, authUserId, passwordHash}`. Los dos últimos solo vienen si el estudiante existe, no está archivado, su cuenta está `active` y tiene credencial; si no, son `null`.
+2. `internal_get_student_login(p_code, p_username)` devuelve `{institutionFound, authUserId, passwordHash, version}`. Los tres últimos solo vienen si el estudiante existe, no está archivado, su cuenta está `active` y tiene credencial; si no, son los tres `null`. La versión que usa el bind es la de esta misma lectura, la del hash que se verificó.
 3. El servicio verifica lo escrito con `crypto.scrypt` y `timingSafeEqual`, contra `passwordHash` o, si es `null`, contra el hash señuelo.
 4. Si coincide, abre la sesión de Supabase sin contraseña y **sin entregar cookies todavía** (F2C-56, F2C-60):
    - `auth.admin.generateLink({ type: 'magiclink', email: sintético })` da un `hashed_token`. No manda ningún correo. El servicio exige que `data.user.id` sea el `authUserId` de la RPC y que `verification_type` sea `magiclink`; si no, para con el error genérico;
@@ -125,16 +125,24 @@ Sale Upstash. Los contadores viven en `app.rate_limits` (ya existe) y se tocan s
 
 - **Por qué alcanza.** Si la tarjeta nueva se emite antes del paso 5, la versión no coincide y la sesión se borra. Si se emite después, `issue_access_cards` borra todas las sesiones del estudiante, también esta, y su token deja de leer datos. No hay un orden en que la contraseña vieja deje una sesión viva.
 - Los tokens nunca salen del servidor salvo en las cookies del paso 6, y no se loguean. Los clientes de Supabase se crean con `debug: false` (con `debug`, `auth-js` registra sesiones completas). La prueba de fugas lo verifica.
-- Si Auth responde 429 en `/verify`, el error es «Probá de nuevo en un minuto», sin contar como intento fallido (F2C-63).
+- Si Auth responde 429 en `/verify`, el error es «Probá de nuevo en un minuto» (F2C-63). La contraseña ya se verificó bien, así que cuenta como un acierto: el servicio limpia las claves del sujeto igual que en el paso 7, y el reintento no queda bloqueado por nuestros contadores (F2C-69).
 
 - **Las cuentas de Auth de estudiantes tienen una forma fija (F2C-47, F2C-57, F2C-58, F2C-60).** Un trigger `BEFORE INSERT OR UPDATE` en `auth.users` (`app.student_auth_guard`, `SECURITY DEFINER`, dueño `postgres`, `search_path = ''`) da P0004 en cualquiera de estos casos:
   - el correo que queda es del dominio sintético y no es exactamente `<id>@estudiantes.usetiza.app` de esa misma fila, o ese `id` no está recordado en una fila de `account_provisioning` que no esté `deleted`. Esto también frena el alta que GoTrue intenta cuando un `generateLink` no encuentra la cuenta;
-  - el `id` está recordado en `account_provisioning` y `encrypted_password` queda con algún valor (no vacío);
+  - el `id` está recordado y el correo que queda no es exactamente `<id>@estudiantes.usetiza.app` (también en un INSERT, y también NULL o cualquier otro dominio) (F2C-66);
+  - en un UPDATE de una cuenta recordada, `encrypted_password` queda con algún valor.
+  
+  **En un INSERT de una cuenta recordada, el trigger pone `encrypted_password` en NULL** en vez de rechazarla (F2C-65): `auth.admin.createUser` sin contraseña igual genera una al azar y guarda su hash, así que rechazarla haría imposible crear la cuenta. Como nadie conoce esa contraseña y el trigger la borra antes de guardar, la cuenta nace sin contraseña. La prueba de integración crea una cuenta con `createUser` contra el Auth local y lee el valor guardado.
+- **Las dos puntas de la relación (F2C-67).** Que un id quede recordado y que exista una fila de Auth con ese id se controla de los dos lados, con un mismo lock:
+  - un trigger en `account_provisioning` (`BEFORE INSERT OR UPDATE OF auth_user_id`) exige que, si ya hay una fila en `auth.users` con ese id, tenga la forma fija (correo canónico y sin contraseña). Si no la tiene, da P0004, también contra un UPDATE directo del dueño;
+  - los dos triggers, el de `auth.users` y el de `account_provisioning`, toman primero `pg_advisory_xact_lock` sobre el id (`hashtextextended('student_auth:' || id, 0)`). Así un INSERT en Auth y un «recordar» del mismo id nunca corren a la vez: el segundo espera a que el primero confirme, y en READ COMMITTED su consulta siguiente ya lo ve;
+  - en REPEATABLE READ o SERIALIZABLE esa consulta no vería lo confirmado, así que los dos triggers dan `40001` (serialization_failure) si la transacción no está en READ COMMITTED, como aceptó la fase 1 para sus carreras. GoTrue y nuestras RPC usan READ COMMITTED;
+  - la prueba corre los dos órdenes con dos conexiones: insertar en Auth con contraseña mientras otro recuerda el id, y al revés.
   - en un UPDATE, cambia el `id` de una fila cuyo `id` viejo o nuevo está recordado, o cuyo correo viejo o nuevo es del dominio sintético;
   - en un UPDATE de una cuenta de estudiante, `email` o `encrypted_password` cambian de valor (`IS DISTINCT FROM`; se comparan valores y no columnas, porque GoTrue puede reescribir la fila entera).
 
   Las cuentas de staff no se tocan. Supabase permite triggers propios en `auth.users` desde una migración, sin cambiar el dueño de la tabla.
-- **El otro orden.** `internal_remember_student_account` da `ok: false` si ya hay una fila en `auth.users` con ese id que no tiene la forma de arriba.
+- **El otro orden.** `internal_remember_student_account` da `ok: false` si ya hay una fila en `auth.users` con ese id que no tiene la forma de arriba, antes de llegar al trigger.
 - Así, alguien que copió la sesión de un estudiante no puede dejarse una contraseña propia en Auth (`PUT /auth/v1/user`), y cuando el profe emite una tarjeta nueva y se cierran las sesiones, pierde el acceso. El cambio de correo por `PUT /auth/v1/user` queda en `email_change` y se frena cuando se confirma.
 - La prueba de integración llama a `PUT /auth/v1/user` con la sesión de un estudiante: la contraseña no cambia, y tampoco el correo después de confirmar.
 
@@ -156,7 +164,7 @@ La cuenta de Auth de un estudiante tiene un id que se decide y se recuerda antes
   - Si la fila está `deleted`, da P0004: una cuenta suprimida no vuelve a nacer, ni por un `createUser` atrasado, ni por un `INSERT` directo del dueño, ni por un `UPDATE` que le pone ese id a otra fila.
   - La marca no se pierde: una fila `deleted` de `account_provisioning` no se borra mientras exista su institución, aunque su estudiante ya no exista. Lo cambia la migración de contrato en `app.account_provisioning_kept` (T1.F12), con su prueba de `DELETE` seguido del `INSERT` en Auth, también con dos conexiones.
   - El `FOR SHARE` espera a una supresión en curso, que bloquea esa fila `FOR UPDATE`, y después lee el estado ya confirmado.
-  - La supresión de la fase 9 marca `deleted` y recién después borra la cuenta de Auth. Una creación que ganó el lock antes queda creada y la supresión la borra; una que llega después, la rechaza el trigger.
+  - La supresión de la fase 9 marca `deleted` y recién después borra la cuenta de Auth, con borrado duro (`deleteUser(id, false)`): el borrado lógico de GoTrue reescribe el correo y el trigger lo rechazaría. Una creación que ganó el lock antes queda creada y la supresión la borra; una que llega después, la rechaza el trigger.
   - La fase 9 hereda este orden. La prueba ya existe acá, con dos conexiones.
 - **Cuenta que desapareció de Auth sin que nadie suprimiera al estudiante** (alguien la borró a mano): con la fila `pending`, `failed` o `active` y el id recordado, se recrea con el mismo id y el estudiante conserva su identidad. **Cuenta de un estudiante suprimido** (`deleted`): nunca se recrea. La fila distingue los dos casos.
 - `internal_fail_student_account` nunca cambia una fila `active` ni `deleted`: solo `pending` → `failed` o `failed` → `failed`. Un proceso atrasado no deshace el éxito de otro.
@@ -379,7 +387,7 @@ Razones nuevas: `already_member`, `invitation_pending`, `invitation_closed`, `in
 | `internal_list_unfinished_accounts(p_limit integer)` → `{items: [{studentId, provisioningId, status, authUserId}]}` | service_role | `pending` y `failed` con `authUserId` recordado (un aprovisionamiento que empezó y no terminó) y menos de 5 intentos, sin archivar. Nunca `deleted` |
 | `internal_bind_student_session(p_auth_user_id uuid, p_session_id uuid, p_version integer)` → `{ok}` | service_role | Ver «Cómo entra un estudiante». Bloquea al estudiante como `issue_access_cards`. Con otra versión borra esa sesión y da `ok: false` |
 | `internal_find_institution(p_code text)` → `{code, name}` o `NOT_FOUND` | service_role | Solo escuelas |
-| `internal_get_student_login(p_code text, p_username text)` → `{institutionFound, authUserId, passwordHash, version}` | service_role | Ver «Cómo entra un estudiante». Los dos últimos solo si el estudiante existe, no está archivado, su cuenta está `active` y tiene credencial; si no, `null`. Es la única RPC que devuelve un hash de contraseña, y solo a `service_role` |
+| `internal_get_student_login(p_code text, p_username text)` → `{institutionFound, authUserId, passwordHash, version}` | service_role | Ver «Cómo entra un estudiante». Los tres últimos solo si el estudiante existe, no está archivado, su cuenta está `active` y tiene credencial; si no, los tres `null`. Es la única RPC que devuelve un hash de contraseña, y solo a `service_role` |
 | `internal_resolve_access_card(p_token_hash bytea)` → `{institutionCode, institutionName, username}` o `NOT_FOUND` | service_role | Tarjeta `active`, estudiante sin archivar, cuenta `active`, escuela. Nunca el nombre del estudiante |
 
 Razones nuevas: `invalid_cards`, `card_issue_done`.
@@ -596,8 +604,8 @@ Criterios: las RPC de «Cuentas de estudiantes» con las reglas comunes; dos emi
   terminan con una sola tarjeta activa y la credencial de la última; issue_access_cards borra las sesiones del
   estudiante; internal_get_student_login es la única que devuelve el hash, y solo a service_role; remember concurrente
   devuelve un solo id y con la fila deleted da ok falso; fail no deshace un active; una tarjeta vieja no resuelve; un
-  archivado no resuelve ni entra; audit_log con el conjunto; los dos triggers de auth.users en cada caso de «Cómo entra un estudiante» y «Aprovisionar» (INSERT con contraseña o
-  con otro correo, UPDATE de id hacia uno suprimido, correo sintético con otro id, DELETE de la marca deleted seguido
+  archivado no resuelve ni entra; audit_log con el conjunto; los dos triggers de auth.users en cada caso de «Cómo entra un estudiante» y «Aprovisionar» (INSERT con contraseña que queda en NULL, INSERT con un correo externo o
+  con otro correo sintético, las dos puntas con dos conexiones y el 40001 en REPEATABLE READ, UPDATE de id hacia uno suprimido, correo sintético con otro id, DELETE de la marca deleted seguido
   del INSERT, y con dos conexiones un INSERT que espera a una supresión en curso y después la ve); el bind con otra
   versión borra la sesión.
 ```
