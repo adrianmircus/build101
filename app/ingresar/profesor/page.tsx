@@ -1,13 +1,14 @@
-import { LoginScreen } from "@/components/auth/LoginScreen";
-import { loginTeacher } from "@/lib/auth/actions";
+import type { Metadata } from "next";
+import { StaffLoginForm } from "@/components/auth/staff/StaffLoginForm";
+import { StaffSheet } from "@/components/auth/staff/StaffSheet";
+import { signInStaffAction } from "./actions";
+
+export const metadata: Metadata = { title: "Ingreso para profesores" };
 
 export default function TeacherLogin() {
   return (
-    <LoginScreen
-      role="teacher"
-      title="Ingreso para profesores"
-      subtitle="Entrá para ver tus grupos y preparar prácticos."
-      action={loginTeacher}
-    />
+    <StaffSheet>
+      <StaffLoginForm signIn={signInStaffAction} />
+    </StaffSheet>
   );
 }
