@@ -4,10 +4,10 @@ import { tizaPlugin } from "./plugin.mjs";
 const NEW_CODE = [
   "lib/errors.ts",
   "lib/errors.test.ts",
-  "lib/domain/**/*.ts",
+  "lib/domain/**/*.{ts,tsx}",
   "lib/server/**/*.{ts,tsx}",
   "lib/client/**/*.{ts,tsx}",
-  "tests/**/*.ts",
+  "tests/**/*.{ts,tsx}",
 ];
 
 export const newCode = [
@@ -27,6 +27,44 @@ export const newCode = [
       "@typescript-eslint/ban-ts-comment": [
         "error",
         { "ts-ignore": true, "ts-expect-error": true, "ts-nocheck": true, "ts-check": false },
+      ],
+    },
+  },
+  // The domain is pure TypeScript without React, so a .tsx file there is a mistake (and a way around the rules).
+  {
+    files: ["lib/domain/**/*.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Program",
+          message: "lib/domain no admite archivos .tsx: el dominio no usa React ni JSX. Usá .ts, o mové el componente a components/.",
+        },
+      ],
+    },
+  },
+  // @types/react declares a global React namespace, so `React.ReactNode` compiles without any import.
+  // The domain is pure: no React types either.
+  {
+    files: ["lib/domain/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Identifier[name=/^(?:React|JSX)$/]",
+          message: "lib/domain es puro: no usa tipos de React (ni el namespace global React o JSX).",
+        },
+      ],
+    },
+  },
+  // The layers are .ts and .tsx only: other extensions (.mts, .cts, .js…) would sit outside the rules
+  // and the strict program while tsconfig still compiles them.
+  {
+    files: ["lib/domain/**/*.{mts,cts,js,mjs,cjs,jsx}", "lib/server/**/*.{mts,cts,js,mjs,cjs,jsx}", "lib/client/**/*.{mts,cts,js,mjs,cjs,jsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        { selector: "Program", message: "Las capas nuevas solo admiten .ts y .tsx: renombrá el archivo." },
       ],
     },
   },

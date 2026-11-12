@@ -131,7 +131,7 @@ Cada capa solo importa de las que están debajo. ESLint lo hace cumplir (T0.2).
 Reglas de dependencia que chequea ESLint:
 
 - `components/**` y `lib/client/**` no importan `lib/server/**`, y todo `lib/server/**` arranca con `import "server-only"`.
-- `lib/domain/**` no importa `next`, `react`, `@supabase/*` ni `lib/server/**`.
+- `lib/domain/**` no importa `next`, `react`, `@supabase/*`, `lib/server/**` ni `lib/client/**`.
 - `lib/server/db/client.ts` solo lo importan `lib/server/repos/*.ts`. `lib/server/db/admin.ts` solo lo importan `lib/server/repos/admin/**` y `tests/**`.
 - `lib/server/repos/admin/**` solo lo importan `lib/server/jobs/**` y `lib/server/services/admin/**`.
 - `app/**` importa servicios, nunca repos.
