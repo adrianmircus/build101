@@ -17,7 +17,7 @@
 -- test fails until it does, comparing full signatures). The student_* reads are not here: a teacher
 -- cannot call them, and 023_student_dto and the leak test cover them.
 begin;
-select plan(48);
+select plan(49);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -208,6 +208,8 @@ insert into specs (name, spec) values
   ('approve_answer_key', '{"answerKeyId":"s","approvedRevisionId":"s","revision":"s"}'),
   ('get_answer_key', '{"id":"s","versionId":"s","status":"s","stale":"s","approvedRevisionId":"s","revision":"s","current":{"id":"s","number":"s","source":"s","content":{"exercises":"map","questions":"map"},"versionRevision":"s","exerciseRevisions":"map","questionRevisions":"map","instructionsRevision":"s","createdAt":"s"}}'),
   ('publish_version', '{"publicationId":"s","attempts":"s"}'),
+  ('list_assessment_attempts', '{"items":[{"studentId":"s","displayName":"s","assignmentId":"s","attemptId":"s","status":"s","submittedAt":"s","late":"s","score":"s","graded":"s"}]}'),
+  ('grade_attempt', '{"attemptId":"s","revision":"s"}'),
   ('get_assessment', '{"assessment":{"createdAt":"s","dueAt":"s","generalInstructions":"s","groupId":"s","id":"s","kind":"s","publishAt":"s","revision":"s","sourceFileId":"s","status":"s","subjectId":"s","topic":"s"},"exercises":[{"body":"s","id":"s","label":"s","position":"s","revision":"s","topicId":"s"}]}');
 
 -- A control: the detector does flag the audited read of the same data, so a green result below is not a blind detector.
@@ -308,17 +310,34 @@ select pg_temp.as_user('teach', format('select api.set_version_recipients(%L, %s
 insert into pairs values (pg_temp.id('vp')::text, pg_temp.id('s2')::text);
 select pg_temp.as_user('teach', format('select api.approve_version(%L, %s, gen_random_uuid())', pg_temp.id('vp'), (select revision from app.versions where id = pg_temp.id('vp'))));
 select pg_temp.call('publish_version', 'api.publish_version(uuid,integer,uuid,uuid)', format('select api.publish_version(%L, %s, gen_random_uuid(), null)', pg_temp.id('vp'), (select revision from app.versions where id = pg_temp.id('vp'))));
+-- Grading (T1.5c): the recipient of that publication submitted (written as the owner: no student here has an account), and the
+-- teacher lists the state of the group and grades. The list shows a name and a state and never which version each one got, and
+-- the answer of grade_attempt is only the attempt and a revision. get_attempt_for_grading is an audited read (below).
+insert into ids (k, id) select 'ts2', t.id from app.assignment_attempts t join app.assignments a on a.id = t.assignment_id
+  where a.assessment_id = pg_temp.id('aa') and a.student_id = pg_temp.id('s2') and t.superseded_at is null;
+update app.assignment_attempts set status = 'submitted', started_at = clock_timestamp(), submitted_at = clock_timestamp() where id = pg_temp.id('ts2');
+insert into app.submissions (institution_id, attempt_id, answers, choices, submitted_at)
+  values (pg_temp.id('inst'), pg_temp.id('ts2'), jsonb_build_object(pg_temp.id('xp')::text, jsonb_build_object('text', 'Respuesta de prueba', 'mode', 'typed')), '{}', clock_timestamp());
+update app.assignments set status = 'submitted', revision = revision + 1 where id = (select assignment_id from app.assignment_attempts where id = pg_temp.id('ts2'));
+select pg_temp.call('list_assessment_attempts', 'api.list_assessment_attempts(uuid)', format('select api.list_assessment_attempts(%L)', pg_temp.id('aa')));
+select pg_temp.call('grade_attempt', 'api.grade_attempt(uuid,text,jsonb,integer,integer)',
+  format('select api.grade_attempt(%L, ''Comentario de prueba'', %L::jsonb, 6, null)', pg_temp.id('ts2'),
+         jsonb_build_object(pg_temp.id('xp')::text, jsonb_build_object('status', 'partial', 'errors', '["signo"]'::jsonb))::text));
 select pg_temp.call('archive_assessment','api.archive_assessment(uuid,integer)', format('select api.archive_assessment(%L, 3)', pg_temp.id('aa')));
 
 select is((select count(*) from answers where res ? 'error'), 0::bigint, 'every call worked: none answered an error (so each answer is a real one)');
 select is((select string_agg(a.name, ',' order by a.name) from answers a where pg_temp.verdict(a.res, (select sp.spec from specs sp where sp.name = a.name)) <> ''), null::text,
   'no answer carries a profile, a support, an interest, a review date, an interface, a configuration, inputs or a recipient, and each one conforms to its keys');
 select is((select count(*) from answers a join specs sp on sp.name = a.name), (select count(*) from answers), 'every answer has its spec of keys');
-select is((select count(*) from answers), 47::bigint, 'forty-seven RPCs were called');
+select is((select count(*) from answers), 49::bigint, 'forty-nine RPCs were called');
 select is((select res -> 'current' -> 'content' -> 'questions' ->> pg_temp.id('qb')::text from answers where name = 'get_answer_key'), 'B',
   'the answer key read did carry the correct option and the exercise answer (so there was something to leak)');
 select is(pg_temp.verdict((select res || '{"config": {}}'::jsonb from answers where name = 'get_answer_key'), (select spec from specs where name = 'get_answer_key')), 'key,shape',
   'control: a configuration smuggled into the answer key read is flagged');
+select is(pg_temp.verdict(jsonb_set((select res from answers where name = 'list_assessment_attempts'), '{items,0}',
+            ((select res from answers where name = 'list_assessment_attempts') -> 'items' -> 0) || jsonb_build_object('versionId', (select p.vid from pairs p where p.sid = pg_temp.id('s2')::text limit 1))),
+          (select spec from specs where name = 'list_assessment_attempts')), 'shape,pair',
+  'control: the version a student got, added to a row of the attempts list, is flagged (the row already holds the student that has it)');
 select is(pg_temp.verdict((select jsonb_build_object('content', p.content, 'aids', p.aids, 'attempts', (select count(*) from app.assignment_attempts t where t.publication_id = p.id))
                              from app.publications p where p.id = (select (res ->> 'publicationId')::uuid from answers where name = 'publish_version')),
                            '{"content":{"generalInstructions":"s","exercises":[{"id":"s","label":"s","body":"s"}],"questions":[{"id":"s","exerciseId":"s","stem":"s","options":[{"id":"s","text":"s"}]}]},"aids":{"readAloud":"s"},"attempts":"s"}'::jsonb), '',
@@ -404,7 +423,7 @@ insert into audited (sig) values
   ('api.get_student_needs(uuid[])'::regprocedure::text), ('api.get_group_needs(uuid)'::regprocedure::text),
   ('api.list_student_need_events(uuid,integer,integer)'::regprocedure::text),
   ('api.list_student_notes(uuid)'::regprocedure::text), ('api.list_student_consents(uuid)'::regprocedure::text),
-  ('api.get_version(uuid)'::regprocedure::text);
+  ('api.get_version(uuid)'::regprocedure::text), ('api.get_attempt_for_grading(uuid)'::regprocedure::text);
 select is((select string_agg(p.oid::regprocedure::text, ',' order by p.oid::regprocedure::text)
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'api' and has_function_privilege('authenticated', p.oid, 'execute')
