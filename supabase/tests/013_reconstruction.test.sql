@@ -179,7 +179,16 @@ insert into specs (name, spec) values
   ('update_student_note', '{"id":"s","revision":"s"}'),
   ('archive_student_note', '{"id":"s","revision":"s"}'),
   ('record_consent', '{"id":"s","revision":"s"}'),
-  ('revoke_consent', '{"id":"s","revision":"s"}');
+  ('revoke_consent', '{"id":"s","revision":"s"}'),
+  ('create_assessment', '{"id":"s","revision":"s"}'),
+  ('update_assessment', '{"id":"s","revision":"s"}'),
+  ('archive_assessment', '{"id":"s","revision":"s"}'),
+  ('add_exercise', '{"id":"s","revision":"s"}'),
+  ('update_exercise', '{"id":"s","revision":"s"}'),
+  ('remove_exercise', '{"id":"s","revision":"s"}'),
+  ('reorder_exercises', '{"id":"s","revision":"s"}'),
+  ('list_assessments', '{"items":[{"createdAt":"s","dueAt":"s","exerciseCount":"s","id":"s","kind":"s","publishAt":"s","revision":"s","status":"s","subjectId":"s","topic":"s","versionCount":"s"}],"total":"s"}'),
+  ('get_assessment', '{"assessment":{"createdAt":"s","dueAt":"s","generalInstructions":"s","groupId":"s","id":"s","kind":"s","publishAt":"s","revision":"s","sourceFileId":"s","status":"s","subjectId":"s","topic":"s"},"exercises":[{"body":"s","id":"s","label":"s","position":"s","revision":"s","topicId":"s"}]}');
 
 -- A control: the detector does flag the audited read of the same data, so a green result below is not a blind detector.
 select is(pg_temp.leaks(pg_temp.as_user('teach', format('select api.get_student_needs(array[%L, %L, %L]::uuid[])',
@@ -224,11 +233,27 @@ select pg_temp.call('record_consent', 'api.record_consent(uuid,text,text,timesta
 insert into ids (k, id) select 'consent', (res ->> 'id')::uuid from answers where name = 'record_consent';
 select pg_temp.call('revoke_consent', 'api.revoke_consent(uuid,integer)', format('select api.revoke_consent(%L, 1)', pg_temp.id('consent')));
 
+-- Assessments and original exercises (T1.4a): not sensitive and not audited. The group already has an
+-- assessment with two versions that carry a configuration and recipients: its summary says how many
+-- versions there are and nothing else.
+select pg_temp.call('create_assessment', 'api.create_assessment(uuid,text,text,text)', format('select api.create_assessment(%L, ''worksheet'', ''Repaso'', ''Resolvé todo.'')', pg_temp.id('g')));
+insert into ids (k, id) select 'aa', (res ->> 'id')::uuid from answers where name = 'create_assessment';
+select pg_temp.call('add_exercise', 'api.add_exercise(uuid,text,text,uuid)', format('select api.add_exercise(%L, ''1'', ''Texto del primer ejercicio'', null)', pg_temp.id('aa')));
+insert into ids (k, id) select 'ea', (res ->> 'id')::uuid from answers where name = 'add_exercise';
+insert into ids (k, id) select 'eb', (pg_temp.as_user('teach', format('select api.add_exercise(%L, ''2'', ''Texto del segundo ejercicio'', null)', pg_temp.id('aa'))) ->> 'id')::uuid;
+select pg_temp.call('update_exercise', 'api.update_exercise(uuid,integer,text,text,uuid)', format('select api.update_exercise(%L, 1, ''1'', ''Texto corregido'', null)', pg_temp.id('ea')));
+select pg_temp.call('reorder_exercises', 'api.reorder_exercises(uuid,integer,uuid[])', format('select api.reorder_exercises(%L, 1, array[%L, %L]::uuid[])', pg_temp.id('aa'), pg_temp.id('eb'), pg_temp.id('ea')));
+select pg_temp.call('update_assessment', 'api.update_assessment(uuid,integer,text,text,text)', format('select api.update_assessment(%L, 2, ''exam'', ''Repaso final'', ''Resolvé todo y justificá.'')', pg_temp.id('aa')));
+select pg_temp.call('remove_exercise', 'api.remove_exercise(uuid,integer)', format('select api.remove_exercise(%L, 1)', pg_temp.id('eb')));
+select pg_temp.call('list_assessments', 'api.list_assessments(uuid,boolean,integer,integer)', format('select api.list_assessments(%L, true, 50, 0)', pg_temp.id('g')));
+select pg_temp.call('get_assessment', 'api.get_assessment(uuid)', format('select api.get_assessment(%L)', pg_temp.id('aa')));
+select pg_temp.call('archive_assessment', 'api.archive_assessment(uuid,integer)', format('select api.archive_assessment(%L, 3)', pg_temp.id('aa')));
+
 select is((select count(*) from answers where res ? 'error'), 0::bigint, 'every call worked: none answered an error (so each answer is a real one)');
 select is((select string_agg(a.name, ',' order by a.name) from answers a where pg_temp.verdict(a.res, (select sp.spec from specs sp where sp.name = a.name)) <> ''), null::text,
   'no answer carries a profile, a support, an interest, a review date, an interface, a configuration, inputs or a recipient, and each one conforms to its keys');
 select is((select count(*) from answers a join specs sp on sp.name = a.name), (select count(*) from answers), 'every answer has its spec of keys');
-select is((select count(*) from answers), 22::bigint, 'twenty-two RPCs were called');
+select is((select count(*) from answers), 31::bigint, 'thirty-one RPCs were called');
 select is(jsonb_array_length((select res -> 'items' from answers where name = 'list_group_students')), 4,
   'and the roster answer did list the students that have needs (so there was something to leak)');
 select is((select string_agg(k, ',' order by k) from (select jsonb_object_keys(res -> 'items' -> 0) k from answers where name = 'list_group_students') t),

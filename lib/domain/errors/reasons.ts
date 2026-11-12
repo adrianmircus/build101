@@ -58,6 +58,14 @@ export const REASON_MESSAGES: Record<string, string> = {
   unknown_option: "La respuesta correcta tiene que ser una de las opciones.",
   correct_option_removed: "No se puede sacar la opción correcta. Cambiá primero la respuesta correcta.",
   options_repeated: "Hay opciones repetidas.",
+  invalid_kind: "Elegí si es un práctico o una prueba.",
+  invalid_topic: "El tema tiene que tener hasta 200 caracteres.",
+  invalid_instructions: "Las instrucciones generales pueden tener hasta 5000 caracteres.",
+  invalid_label: "Escribí el número del ejercicio, de 1 a 20 caracteres.",
+  invalid_body: "Escribí el enunciado del ejercicio, de hasta 20000 caracteres.",
+  unknown_topic: "Ese tema no está en el programa del grupo.",
+  too_many_exercises: "Un práctico puede tener hasta 200 ejercicios.",
+  exercises_mismatch: "La lista de ejercicios cambió mientras la ordenabas. Recargá y volvé a ordenarla.",
 };
 
 export function messageFor(code: ErrorCode, reason: string | undefined): string {
