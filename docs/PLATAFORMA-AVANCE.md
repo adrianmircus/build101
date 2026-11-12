@@ -93,3 +93,13 @@ Desde cero (`db:reset`) aplican las 44 migraciones y pasan 2806 pruebas pgTAP. P
 
 - **`students.interface` es un ajuste de accesibilidad que elige el staff (T1.F8).** Dice qué herramientas ofrece la pantalla: estándar, mirada o voz. Ya no se deriva del perfil, porque leerlo dejaba deducir el perfil. Lo cambia `set_student_interface`; la UI de la fase 6 puede sugerir la mirada al marcar motriz, siempre como acción del staff.
 - **Lectura en voz alta para todos.** `aids.readAloud` es verdadero en toda publicación, como la app de hoy, que muestra «Escuchar» sin mirar el perfil.
+
+## Fase 2 · Cuentas reales
+
+Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Contrato: `docs/contratos/fase-2.md`.
+
+El 12/11/2026 el usuario eligió las recomendaciones del diseño (`docs/diseno/fase-2/README.md`): login del profe A con el error por campo y el bloqueo de B, invitación A con la marca de otro correo de B, login del estudiante A con el escaneo de C, tarjetas B con «Tarjeta nueva» de C, y panel B con las listas de A. El QR no alcanza para entrar: siempre se pide la contraseña.
+
+| Ticket | Qué | Quién | Estado |
+|---|---|---|---|
+| Contrato | Tablas, RPC, servicios, entradas y tickets | Opus | En revisión de Codex |

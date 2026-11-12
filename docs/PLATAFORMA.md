@@ -821,7 +821,7 @@ Tandas: primero T1.1. Después T1.2 (con turno de base) junto con T1.8 y T1.9. D
 
 | Ticket | Agente | Qué |
 |---|---|---|
-| Diseño | orquestador | Opciones para el login de profe y de estudiante, la invitación y las tarjetas de acceso |
+| Diseño | orquestador | Elegido el 12/11/2026: login del profe A, invitación A, login del estudiante A con escaneo, tarjetas B grandes y panel de la institución B (`docs/diseno/fase-2/`, detalle en `docs/contratos/fase-2.md`). Suma T2.9, el panel de la institución |
 | T2.1 | backend | Refresco de sesión en `proxy.ts` (sin las rutas de jobs) y `getActor()` con `'use cache: private'` |
 | T2.2 | backend | Alta pública desactivada en Auth y comando de administración para dar de alta una institución con su primer admin |
 | T2.3 | backend | Invitaciones de profes: crear, mandar, aceptar con o sin cuenta (exigiendo el mismo email) y vencer |
