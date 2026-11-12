@@ -216,7 +216,7 @@ select pg_temp.call('list_group_students', 'api.list_group_students(uuid,boolean
 -- set_student_needs is a write: what it answers is only the student and the revision.
 select pg_temp.call('set_student_needs', 'api.set_student_needs(uuid,text[],text[],text[],uuid,integer,date)', format($$ select api.set_student_needs(%L, '{motor}', '{recordatorio}', '{centinela-otro}', gen_random_uuid(), 1, null) $$, pg_temp.id('s1')));
 -- Notes and consents (T1.3b): their reads are audited and live below; their writes answer an id and a revision.
-select pg_temp.call('create_student_note', 'api.create_student_note(uuid,text)', format('select api.create_student_note(%L, ''Observación de clase'')', pg_temp.id('s1')));
+select pg_temp.call('create_student_note', 'api.create_student_note(uuid,text,uuid)', format('select api.create_student_note(%L, ''Observación de clase'', gen_random_uuid())', pg_temp.id('s1')));
 insert into ids (k, id) select 'note', (res ->> 'id')::uuid from answers where name = 'create_student_note';
 select pg_temp.call('update_student_note', 'api.update_student_note(uuid,integer,text)', format('select api.update_student_note(%L, 1, ''Observación corregida'')', pg_temp.id('note')));
 select pg_temp.call('archive_student_note', 'api.archive_student_note(uuid,integer)', format('select api.archive_student_note(%L, 2)', pg_temp.id('note')));

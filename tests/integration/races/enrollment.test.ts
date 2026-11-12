@@ -6,7 +6,6 @@ import { createGroup, createStudent, createWorld, teacherOf, type World } from "
 
 // W2-3 (c): enroll_student against unenroll_student of the same (group, student) pair.
 
-const KNOWN_CHECK = "23514";
 const ACTIVE = "select id from app.enrollments where group_id = $1 and student_id = $2 and ended_at is null";
 const ACTIVE_COUNT = "select count(*)::text as n from app.enrollments where group_id = $1 and student_id = $2 and ended_at is null";
 
@@ -46,8 +45,7 @@ describe("race: enroll against unenroll", () => {
     const { groupId, studentId, enroll, unenroll } = await enrolledPair();
     for (let round = 0; round < 20; round += 1) {
       const outcomes = await stampede([enroll, unenroll, enroll, unenroll]);
-      // 23514 is the known bug of the test below; any other failure is a new one.
-      const unexpected = outcomes.filter((outcome) => !outcome.ok && outcome.state !== KNOWN_CHECK).map(describeOutcome);
+      const unexpected = outcomes.filter((outcome) => !outcome.ok).map(describeOutcome);
       expect(unexpected, `round ${round}`).toEqual([]);
       for (const outcome of outcomes) if (outcome.ok) expect(typeof idOf(outcome)).toBe("string");
       expect(await countRows(ACTIVE_COUNT, [groupId, studentId]), `round ${round}`).toBeLessThanOrEqual(1);
@@ -56,13 +54,11 @@ describe("race: enroll against unenroll", () => {
   });
 });
 
-// FOUND BY THIS TICKET, not fixed here (no migration turn): now() is the start of the transaction,
-// not the moment it got the lock. An unenroll that began before an enroll of the same pair, and ran
-// after it, ends the enrollment "before" it started: raw 23514 from enrollments_check (ended_at >=
-// started_at). `it.fails` keeps the suite green while the bug exists and goes red when it is fixed:
-// then drop `.fails` and the KNOWN_CHECK tolerance above.
+// now() is the start of the transaction, not the moment it got the lock. An unenroll that began before
+// an enroll of the same pair, and ran after it, must not end the enrollment "before" it started (raw
+// 23514 from enrollments_check): unenroll_student reads clock_timestamp() after the lock (T1.F2).
 describe("race: the clock of a transaction that waited", () => {
-  it.fails("an unenroll that began earlier than the enroll it follows ends that enrollment", async () => {
+  it("an unenroll that began earlier than the enroll it follows ends that enrollment", async () => {
     const { world, groupId, studentId, enroll, unenroll } = await enrolledPair();
     await runRpc(unenroll.actor, unenroll.rpc, unenroll.args);
     const [late, early] = [await openSession(), await openSession()];

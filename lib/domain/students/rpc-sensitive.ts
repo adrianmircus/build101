@@ -42,7 +42,7 @@ export const SENSITIVE_RPCS = {
     result: z.object({ items: z.array(StudentNote) }).strict(),
   },
   create_student_note: {
-    args: z.object({ p_student_id: Id, p_body: NoteBody }).strict(),
+    args: z.object({ p_student_id: Id, p_body: NoteBody, p_op_key: Id }).strict(),
     result: Written,
   },
   update_student_note: {

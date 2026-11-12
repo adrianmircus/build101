@@ -180,6 +180,8 @@ Un sandbox vencido cuenta como sin membresía: después de `expires_at` su visit
 - **`op_key` único por institución.** El spec dice «por institución y recurso». Es más estricto: un `op_key` reusado en otro recurso responde `CONFLICT` (`op_key_reused`) en vez de crear una segunda generación.
 - **`source_id` de `assessments` se llama `source_file_id`.** Es el documento del que se leyó. Duplicar un práctico (T7.8) suma su propia columna cuando llegue.
 - **La publicación mínima pasa a la fase 1 (T1.5a).** El spec la pone en T4.7. Las pruebas de intentos, de los DTO y de fugas necesitan publicaciones hechas por el camino real, y una publicación sembrada a mano no prueba nada. T4.7 queda para el servicio y la acción de publicar.
+- **`create_student_note` recibe `p_op_key` (T1.F2).** Cambio aditivo aprobado: una firma nueva, `create_student_note(p_student_id, p_body, p_op_key)`, obligatoria (un nulo es `INVALID`, `invalid_op_key`; no hay valor por defecto porque un envío sin identidad es justo el doble envío que se quiere evitar). La firma vieja se borra. `student_notes` suma `op_key` y `op_identity` (sha256 de estudiante y texto de la creación, que no se reconstruye desde la fila porque el texto se puede editar). El `op_key` es por autor: el mismo `op_key` y la misma identidad responden la nota original (`id`, revisión 1), aunque después se haya editado o archivado; el mismo `op_key` con otro estudiante u otro texto es `CONFLICT` (`op_key_reused`). Las dos columnas se borran con la fila. El front manda un `crypto.randomUUID()` por intento de guardar y lo reusa al reintentar.
+- **`unenroll_student` toma la hora después del lock (T1.F2).** Usa `clock_timestamp()` y no `now()`, que podía ser anterior al `started_at` de una inscripción hecha mientras esperaba (`23514` crudo). Sin cambio de contrato.
 - **T1.1 no dejó `tests/factories/`.** Las crea T1.6a, sobre las RPC internas de T1.2a.
 - **Se parten también T1.2, T1.3 y T1.5**, no solo T1.4. Cada uno pasaba las 400 líneas con sus pruebas.
 - **T1.8 va al final de la fase.** La matriz necesita datos de todas las áreas para probar cada fila. Mientras tanto, cada ticket de base prueba sus permisos en pgTAP.
@@ -287,7 +289,7 @@ Todas en el esquema `api`, `SECURITY DEFINER`, con `search_path = ''`, devuelven
 | `get_group_needs(p_group_id)` (auditada) | T1.3a |
 | `list_student_need_events(p_student_id, p_limit = 50, p_offset = 0)` (auditada) | T1.3a |
 | `list_student_notes(p_student_id)` (auditada) | T1.3b |
-| `create_student_note(p_student_id, p_body)` | T1.3b |
+| `create_student_note(p_student_id, p_body, p_op_key)` | T1.3b, T1.F2 |
 | `update_student_note(p_note_id, p_revision, p_body)` y `archive_student_note(p_note_id, p_revision)` | T1.3b |
 | `list_student_consents(p_student_id)` (auditada) | T1.3b |
 | `record_consent(p_student_id, p_purpose, p_text_version, p_valid_until = null, p_file_id = null)` | T1.3b |

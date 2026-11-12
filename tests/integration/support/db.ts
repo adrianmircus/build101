@@ -1,8 +1,30 @@
 import { execSync } from "node:child_process";
+import { parse } from "pg-connection-string";
 import { Session, type Actor, type Outcome, type RpcArgs } from "./session";
 
 const LOCAL_DEFAULT = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
-const LOCAL_HOST = /^postgres(ql)?:\/\/[^@]*@(127\.0\.0\.1|localhost|\[::1\])[:/]/;
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+// Parameters that change where pg connects besides the authority of the URL.
+const REDIRECTING_PARAMS = ["hostaddr", "service"];
+
+/**
+ * True only when pg would really connect to this machine. It validates the effective host (the one
+ * pg uses: a `?host=` in the query wins over the authority) or a local socket, and refuses the
+ * parameters that redirect the connection.
+ */
+export function isLocalDatabaseUrl(url: string): boolean {
+  if (!/^postgres(ql)?:\/\//.test(url)) return false;
+  let config: ReturnType<typeof parse>;
+  try {
+    config = parse(url);
+  } catch {
+    return false;
+  }
+  if (REDIRECTING_PARAMS.some((key) => Reflect.has(config, key))) return false;
+  const host = config.host;
+  if (typeof host !== "string" || host === "") return false;
+  return LOCAL_HOSTS.has(host) || host.startsWith("/");
+}
 
 let cached: string | undefined;
 
@@ -24,7 +46,7 @@ function statusUrl(): string {
 export function databaseUrl(): string {
   if (cached) return cached;
   const url = process.env.TIZA_RACE_DB_URL || statusUrl();
-  if (!LOCAL_HOST.test(url)) throw new Error("Las pruebas de carreras solo corren contra una base local.");
+  if (!isLocalDatabaseUrl(url)) throw new Error("Las pruebas de carreras solo corren contra una base local.");
   cached = url;
   return url;
 }

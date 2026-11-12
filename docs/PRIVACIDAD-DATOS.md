@@ -187,6 +187,7 @@ Regla: `delete`.
 |---|---|---|---|
 | `body` | borra | no queda | Texto libre del profe sobre el estudiante; sensible. |
 | `author_user_id`, `archived_at` | borra | no queda | Quién la escribió y cuándo se archivó. |
+| `op_key`, `op_identity` | borra | no queda | Identidad de la creación (T1.F2): el `op_key` del pedido y el sha256 de estudiante y texto, para que repetir el envío no cree otra nota. Se deriva del texto de la nota: vive y muere con la fila. |
 | `student_id`, `id`, `institution_id`, `created_at`, `updated_at`, `revision` | borra | no queda | Identificadores y fechas de la fila, sin dato propio. |
 
 ### `files`

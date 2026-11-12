@@ -2,7 +2,7 @@
 -- list_student_notes, create_student_note, update_student_note, archive_student_note,
 -- list_student_consents, record_consent and revoke_consent. The whole file is rolled back.
 begin;
-select plan(171);
+select plan(195);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -76,7 +76,7 @@ begin
   return p_res;
 end $$;
 create function pg_temp.addn(p_user text, p_student text, p_body text) returns jsonb language sql as $$
-  select pg_temp.as_user(p_user, format('select api.create_student_note(%L, %L)', pg_temp.id(p_student), p_body))
+  select pg_temp.as_user(p_user, format('select api.create_student_note(%L, %L, gen_random_uuid())', pg_temp.id(p_student), p_body))
 $$;
 create function pg_temp.upn(p_user text, p_note text, p_rev text, p_body text) returns jsonb language sql as $$
   select pg_temp.as_user(p_user, format('select api.update_student_note(%L, %s, %L)', pg_temp.id(p_note), p_rev, p_body))
@@ -164,9 +164,9 @@ insert into before_val select pg_temp.digest('i_n');
 select is(pg_temp.addn('teach', 'sn1', repeat('a', 5001)) ->> 'error', 'P0001 INVALID invalid_note', 'one of 5001 is INVALID invalid_note');
 select is(pg_temp.addn('teach', 'sn1', '') ->> 'error', 'P0001 INVALID invalid_note', 'an empty body too');
 select is(pg_temp.addn('teach', 'sn1', E'  \n\t ') ->> 'error', 'P0001 INVALID invalid_note', 'a blank body too');
-select is(pg_temp.as_user('teach', format('select api.create_student_note(%L, null)', pg_temp.id('sn1'))) ->> 'error', 'P0001 INVALID invalid_note', 'a null body too (a null never passes a length check)');
-select is(pg_temp.as_user('teach', 'select api.create_student_note(null, ''x'')') ->> 'error', 'P0001 NOT_FOUND not_found', 'a null student is NOT_FOUND');
-select is(pg_temp.as_user('teach', 'select api.create_student_note(gen_random_uuid(), ''x'')') ->> 'error', 'P0001 NOT_FOUND not_found', 'a student that does not exist too');
+select is(pg_temp.as_user('teach', format('select api.create_student_note(%L, null, gen_random_uuid())', pg_temp.id('sn1'))) ->> 'error', 'P0001 INVALID invalid_note', 'a null body too (a null never passes a length check)');
+select is(pg_temp.as_user('teach', 'select api.create_student_note(null, ''x'', gen_random_uuid())') ->> 'error', 'P0001 NOT_FOUND not_found', 'a null student is NOT_FOUND');
+select is(pg_temp.as_user('teach', 'select api.create_student_note(gen_random_uuid(), ''x'', gen_random_uuid())') ->> 'error', 'P0001 NOT_FOUND not_found', 'a student that does not exist too');
 select is((select b.d from before_val b) = pg_temp.digest('i_n'), true, 'and no refusal changed anything');
 
 -- ---------------------------------------------------------------------------------------------
@@ -391,6 +391,10 @@ select pg_temp.keep('ct2', pg_temp.rec('tmp', 'sn2', 'store_profile', 'v2'));
 select lives_ok(format('delete from auth.users where id = %L', pg_temp.id('tmp')), 'deleting the account of the author works');
 select is((select concat_ws('|', n.author_user_id is null, n.body) from app.student_notes n where n.id = pg_temp.id('nt')), 't|Nota de quien se va', 'the note stays, with no author');
 select is((select concat_ws('|', c.recorded_by is null, c.revoked_by is null, c.status) from app.consents c where c.id = pg_temp.id('ct')), 't|t|revoked', 'and the consents keep their history without the account');
+select throws_ok(format('update app.consents set recorded_by = %L where id = %L', pg_temp.id('co'), pg_temp.id('ct')), 'P0004', null, 'once the account is gone nobody else is assigned as who recorded it');
+select throws_ok(format('update app.consents set revoked_by = %L where id = %L', pg_temp.id('co'), pg_temp.id('ct')), 'P0004', null, 'nor as who revoked a consent that was already revoked');
+select throws_ok(format('update app.consents set revoked_by = %L where id = %L', pg_temp.id('co'), pg_temp.id('ct2')), 'P0004', null, 'nor is revoked_by set on a consent that is still granted');
+select throws_ok(format('update app.consents set status = ''revoked'', revoked_at = now(), recorded_by = %L where id = %L', pg_temp.id('co'), pg_temp.id('ct2')), 'P0004', null, 'and revoking cannot reassign who recorded it');
 
 -- ---------------------------------------------------------------------------------------------
 -- The sandbox: the same rules, and after it expires nothing is readable.
@@ -434,7 +438,7 @@ $$;
 -- n2 was written by co and has no author now; n3 by teach.
 select is(pg_temp.denied(format('select api.list_student_notes(%L)', pg_temp.id('sn1')), array['admin', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFNNNNS'), 'list_student_notes: every denied role gets its code, with no audit row');
-select is(pg_temp.denied(format('select api.create_student_note(%L, ''x'')', pg_temp.id('sn1')), array['admin', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
+select is(pg_temp.denied(format('select api.create_student_note(%L, ''x'', gen_random_uuid())', pg_temp.id('sn1')), array['admin', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['admin', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFFNNNNS'), 'create_student_note: same, and nothing is created');
 select is(pg_temp.denied(format('select api.update_student_note(%L, 1, ''x'')', pg_temp.id('n3')), array['admin', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost', 'co']),
   pg_temp.expect(array['admin', 'incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost', 'co'], 'FFFNNNNSA'), 'update_student_note: same, and a co-teacher is not the author');
@@ -447,7 +451,7 @@ select is(pg_temp.denied(format('select api.record_consent(%L, ''ai_dictation'',
 select is(pg_temp.denied(format('select api.revoke_consent(%L, 1)', pg_temp.id('c5')), array['incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost']),
   pg_temp.expect(array['incl', 'stu_a', 'stu_b', 'other', 'userb', 'nobody', 'ghost'], 'FFNNNNS'), 'revoke_consent: same');
 select is(pg_temp.as_anon(format('select api.list_student_notes(%L)', pg_temp.id('sn1'))) ->> 'error' like '42501%'
-          and pg_temp.as_anon(format('select api.create_student_note(%L, ''x'')', pg_temp.id('sn1'))) ->> 'error' like '42501%'
+          and pg_temp.as_anon(format('select api.create_student_note(%L, ''x'', gen_random_uuid())', pg_temp.id('sn1'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.update_student_note(%L, 1, ''x'')', pg_temp.id('n3'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.archive_student_note(%L, 1)', pg_temp.id('n3'))) ->> 'error' like '42501%'
           and pg_temp.as_anon(format('select api.list_student_consents(%L)', pg_temp.id('sn1'))) ->> 'error' like '42501%'
@@ -457,6 +461,35 @@ select is(pg_temp.as_anon(format('select api.list_student_notes(%L)', pg_temp.id
 select is(pg_temp.addn('teach', 'sn3', 'x') ->> 'error', 'P0001 NOT_FOUND not_found', 'a teacher of another group cannot write a note about a student of a group they do not teach');
 select is(pg_temp.lsc('teach', 'sn3') ->> 'error', 'P0001 NOT_FOUND not_found', 'nor read their consents');
 select is((select count(*) from app.student_notes n where n.student_id = pg_temp.id('sn3')), 1::bigint, 'and that student kept only the note of their own teacher');
+
+-- ---------------------------------------------------------------------------------------------
+-- Notes: op_key (T1.F2)
+-- ---------------------------------------------------------------------------------------------
+select pg_temp.new_student('sn7', 'teach', 'g_n');
+create function pg_temp.addk(p_user text, p_student text, p_body text, p_key text) returns jsonb language sql as $$
+  select pg_temp.as_user(p_user, format('select api.create_student_note(%L, %L, %L)', pg_temp.id(p_student), p_body, p_key))
+$$;
+select is(pg_temp.keep('k1', pg_temp.addk('teach', 'sn7', 'Con clave', '00000000-0000-4000-8000-0000000000a1')) ->> 'revision', '1', 'a note with an op_key is created');
+select is(pg_temp.addk('teach', 'sn7', 'Con clave', '00000000-0000-4000-8000-0000000000a1') ->> 'id', pg_temp.id('k1')::text, 'the same op_key, student and text answers the same note');
+select is(pg_temp.addk('teach', 'sn7', E'  Con clave 
+', '00000000-0000-4000-8000-0000000000a1') ->> 'id', pg_temp.id('k1')::text, 'also when the text only differs by the trim');
+select is((select count(*) from app.student_notes n where n.student_id = pg_temp.id('sn7')), 1::bigint, 'and the double submit left one note');
+select is(pg_temp.addk('teach', 'sn7', 'Otro texto', '00000000-0000-4000-8000-0000000000a1') ->> 'error', 'P0001 CONFLICT op_key_reused', 'the same op_key with another text is CONFLICT op_key_reused');
+select is(pg_temp.addk('teach', 'sn1', 'Con clave', '00000000-0000-4000-8000-0000000000a1') ->> 'error', 'P0001 CONFLICT op_key_reused', 'with another student too');
+select is((select count(*) from app.student_notes n where n.student_id = pg_temp.id('sn7')), 1::bigint, 'and neither created a note');
+select is(pg_temp.upn('teach', 'k1', '1', 'Texto editado') ->> 'revision', '2', 'the author edits the note');
+select is(pg_temp.addk('teach', 'sn7', 'Con clave', '00000000-0000-4000-8000-0000000000a1') ->> 'revision', '1', 'a retry after the edit answers the original (revision 1, identity kept as it was)');
+select is(pg_temp.addk('teach', 'sn7', 'Texto editado', '00000000-0000-4000-8000-0000000000a1') ->> 'error', 'P0001 CONFLICT op_key_reused', 'and the edited text is not the identity of the operation');
+select is(pg_temp.arn('teach', 'k1', '2') ->> 'revision', '3', 'the author archives it');
+select is(pg_temp.addk('teach', 'sn7', 'Con clave', '00000000-0000-4000-8000-0000000000a1') ->> 'id', pg_temp.id('k1')::text, 'a retry after archiving still answers it');
+select is(pg_temp.keep('k2', pg_temp.addk('co', 'sn7', 'Con clave', '00000000-0000-4000-8000-0000000000a1')) ->> 'revision', '1', 'the op_key is per author: a co-teacher with the same key writes their own note');
+select isnt(pg_temp.id('k2'), pg_temp.id('k1'), 'a different note');
+select is(pg_temp.keep('k3', pg_temp.addk('teach', 'sn7', 'Con clave', '00000000-0000-4000-8000-0000000000a2')) ->> 'revision', '1', 'another op_key with the same text is another note');
+select is(pg_temp.as_user('teach', format('select api.create_student_note(%L, ''x'', null)', pg_temp.id('sn7'))) ->> 'error', 'P0001 INVALID invalid_op_key', 'a null op_key is INVALID invalid_op_key');
+select is((select count(*) from app.student_notes n where n.student_id = pg_temp.id('sn7')), 3::bigint, 'and nothing was created by it');
+select is(pg_temp.addk('other', 'sn7', 'x', '00000000-0000-4000-8000-0000000000a9') ->> 'error', 'P0001 NOT_FOUND not_found', 'a teacher of another group still gets NOT_FOUND with a key');
+select is((select count(*) from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'api' and p.proname = 'create_student_note'), 1::bigint, 'the old signature is gone: only one create_student_note');
+select is(pg_temp.as_user('teach', 'update app.student_notes set op_key = gen_random_uuid()') ->> 'error' is not null, true, 'the operation of a note is not editable');
 
 select * from finish();
 rollback;
