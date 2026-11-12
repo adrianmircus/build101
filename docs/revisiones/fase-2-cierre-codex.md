@@ -186,3 +186,42 @@ El estado de los anteriores queda así:
 Pasaron ambos chequeos de TypeScript sin emitir archivos. No ejecuté build, pgTAP, integración ni Playwright: la demo guiada, accesibilidad e impresión tienen revisión de código, pero no validación nueva de navegador en esta ronda.
 
 **Veredicto: necesita otra ronda.**
+
+## Ronda 5
+
+1. **F2-23 — Media, bloqueante — El cambio de QR continúa aunque falle cerrar la sesión anterior.**  
+   **Dónde:** [login-attempt.ts:16](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/login-attempt.ts:16) y [login-guard.ts:29](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/login-guard.ts:29).  
+   **Escenario:** se envía el login de A, se abre el QR de B y termina correctamente el login de A. `discard()` llama a salir, pero ignora su `Result`. Si ese pedido no llega al servidor y devuelve `UNAVAILABLE`, `ticket.finish()` igualmente libera la espera: aparece B mientras permanece una sesión utilizable de A. Reproduje que el guard habilita la tarjeta nueva ante ese error.  
+   **Cambiaría:** exigir un cierre confirmado antes de habilitar B; ante un resultado incierto, mostrar el problema y permitir reintentar la limpieza. Agregaría el caso de fallo del logout a las pruebas.
+
+2. **F2-24 — Baja, se puede hacer después — La prueba de F2-20 no comprueba los formularios.**  
+   **Dónde:** [useInviteSubmit.test.ts:24](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/useInviteSubmit.test.ts:24).  
+   **Escenario:** la prueba comprueba que cambia `formKey` mediante un simulador de hooks. Seguiría pasando si se quitara `key={formKey}` de ambos formularios y volvieran a conservar las contraseñas. No navega ni inspecciona campos o visibilidad.  
+   **Cambiaría:** añadir los recorridos reales de invitación → recuperación/términos → atrás, comprobando contraseña vacía, tipo `password` y botón habilitado. La corrección actual está conectada correctamente; esta carencia no bloquea.
+
+De los anteriores, estos dos siguen parcialmente abiertos:
+
+- **F2-13 — Media, bloqueante — Todavía hay una ventana de edición mientras se crea el grupo.**  
+  **Dónde:** [createSteps.ts:78](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/createSteps.ts:78) y [CreateReview.tsx:41](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/CreateReview.tsx:41).  
+  **Escenario:** se confirma un grupo nuevo y, mientras espera `createGroup`, se cambia un usuario: todavía no hay flags `sending`, por lo que la edición sigue habilitada y asigna otro `slot`. La continuación envía las filas originales. Si confirma y pierde la respuesta, el reducer marca como incierta la fila **editada**. Reintentar envía otro slot y crea otro estudiante. Lo reproduje: mismo `opKey`, slots 0 y 1, dos estudiantes para la misma persona.  
+  **Cambiaría:** congelar filas y regreso desde el comienzo de la confirmación, antes de esperar al grupo, manteniendo la identidad del pedido completo. La corrección funciona cuando el grupo ya está resuelto.
+
+- **F2-22 — Media, bloqueante — Un enlace nuevo terminado únicamente en `#` conserva la recuperación anterior.**  
+  **Dónde:** [fragmentToken.ts:55](/C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/fragmentToken.ts:55).  
+  **Escenario:** está abierta la recuperación de A y se abre en esa pestaña el enlace de B recortado hasta `/ingresar/profesor/nueva#`. Ese cambio produce un fragmento vacío; el listener lo ignora. Permanecen formulario, `userId` y sesión de A: guardar cambia su contraseña. La sonda confirmó que no se notifica el cambio y se conserva el token anterior; la prueba actual incluso espera que se ignore.  
+  **Cambiaría:** invalidar también ante un `hashchange` explícito hacia vacío, conservando por separado la reutilización inicial necesaria después de limpiar la barra. Los tokens truncados **no vacíos** sí quedaron corregidos.
+
+El estado completo queda así:
+
+| Hallazgos | Estado |
+|---|---|
+| F2-1 y F2-2 | Cerrados por la exclusión explícita del modelo. |
+| F2-3 a F2-8, F2-10 a F2-12, F2-14 a F2-16 | Correcciones conservadas; sin regresiones identificadas. |
+| F2-9 | Pendiente aceptado para T1.0; no bloqueante. |
+| F2-13 | Parcialmente abierto: espera de creación del grupo. |
+| F2-17 a F2-19 | Correcciones originales conservadas. |
+| F2-20 | Cerrado en código; F2-24 señala la cobertura pendiente. |
+| F2-21 | Corregida la espera normal; parcialmente abierto por F2-23. |
+| F2-22 | Parcialmente abierto para el fragmento vacío. |
+
+Pasaron ambos chequeos de TypeScript sin emitir archivos y el lint de los archivos revisados de T2.F5. Las reproducciones usaron código real y dependencias simuladas en memoria. No ejecuté build, pgTAP, integración ni Playwright: demo guiada, accesibilidad e impresión tienen revisión de código, sin validación nueva de navegador en esta ronda. El árbol de trabajo sigue limpio.
