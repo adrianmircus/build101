@@ -1041,3 +1041,45 @@ No encontré otro bloqueo en la pasada final. No ejecuté integración: estos ha
 ### Qué se cambió
 
 Versión 14: revoked_sessions es permanente, solo se inserta desde el trigger y no se borra ni se trunca (F2C-84); revoked_at lo pone el trigger con clock_timestamp() y un INSERT con otra fecha da P0004 (F2C-85).
+
+## Ronda 14
+
+1. **F2C-86 · Alta · Bloqueante — Un refresh token legacy puede trasladarse a otro UUID y eludir la revocación permanente.**
+
+   **Dónde:** [garantía de sesión revocada](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:66), [guardias](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:364) y [pruebas de restauración](C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:654). Se protege el UUID de sesión, pero falta proteger la asociación de los refresh tokens con él.
+
+   **Escenario concreto:**
+
+   - Un profe tiene la sesión S y un refresh token legacy R sin consumir. Se conserva una copia de sus filas de Auth.
+   - Sale: S se elimina y queda marcada permanentemente en `revoked_sessions`.
+   - El dueño inserta una sesión S2 con **otro UUID** y el mismo titular. Ninguna guardia contractual la rechaza: S2 nunca fue revocada.
+   - Restaura la fila de R en `auth.refresh_tokens`, cambiando únicamente `session_id` a S2.
+   - Canjea R en `/auth/v1/token?grant_type=refresh_token`. GoTrue encuentra S2 mediante esa columna y emite un JWT para S2.
+   - `session_alive()` acepta el JWT: S2 existe, coincide el titular y no está revocada. Staff no necesita registro estudiantil.
+
+   Es una inferencia del código oficial: GoTrue v2.186.0 admite refresh tokens legacy, cuya sesión obtiene de la fila modificable; después genera el JWT con el UUID encontrado. El contrato no excluye esa modalidad. [Resolución del token legacy](https://github.com/supabase/auth/blob/v2.186.0/internal/models/user.go#L594-L693), [emisión del JWT renovado](https://github.com/supabase/auth/blob/v2.186.0/internal/tokens/service.go#L531-L569).
+
+   **Cambio propuesto:** conservar desde el nacimiento una asociación permanente e inmutable entre el hash del refresh token, su sesión y su titular. Rechazar su reasignación mediante UPDATE y mediante DELETE seguido de INSERT, también concurrentes. Probar el escenario anterior como dueño.
+
+   Otra solución contractual sería exigir exclusivamente refresh tokens ligados criptográficamente al `session_id` y bloquear la restauración del formato legacy. **Configurar solamente la emisión v2 no basta:** el código mantiene la aceptación de legacy. [Selección del formato](https://github.com/supabase/auth/blob/v2.186.0/internal/models/user.go#L594-L603).
+
+El estado de los abiertos queda así:
+
+| Hallazgo | Estado en v14 |
+|---|---|
+| **F2C-81** | **Parcialmente cerrado:** restaurar el mismo UUID queda cubierto; trasladar el refresh a otro conserva F2C-86. |
+| **F2C-84** | **Cerrado:** desaparece la purga que permitía reutilizar el UUID. |
+| **F2C-85** | **Cerrado:** fecha fijada por el trigger con `clock_timestamp()`; además, ya no habilita ningún borrado temporal. |
+| **F2C-9** | **Parcialmente cerrado:** la revocación ordinaria funciona; permanece el escenario de F2C-86 bajo el modelo de DML indicado. |
+| **F2C-82 y F2C-83** | Mantienen su cierre contractual. |
+| **F2C-77 a F2C-80; F2C-75 / F2C-11 / F2C-27** | Mantienen sus cierres específicos. |
+
+La retención permanente y la fecha controlada no abren otro bloqueo por sí mismas. En la pasada final no encontré otro hallazgo distinto de F2C-86.
+
+No ejecuté integración: el entorno denegó el acceso a Docker. El escenario está fundamentado en el contrato y el código oficial citado; queda pendiente su reproducción.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 15: el DML directo del dueño sobre auth.sessions y auth.refresh_tokens queda fuera del modelo de amenazas, con la razón de que quien escribe ahí puede crear una sesión nueva para cualquier usuario sin restaurar nada. Salen revoked_sessions y los triggers de auth.sessions (F2C-81, F2C-84 a F2C-86). Se quedan session_alive con user_id = sub y el registro de estudiante con su FK, y las guardias de auth.users, que protegen nuestros datos.
