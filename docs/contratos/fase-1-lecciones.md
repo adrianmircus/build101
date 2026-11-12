@@ -13,7 +13,9 @@ Lo que Codex encontró una y otra vez en los tickets de base (T1.2a, T1.2b). Tod
 - `INSERT … ON CONFLICT DO NOTHING` seguido de un `SELECT` sin lock puede devolver nada si otra transacción borra o cierra la fila en el medio. Primero se toma el lock que serializa ese par (por ejemplo grupo y estudiante, o institución y usuario), después se consulta y se escribe.
 - Una restricción única que dos transacciones pueden disputar (por ejemplo `students.user_id`) se serializa con un lock antes de comprobar, o se traduce a un error del protocolo. Nunca llega un `23505` crudo al repo.
 - El mismo lock y el mismo orden en todas las operaciones que tocan ese par, también en los triggers.
-- Las carreras se prueban: con `dblink` dentro del test si está disponible, y si no, verificando en `pg_locks` que las dos operaciones toman el mismo lock.
+- Las carreras se prueban de verdad, con dos conexiones: pruebas de integración en `tests/integration/races/` con los helpers de `tests/integration/support/` (`pg`). La primera transacción queda abierta con sus locks, la segunda arranca en otra conexión, se espera a verla bloqueada en `pg_stat_activity` y recién ahí se confirma la primera. Una prueba con `pg_locks` dentro de pgTAP no alcanza: no demuestra que el lock se toma antes de leer.
+- Antes de dar por buena una prueba de carrera, se comprueba que falla sin el lock.
+- Las fechas que se comparan con otras filas bajo lock usan `clock_timestamp()`, no `now()`: `now()` es la hora de inicio de la transacción, que puede ser anterior a la fila que se espera (pasó con `unenroll_student`).
 
 ## Errores
 
