@@ -19,7 +19,10 @@ export type CreateState = {
   /** Set once the group exists (chosen, or created on the first confirm), so a retry never makes a second one. */
   groupId: string | null;
   createdIds: string[];
+  /** The attempt of the accounts request: kept after an error or a lost answer, renewed only when the content changes. */
   attempt: Attempt | null;
+  /** The same for createGroup: saved BEFORE the request goes out, so a lost answer is retried with the same opKey. */
+  groupAttempt: Attempt | null;
 };
 
 export type CreateAction =
@@ -28,11 +31,12 @@ export type CreateAction =
   | { type: "edit"; key: string; value: string }
   | { type: "back" }
   | { type: "groupReady"; groupId: string }
+  | { type: "groupAttempt"; attempt: Attempt }
   | { type: "started"; groupId: string; attempt: Attempt }
   | { type: "results"; results: CreatedAccountRow[] };
 
 export function initialCreate(fields: Fields): CreateState {
-  return { step: "paste", fields, rows: [], flags: {}, groupId: null, createdIds: [], attempt: null };
+  return { step: "paste", fields, rows: [], flags: {}, groupId: null, createdIds: [], attempt: null, groupAttempt: null };
 }
 
 export function createReducer(state: CreateState, action: CreateAction): CreateState {
@@ -51,8 +55,11 @@ export function createReducer(state: CreateState, action: CreateAction): CreateS
       return { ...state, step: "paste", rows: [], flags: {}, attempt: null };
     case "groupReady":
       return { ...state, groupId: action.groupId };
+    case "groupAttempt":
+      return { ...state, groupAttempt: action.attempt };
     case "started":
-      return { ...state, groupId: action.groupId, attempt: action.attempt };
+      // The group exists now: its attempt is spent, so a later group with the same data is a new one.
+      return { ...state, groupId: action.groupId, attempt: action.attempt, groupAttempt: null };
     case "results":
       return applyResults(state, action.results);
   }

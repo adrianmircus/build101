@@ -5,7 +5,7 @@ import { callAction } from "@/lib/client/callAction";
 import type { UsernameDraft } from "@/lib/domain/accounts/entities";
 import type { CreateGroupInput, CreateStudentAccountsInput, PreviewUsernamesInput } from "@/lib/domain/accounts/inputs";
 import type { CreatedAccountRow } from "@/lib/domain/accounts/results";
-import { NEW_GROUP, requestSignature, type CreateState } from "./createFlowState";
+import { NEW_GROUP, requestSignature, type CreateAction, type CreateState } from "./createFlowState";
 import { attemptFor, type Attempt } from "./opKey";
 import { normalizeUsername, draftRows, type DraftRow } from "./usernameReview";
 import { parseNames } from "./nameList";
@@ -30,12 +30,17 @@ export async function previewRows(ctx: Context, names: string): Promise<Done<Dra
   return { ok: true, value: draftRows(result.data) };
 }
 
-/** The group the accounts go into: the chosen one, or a new one made once, even if the confirm is retried (same key). */
-export async function groupFor(ctx: Context, state: CreateState, previous: Attempt | null): Promise<Done<{ id: string; attempt: Attempt | null }>> {
+/**
+ * The group the accounts go into: the chosen one, or a new one made once. The attempt (its opKey) is saved in the
+ * state BEFORE the request goes out and stays after an error or a lost answer, so the retry sends the same key and the
+ * server answers with the group it already made. It is renewed only when the data of the group change.
+ */
+export async function groupFor(ctx: Context, state: CreateState, dispatch: (action: CreateAction) => void): Promise<Done<string>> {
   const { fields } = state;
-  if (state.groupId) return { ok: true, value: { id: state.groupId, attempt: previous } };
-  if (fields.groupChoice !== NEW_GROUP) return { ok: true, value: { id: fields.groupChoice, attempt: previous } };
-  const attempt = attemptFor(previous, JSON.stringify([fields.groupName, fields.subjectId, fields.schoolYear]), newKey);
+  if (state.groupId) return { ok: true, value: state.groupId };
+  if (fields.groupChoice !== NEW_GROUP) return { ok: true, value: fields.groupChoice };
+  const attempt = attemptFor(state.groupAttempt, JSON.stringify([fields.groupName, fields.subjectId, fields.schoolYear]), newKey);
+  dispatch({ type: "groupAttempt", attempt });
   const made = await callAction(ctx.actions.createGroup, {
     institutionId: ctx.institutionId,
     name: fields.groupName.trim(),
@@ -44,7 +49,7 @@ export async function groupFor(ctx: Context, state: CreateState, previous: Attem
     opKey: attempt.opKey,
   });
   if (!made.ok) return { ok: false, text: failureText(made) };
-  return { ok: true, value: { id: made.data.id, attempt } };
+  return { ok: true, value: made.data.id };
 }
 
 export function nextAttempt(state: CreateState, groupId: string): Attempt {
@@ -63,4 +68,16 @@ export function partialText(created: number, left: number): string {
   const rest = left === 1 ? "Queda 1 por revisar" : `Quedan ${left} por revisar`;
   if (created === 0) return `${rest}: miralo abajo.`;
   return `${created === 1 ? "Se creó 1 cuenta." : `Se crearon ${created} cuentas.`} ${rest}: miralo abajo.`;
+}
+
+/**
+ * The confirm of the flow, apart from the screen: the group, the attempt of the accounts (saved before the request) and
+ * the accounts. Every key is in the state before its request leaves, which is what makes a retry safe.
+ */
+export async function confirmCreate(ctx: Context, state: CreateState, dispatch: (action: CreateAction) => void): Promise<Done<CreatedAccountRow[]>> {
+  const group = await groupFor(ctx, state, dispatch);
+  if (!group.ok) return group;
+  const attempt = nextAttempt(state, group.value);
+  dispatch({ type: "started", groupId: group.value, attempt });
+  return createRows(ctx, { groupId: group.value, rows: state.rows, attempt });
 }
