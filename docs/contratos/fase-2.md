@@ -68,6 +68,7 @@ Como en la fase 1: argumentos `p_snake_case`, salidas `jsonb` en camelCase. Las 
   - el registro de estudiante se va con su sesión (FK a `auth.sessions` con `on delete cascade`) y solo lo escribe el bind.
 
   Las guardias de `auth.users` (forma fija de las cuentas de estudiante, cuentas suprimidas que no renacen) siguen cubriendo también el DML del dueño, porque protegen invariantes de nuestros datos y no sesiones.
+- **Escribir una credencial o un registro de sesión a mano (F2-1, F2-2 del cierre).** Por la misma razón, queda fuera del modelo que el dueño inserte en `student_sessions` o cambie `student_credentials` con una forma válida: le da acceso a una cuenta, igual que crear una sesión en `auth.sessions`, y el dueño ya lee todos los datos. Las guardias de esas tablas protegen sus invariantes (versión que sube de a uno, emisión vigente, sesión que existe), que es lo que un bug de nuestras RPC podría romper; no pretenden frenar al dueño.
 
 ### Límite de intentos (F2C-11 a F2C-15)
 
