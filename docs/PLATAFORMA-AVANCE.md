@@ -58,3 +58,36 @@ Quedan como baja, aceptadas: accesos deliberados por cadenas al namespace global
 ### Cierre
 
 `npm run check` en verde sobre `plataforma/fase-0`: tipos (con el chequeo estricto), lint, 454 pruebas, build y Playwright (19 pasan, 3 salteadas por proyecto). Pusheada al fork el 11/11/2026. Falta T0.6, que necesita un deploy en Netlify.
+
+## Fase 1 · Base: esquema, privilegios, RLS y acceso a datos
+
+Rama: `plataforma/fase-1`, desde `plataforma/fase-0`. Contrato: `docs/contratos/fase-1.md`, aprobado por Codex en la novena ronda (`docs/revisiones/fase-1-contrato-codex.md`). Lecciones para los tickets de base: `docs/contratos/fase-1-lecciones.md`.
+
+| Ticket | Qué | Quién | Revisión de Codex |
+|---|---|---|---|
+| T1.1a | Supabase local, clientes, privilegios cerrados por defecto y CI con la base | backend (Sonnet) | Con la fase 0 |
+| Contrato | 45 tablas en `app`, 73 RPC en `api`, rol `tiza_student`, dominio y matriz | Opus | 9 rondas |
+| T1.2a, T1.2b | Identidad, grupos, estudiantes, inscripciones y listados | backend (Sonnet) | Arreglos en T1.2a-fix y T1.2b-fix |
+| T1.3a, T1.3b | Perfiles, lecturas auditadas, reconstrucción, notas y consentimientos | backend (Sonnet) | Arreglos en T1.3b y T1.F2 |
+| T1.4a a T1.4e | Prácticos, versiones, contenido y aprobación, generaciones y clave | backend (Sonnet) | Arreglos en T1.F3, T1.F4, T1.4c-fix, T1.4d-fix y T1.4e |
+| T1.5a a T1.5d | Publicación mínima, intentos, corrección y lo que ve el estudiante | backend (Sonnet) | Arreglos en T1.F5, T1.F6 y T1.F7 |
+| T1.6a a T1.6c, T1.7a a T1.7c | `callRpc`, fábricas y todos los repos | backend (Sonnet) | Un arreglo en `callRpc` |
+| T1.8 | La matriz de permisos probada rol por rol contra las RPC y REST | backend (Sonnet) | En la revisión de cierre |
+| T1.9 | Inventario de datos personales, campo por campo | backend (Sonnet) | Arreglos de la tanda 1 |
+| T1.R | Carreras reales con dos conexiones | backend (Sonnet) | Arreglos en T1.F2 |
+| T1.F3 | Idempotencia de todas las altas | Opus | Arreglos en T1.F4 |
+
+Además, en esta fase:
+
+- **Demo guiada:** el recorrido ya no se congela en máquinas lentas. La capa del recorrido tenía su propio nombre de transición de vista y el navegador sacaba una foto de unos 20.000 px por lado en cada cambio de página (arreglo: `contain: paint`). La burbuja siempre entra en la pantalla, el foco pasa al título en cada paso, y el nombre del botón va en negrita y no en itálica.
+- **Celular:** la pantalla de grupo entra en 320 px sin desborde horizontal (WCAG 1.4.10).
+- **Diseño de la fase 2:** opciones en `docs/diseno/fase-2/` (rama `plataforma/f2-diseno`), para que el usuario elija.
+
+### Cierre
+
+Desde cero (`db:reset`) aplican las 23 migraciones y pasan 2554 pruebas pgTAP. Pasan también tipos, lint, 550 pruebas de unidad, 379 de integración (carreras incluidas), build y 26 de punta a punta. Recorrido en el navegador: demo a 1280×720 y en celular, sin errores de consola.
+
+### Decisiones para confirmar con el usuario
+
+- **`students.interface` es un modo de accesibilidad, no una etiqueta de perfil.** El estudiante que responde con la mirada sabe que usa la mirada; lo que no ve nunca es la etiqueta (motor, TDAH…) ni nada del perfil de otros. Hoy se deriva del perfil; un ajuste manual queda para la fase 6.
+- **Lectura en voz alta para todos.** `aids.readAloud` es verdadero en toda publicación, como la app de hoy, que muestra «Escuchar» sin mirar el perfil.
