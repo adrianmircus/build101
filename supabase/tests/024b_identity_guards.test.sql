@@ -3,7 +3,7 @@
 -- authenticated it would fail earlier with 42501 and pass even without the guard) and has to fail with P0004.
 -- Placeholder data only. The whole file is rolled back.
 begin;
-select plan(74);
+select plan(78);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -178,6 +178,22 @@ alter table app.account_provisioning enable trigger account_provisioning_kept;
 select matches(pg_temp.as_service(format('select api.internal_link_student_user(%L, %L)', pg_temp.id('s3'), pg_temp.id('b2'))) ->> 'error', '^P0004',
   'internal_link_student_user: a student without its provisioning row is not linked');
 select is((select s.user_id from app.students s where s.id = pg_temp.id('s3')), null::uuid, 'and the student is still unlinked');
+
+-- 3e. TRUNCATE runs no row guard (T1.F13, round 6): no table of app is ever truncated, and a provisioning row recreated
+-- for a linked student remembers its account.
+select is((select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'app' and c.relkind in ('r', 'p')
+              and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and not t.tgisinternal and t.tgenabled <> 'D'
+                                and t.tgfoid = 'app.no_truncate'::regproc)),
+  0::bigint, 'every table of app refuses TRUNCATE');
+select is(pg_temp.st('truncate app.account_provisioning'), 'P0004', 'account_provisioning: the memory is not truncated away');
+alter table app.account_provisioning disable trigger account_provisioning_kept;
+delete from app.account_provisioning where student_id = pg_temp.id('s2');
+alter table app.account_provisioning enable trigger account_provisioning_kept;
+select is(pg_temp.st(format('insert into app.account_provisioning (institution_id, student_id, op_key) select institution_id, id, gen_random_uuid() from app.students where id = %s', pg_temp.i('s2'))), 'P0004',
+  'account_provisioning: an empty row is not recreated for a linked student');
+select is(pg_temp.st(format('insert into app.account_provisioning (institution_id, student_id, op_key, auth_user_id) select institution_id, id, gen_random_uuid(), user_id from app.students where id = %s', pg_temp.i('s2'))), 'ok',
+  'control: recreated with the account the student has, it is accepted');
 
 -- ---------------------------------------------------------------------------------------------
 -- 4b. operations.op_key and kind, import_runs.op_key
