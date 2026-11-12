@@ -331,3 +331,75 @@ No reabro la cuenta huérfana de invitación: sin membresía no concede acceso y
 ### Qué se cambió
 
 Versión 4: resultado incierto de Auth que extiende el plazo a 15 minutos y no lo suelta, con el corte de GoTrue a verificar en T2.5b (F2C-36); plazos que solo crecen, con guardia (F2C-37); titular del plazo en claim, remember y fail, y el alta de profes exceptuada con razón (F2C-38); invitation_tokens como registro único de todo hash (F2C-39); session_alive solo para tiza_student (F2C-40); sessionDb y adminDb como fábricas de cliente (F2C-41); la excepción de retención del correo queda para la fase 9 (F2C-42).
+
+## Ronda 4
+
+1. **F2C-43 · Alta — La extensión posterior al error no cubre la caída del proceso.**
+
+   **Dónde:** [regla del plazo](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:110), tratamiento del resultado incierto y pasos de extensión.
+
+   **Escenario:** A confirma un plazo de cinco minutos. Se demora 50 segundos antes de enviar a Auth: todavía quedan más de cuatro minutos. La llamada vence localmente cinco segundos después, pero falla la RPC que debía extender el plazo y Netlify termina el proceso. Solo quedaron guardados los cinco minutos originales.
+
+   El contrato admite un procesamiento remoto de hasta cinco minutos. Con uno de cuatro minutos y medio, B puede empezar al vencer el plazo original y entregar una contraseña antes de que termine la escritura de A. En aprovisionamiento, la supresión puede completar el borrado antes de que llegue la creación.
+
+   Además, buscar el valor predeterminado en el código no verifica la configuración efectiva ni demuestra un límite sobre los efectos pendientes. En el código consultado, el middleware usa cancelación de contexto; no mata el handler. Esa distinción requiere verificar también cómo termina la escritura. [Middleware de Auth](https://github.com/supabase/auth/blob/master/internal/api/middleware.go), [configuración](https://github.com/supabase/auth/blob/master/internal/conf/configuration.go).
+
+   **Cambio propuesto:** guardar **antes de llamar a Auth** un plazo que cubra la demora máxima del trabajador más el procesamiento remoto y un margen, incluso si nunca se ejecuta la extensión. Alternativamente, demostrar una cota remota suficientemente menor para que los cinco minutos originales alcancen. T2.5b debe bloquear también ante configuración desconocida, timeout desactivado o ausencia de una garantía sobre los efectos.
+
+2. **F2C-44 · Alta — Revocar una tarjeta pendiente elimina la exclusión sin acortar el plazo.**
+
+   **Dónde:** [empezar una emisión](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:143) y [transiciones permitidas](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:278).
+
+   **Escenario:** A confirma su emisión y empieza a cambiar la contraseña. El dueño ejecuta un `UPDATE` de su tarjeta `pending` a `revoked`, con `revoked_at`. Es una transición expresamente permitida; no modifica `lease_until`.
+
+   B llama a `begin_access_cards`. Como ya no encuentra una tarjeta `pending`, empieza otra emisión, cambia la contraseña e imprime. La escritura de A termina después y sobrescribe esa contraseña. Que la finalización de A falle no repara la tarjeta que B ya imprimió.
+
+   **Cambio propuesto:** conservar la reserva por estudiante independientemente del estado de la tarjeta. La adquisición siguiente debe comprobar esa reserva aunque la tarjeta haya pasado a `active` o `revoked`. Definir y proteger todos los caminos que dejan de bloquear, incluidos DML directo, finalización y cascadas. Probar esta secuencia como dueño con dos conexiones.
+
+3. **F2C-45 · Media — El timeout de `adminDb` no tiene un recorrido definido hasta las llamadas de Auth.**
+
+   **Dónde:** [fábricas y repos de Auth](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:355), T2.7 y T2.3.
+
+   **Escenario:** T2.7 agrega el `fetch` de cinco segundos en `repos/admin/db.ts`, como está asignado. T2.3 implementa `auth-users.ts` usando `db/admin.ts`, como indica su tabla. Esa fábrica existente no recibe opciones de `fetch`. El timeout agregado al otro cliente no alcanza estas llamadas.
+
+   Tampoco puede usarse directamente el resultado declarado de `adminDb()` para Auth: [`RpcDb`](/C:/Users/adrim/build101/.claude/worktrees/fase-1/lib/server/repos/rpc.ts:17) expone solamente `rpc`, sin `auth`.
+
+   **Cambio propuesto:** fijar una fábrica del cliente completo de Auth con ese `fetch`, asignar su archivo y obligar a `auth-users.ts` a usarla. Puede conservarse `adminDb(): RpcDb` para los repos de RPC. Agregar una comprobación del timeout a través del recorrido real de `createAuthUser` y `updateAuthUser`.
+
+4. **F2C-46 · Media — La respuesta ante un titular incorrecto contradice las salidas declaradas.**
+
+   **Dónde:** [regla del titular](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:109) y [firmas de remember/fail](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:339).
+
+   **Escenario:** A conserva un titular viejo y B adquiere el plazo después de vencer. A llama a `internal_remember_student_account` o `internal_fail_student_account`. La regla general exige devolver `ok: false`, pero sus salidas declaradas son `{authUserId}` y `{status, attempts}`. Con validación cerrada, devolver lo exigido por la regla rompe el esquema; devolver lo exigido por la tabla no comunica la pérdida del titular.
+
+   **Cambio propuesto:** declarar las variantes de éxito y rechazo de cada RPC afectada, incluyendo sus campos y el comportamiento del servicio. Actualizar conjuntamente firmas, esquemas y criterios del contrato.
+
+El estado de los hallazgos abiertos de la ronda 3 queda así. «Cerrado» se refiere al defecto concreto denunciado; los problemas nuevos están identificados arriba.
+
+| Hallazgo | Estado en v4 | Motivo |
+|---|---|---|
+| F2C-4 | **Abierto** | Aún puede imprimirse una contraseña que luego sobrescribe otro intento: F2C-43/44. |
+| F2C-7 | **Abierto parcialmente** | Impide degradar `active`, pero la carrera de creación contra supresión conserva el caso de F2C-43. |
+| F2C-18 | **Cerrado** | Las fábricas y sus responsables completan la obtención del cliente para los repos existentes. |
+| F2C-19 | **Cerrado** | Define memoria protegida y estados terminales; las invitaciones tienen ahora registro común de hashes. |
+| F2C-24 | **Abierto** | La exclusión externa sigue dependiendo de una extensión que puede no persistirse y de un bloqueo eliminable: F2C-43/44. |
+| F2C-25 | **Abierto parcialmente** | Distingue correctamente borrado accidental y supresión; persiste la creación tardía de F2C-43. |
+| F2C-28 | **Cerrado** | El registro único evita reutilizar hashes históricos. |
+| F2C-35 | **Cerrado** | Resuelve imports privilegiados, encabezados y obtención del cliente de sesión. |
+| F2C-36 | **Abierto** | Distinguir incertidumbre es correcto, pero la extensión posterior no cubre todos los fallos: F2C-43/44. |
+| F2C-37 | **Cerrado** | Prohíbe acortar o vaciar el plazo mediante DML. F2C-44 lo evade sin modificarlo. |
+| F2C-38 | **Cerrado en identidad y excepción** | Agrega titular y separa adquisición de confirmación. Falta corregir las salidas nuevas: F2C-46. |
+| F2C-39 | **Cerrado** | Todos los hashes compiten en un único índice durable; desaparece la carrera entre tablas, también en `REPEATABLE READ`. |
+| F2C-40 | **Cerrado** | `EXECUTE` solo para `tiza_student` evita el choque con `000_privileges`. |
+| F2C-41 | **Cerrado** | `sessionDb` y `adminDb` completan el recorrido de los repos que reciben `RpcDb`. El recorrido de Auth abre F2C-45. |
+| F2C-42 | **Cerrado** | La excepción futura queda acotada, exige migración nueva y tiene prueba prevista. |
+
+Las razones declaradas **sí alcanzan** para exceptuar el alta de profes: solo crea cuentas, Auth impide repetir el correo y el perdedor nunca modifica la cuenta ganadora. También alcanza aceptar el riesgo de terminales manuales **en local o staging**, manteniendo el corte de ejecución exigido para producción.
+
+La excepción mínima de `session_alive` y diferir la retención a fase 9 también están justificadas. Mantengo aceptados los riesgos ya evaluados de cuentas huérfanas sin membresía, enumeración de staff y defensa de Auth directo. Los problemas de exclusión anteriores afectan producción y el modelo de DML indicado; esas aceptaciones no los cubren.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 5: una sola reserva por estudiante en account_provisioning para toda escritura en Auth, que se lleva a 15 minutos antes de cada llamada y nunca se suelta (F2C-43, F2C-44); la verificación del corte de GoTrue bloquea T2.5b si no se puede probar (F2C-43); authAdmin con el fetch de 5 s como única puerta de auth-users.ts (F2C-45); salidas ok true y ok false declaradas (F2C-46). Se van internal_claim_card_password, internal_claim_provisioning, los extend y p_uncertain; entra internal_claim_account. Crear un estudiante ya no aprovisiona: la cuenta nace con la primera tarjeta.
