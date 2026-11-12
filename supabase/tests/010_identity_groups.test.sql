@@ -2,7 +2,7 @@
 -- Everything is created here with its own institutions (through the internal RPCs, the same way the
 -- factories will) and rolled back, so the file depends on no other test and clobbers none.
 begin;
-select plan(162);
+select plan(168);
 
 -- Calls an RPC the way PostgREST would: claims for p_user (null = no session) and p_role switched
 -- with SET LOCAL ROLE. Returns the jsonb result, or {"error": "<sqlstate> <message> <detail>"}.
@@ -319,6 +319,29 @@ select is(pg_temp.as_user('owner', format('select api.create_group(%L, ''x'', ''
   'P0001 INVALID invalid_school_year', 'a null one too');
 select is((select count(*) from app.groups g where g.institution_id = pg_temp.id('instA') and g.name in ('Sin clave', 'Otro nombre', 'x')), 0::bigint,
   'no refusal created a group');
+
+-- T1.F4 (F3-2): the replay does not depend on a reference that can change afterwards. A subject
+-- switched off after the group exists does not turn the original request into NOT_FOUND; a new
+-- request still does. Physics is switched on and off inside this test (rolled back with the file).
+insert into ids (k, id) values ('pkey', gen_random_uuid()), ('pkey2', gen_random_uuid());
+create function pg_temp.keyed_physics(p_key text, p_name text) returns jsonb language sql as $$
+  select pg_temp.as_user('owner', format('select api.create_group(%L, %L, ''physics'', 2026, %L)', pg_temp.id('instA'), p_name, pg_temp.id(p_key)))
+$$;
+update app.subjects set enabled = true where id = 'physics';
+insert into ids (k, id) select 'gp', (pg_temp.keyed_physics('pkey', 'Física A') ->> 'id')::uuid;
+update app.subjects set enabled = false where id = 'physics';
+select is(pg_temp.keyed_physics('pkey', 'Física A'), jsonb_build_object('id', pg_temp.id('gp'), 'revision', 1),
+  'the replay of a group whose subject was switched off since answers the original result');
+select is(pg_temp.keyed_physics('pkey', 'Otra Física') ->> 'error', 'P0001 CONFLICT op_key_reused',
+  'the identity is compared first: the same key with other data is CONFLICT, not NOT_FOUND');
+select is(pg_temp.keyed_physics('pkey2', 'Física B') ->> 'error', 'P0001 NOT_FOUND not_found',
+  'a new group in the switched-off subject is NOT_FOUND');
+select is(pg_temp.as_user('owner', format('select api.create_group(%L, ''Física C'', ''physics'', 2026, null)', pg_temp.id('instA'))) ->> 'error', 'P0001 INVALID invalid_op_key',
+  'the shape is validated before the reference: a null op_key is INVALID even for a switched-off subject');
+select is(pg_temp.as_user('visitor', format('select api.create_group(%L, ''Física D'', ''physics'', 2026, %L)', pg_temp.id('instA'), pg_temp.id('pkey'))) ->> 'error', 'P0001 NOT_FOUND not_found',
+  'authorization comes first: someone outside the institution never gets the replay');
+select is((select count(*) from app.groups g where g.institution_id = pg_temp.id('instA') and g.subject_id = 'physics'), 1::bigint,
+  'one physics group exists: no refusal created another');
 -- The guard, as the owner of the table (P0004, not 42501).
 select throws_ok(format('update app.groups set op_key = gen_random_uuid() where id = %L', pg_temp.id('gk')), 'P0004', null, 'the op_key of a group never changes');
 select throws_ok(format('update app.groups set op_identity = repeat(''0'', 64) where id = %L', pg_temp.id('gk')), 'P0004', null, 'nor its identity');

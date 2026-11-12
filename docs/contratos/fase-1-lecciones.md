@@ -6,6 +6,7 @@ Lo que Codex encontró una y otra vez en los tickets de base (T1.2a, T1.2b). Tod
 
 - La identidad de una operación (`op_key` u `op_id`) se guarda tal como fue al crearla: la RPC, el recurso exacto y los datos que la definen. Nunca se reconstruye desde datos que pueden cambiar después (un username, una inscripción actual).
 - Se compara bajo el lock, con esa identidad guardada. Misma identidad: devuelve el resultado guardado. Otra: `CONFLICT op_key_reused`.
+- El replay de un `op_key` no depende de referencias que pueden cambiar (una materia que se deshabilita, una unidad del programa que se borra). Orden: autorización y forma, lock y búsqueda del `op_key`, y recién para un alta nueva las referencias.
 - Vale también en un sandbox. Si una tabla no tiene dónde guardar la operación en ese caso, se escala como cambio de contrato; no se deja sin idempotencia.
 
 ## Carreras
@@ -30,6 +31,7 @@ Lo que Codex encontró una y otra vez en los tickets de base (T1.2a, T1.2b). Tod
 
 ## Pruebas
 
+- Ninguna prueba se borra para entrar en el límite de líneas: se parte el archivo.
 - La matriz de permisos se prueba por RPC, no repartida entre funciones: para cada RPC, cada rol que la niega según `lib/domain/permissions/matrix.ts`, un usuario de otra institución y sin sesión, comprobando código y razón completos y que no cambió nada.
 - Cada regla de estado tiene su prueba en los dos sentidos (por ejemplo, en un grupo archivado se rechaza agregar y también quitar, o se documenta por qué no).
 - Una prueba tiene que fallar si se rompe lo que dice probar.

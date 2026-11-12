@@ -6,7 +6,7 @@
 -- the UPDATE would fail first on privileges (42501) and the test would pass without the guard.
 -- The whole file is rolled back.
 begin;
-select plan(214);
+select plan(229);
 
 create function pg_temp.rpc(p_user uuid, p_role text, p_sql text) returns jsonb
 language plpgsql as $f$
@@ -470,6 +470,68 @@ select throws_ok(format('update app.assessments set op_key = null, op_identity =
 select set_config('tiza.erasure', '', true);
 
 -- ---------------------------------------------------------------------------------------------
+-- T1.F4 (F3-2): the replay of an add_exercise does not depend on the unit of the syllabus still
+-- existing. Shape and authorization first, then the op_key lock and lookup, and only for a new
+-- exercise the reference (the topic).
+-- ---------------------------------------------------------------------------------------------
+insert into ids (k, id) select k, gen_random_uuid() from unnest(array['pfk', 'tk', 'tk2']) k;
+create function pg_temp.adt_key(p_user text, p_asm text, p_key text, p_body text, p_topic text) returns jsonb language sql as $$
+  select pg_temp.as_user(p_user, format('select api.add_exercise(%L, ''1'', %L, %L, %s)', pg_temp.id(p_asm), p_body, pg_temp.id(p_key), p_topic))
+$$;
+-- A new assessment (pf) in g_n: its topic and its exercise are what F3-1 below edits and erases.
+select pg_temp.keep('pf', pg_temp.ca_key('teach', 'pfk', 'Práctico para Paula'));
+select pg_temp.keep('xt', pg_temp.adt_key('teach', 'pf', 'tk', 'Enunciado para Paula', quote_literal(pg_temp.id('unit'))));
+update app.syllabi set units = '[]' where group_id = pg_temp.id('g_n');
+select is(pg_temp.adt_key('teach', 'pf', 'tk', 'Enunciado para Paula', quote_literal(pg_temp.id('unit'))), jsonb_build_object('id', pg_temp.id('xt'), 'revision', 1),
+  'the replay of an exercise whose unit was deleted since answers the original result');
+select is(pg_temp.adt_key('teach', 'pf', 'tk', 'Otro enunciado', quote_literal(pg_temp.id('unit'))) ->> 'error', 'P0001 CONFLICT op_key_reused',
+  'the identity is compared first: another text with the same key is CONFLICT, not unknown_topic');
+select is(pg_temp.adt_key('teach', 'pf', 'tk2', 'Nuevo', quote_literal(pg_temp.id('unit'))) ->> 'error', 'P0001 INVALID unknown_topic',
+  'a new exercise on the deleted unit is INVALID unknown_topic');
+select is(pg_temp.upx('teach', 'xt', '1', '1', 'Editado', quote_literal(pg_temp.id('unit'))) ->> 'error', 'P0001 INVALID unknown_topic',
+  'update_exercise still validates the topic');
+select is(pg_temp.adt_key('other', 'pf', 'tk', 'Enunciado para Paula', quote_literal(pg_temp.id('unit'))) ->> 'error', 'P0001 NOT_FOUND not_found',
+  'authorization comes first: a teacher of another group never gets the replay');
+select is((select count(*) from app.assessment_exercises e where e.assessment_id = pg_temp.id('pf')), 1::bigint, 'one exercise: no refusal created another');
+update app.syllabi set units = jsonb_build_array(jsonb_build_object('id', pg_temp.id('unit'), 'title', 'Unidad 1', 'contents', ''))
+ where group_id = pg_temp.id('g_n');
+
+-- ---------------------------------------------------------------------------------------------
+-- T1.F4 (F3-1): create, edit to neutral text, erase. The identity is a hash of the text AS CREATED
+-- ("Para Paula"), so an erasure forgets it whatever the text says now: erasing a student nulls
+-- op_key and op_identity of every assessment and exercise of the groups where they were ever
+-- enrolled (erasure.ts, `nullifies`). The statements below are that rule.
+-- ---------------------------------------------------------------------------------------------
+create function pg_temp.forget_operations(p_student uuid) returns void language sql as $$
+  update app.assessments a set op_key = null, op_identity = null
+   where a.group_id in (select e.group_id from app.enrollments e where e.student_id = p_student);
+  update app.assessment_exercises x set op_key = null, op_identity = null
+   where x.assessment_id in (select a.id from app.assessments a
+                              where a.group_id in (select e.group_id from app.enrollments e where e.student_id = p_student));
+$$;
+select is(pg_temp.upa('teach', 'pf', '1', 'worksheet', 'Repaso', 'Instrucciones') ->> 'revision', '2', 'the assessment is edited to neutral text');
+select is(pg_temp.upx('teach', 'xt', '1', '1', 'Enunciado neutro') ->> 'revision', '2', 'and so is its exercise');
+select is((select a.topic from app.assessments a where a.id = pg_temp.id('pf')), 'Repaso', 'the text no longer names anyone ...');
+select is((select a.op_identity = encode(sha256(convert_to(jsonb_build_array('create_assessment', pg_temp.id('g_n'), 'worksheet', 'Práctico para Paula', 'Instrucciones')::text, 'utf8')), 'hex')
+             from app.assessments a where a.id = pg_temp.id('pf')),
+  true, '... but the identity is still the hash of the text as it was created: a candidate name can be checked against it');
+select throws_ok(format('select pg_temp.forget_operations(%L)', pg_temp.id('sn1')), 'P0004', null, 'outside an erasure the identity cannot be forgotten');
+insert into ids (k, id) values ('era_s', gen_random_uuid());
+insert into app.erasures (id, institution_id, kind, pseudonym_id)
+  select pg_temp.id('era_s'), pg_temp.id('i_n'), 'student', p.id from app.student_pseudonyms p where p.student_id = pg_temp.id('sn1');
+select app.begin_erasure(pg_temp.id('era_s'));
+select lives_ok(format('select pg_temp.forget_operations(%L)', pg_temp.id('sn1')), 'inside the erasure of sn1 the rule runs: the groups where sn1 was enrolled lose their operations');
+select is((select count(*) from app.assessments a where a.group_id = pg_temp.id('g_n') and (a.op_key is not null or a.op_identity is not null)), 0::bigint,
+  'no assessment of g_n keeps its op_key or op_identity, edited or not (pf was edited to neutral text)');
+select is((select count(*) from app.assessment_exercises x join app.assessments a on a.id = x.assessment_id
+            where a.group_id = pg_temp.id('g_n') and (x.op_key is not null or x.op_identity is not null)), 0::bigint,
+  'nor any exercise of those assessments, removed or not');
+select is((select count(*) from app.assessments a where a.group_id = pg_temp.id('go_n') and a.op_identity is not null), (select count(*) from app.assessments a where a.group_id = pg_temp.id('go_n')),
+  'negative: a group where sn1 was never enrolled keeps every identity (the rule is not wider than it says)');
+update app.erasures set status = 'done', completed_at = now() where id = pg_temp.id('era_s');
+select set_config('tiza.erasure', '', true);
+
+-- ---------------------------------------------------------------------------------------------
 -- The permission matrix by RPC: each role that must be denied, with code and reason, and the proof
 -- that nothing changed (assessments, exercises, versions and audit rows of the institution).
 -- ---------------------------------------------------------------------------------------------
@@ -524,7 +586,7 @@ select is(pg_temp.adx('adm2', 'a5', '1', 'Texto') ->> 'revision', '1', 'and adds
 select is(pg_temp.get('other', 'a5') -> 'assessment' ->> 'id', pg_temp.id('a5')::text, 'the owner of go_n reads it');
 select is(pg_temp.get('teach', 'a5') ->> 'error', 'P0001 NOT_FOUND not_found', 'a teacher of another group of the same institution cannot');
 -- No refusal above created a stray row.
-select is((select count(*) from app.assessments a where a.institution_id = pg_temp.id('i_n')), 8::bigint, 'eight assessments exist: none came from a refusal or a replay');
+select is((select count(*) from app.assessments a where a.institution_id = pg_temp.id('i_n')), 9::bigint, 'nine assessments exist (pf is the one of T1.F4): none came from a refusal or a replay');
 
 select * from finish();
 rollback;
