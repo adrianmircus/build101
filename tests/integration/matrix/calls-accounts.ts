@@ -26,10 +26,7 @@ type AccountsRpc =
   | "list_group_accounts"
   | "begin_access_cards"
   | "finish_access_cards"
-  | "internal_claim_card_password"
-  | "internal_claim_provisioning"
-  | "internal_extend_provisioning"
-  | "internal_extend_card_issue"
+  | "internal_claim_account"
   | "internal_get_student_accounts"
   | "internal_remember_student_account"
   | "internal_fail_student_account"
@@ -61,12 +58,9 @@ export const ACCOUNT_CALLS: CallsOf<AccountsRpc> = {
   list_taken_usernames: async (s) => ({ args: { p_institution_id: s.institution.id, p_bases: ["luciaf"] }, listing: true }),
   list_group_accounts: async (s) => ({ args: { p_group_id: s.groupId }, listing: true, target: s.learner.studentId }),
   begin_access_cards: async (s) => ({ args: { p_group_id: s.groupId, p_cards: JSON.stringify([{ studentId: s.learner.studentId, tokenHash: hash() }]), p_op_key: randomUUID() } }),
-  finish_access_cards: async (s) => ({ args: { p_issue_id: randomUUID(), p_done: [s.learner.studentId], p_uncertain: [] } }),
-  internal_claim_provisioning: async () => ({ args: { p_provisioning_id: randomUUID() } }),
-  internal_extend_provisioning: async () => ({ args: { p_provisioning_id: randomUUID(), p_holder: randomUUID() } }),
-  internal_extend_card_issue: async () => ({ args: { p_issue_id: randomUUID() } }),
+  finish_access_cards: async (s) => ({ args: { p_issue_id: randomUUID(), p_done: [s.learner.studentId] } }),
+  internal_claim_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_holder: randomUUID() } }),
   list_enabled_subjects: async () => ({ args: {}, listing: true }),
-  internal_claim_card_password: async (s) => ({ args: { p_issue_id: randomUUID(), p_student_id: s.learner.studentId } }),
   internal_get_student_accounts: async (s) => ({ args: { p_student_ids: [s.learner.studentId] } }),
   internal_remember_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_holder: randomUUID(), p_auth_user_id: randomUUID() } }),
   internal_fail_student_account: async () => ({ args: { p_provisioning_id: randomUUID(), p_holder: randomUUID(), p_error_code: "email_taken" } }),

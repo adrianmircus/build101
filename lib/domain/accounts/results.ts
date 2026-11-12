@@ -57,7 +57,7 @@ export type Accepted = z.infer<typeof Accepted>;
 /** One line of createStudentAccounts, by the index of the row it came in. */
 export const ACCOUNT_OUTCOMES = ["created", "username_taken", "failed"] as const;
 export const CreatedAccountRow = z
-  .object({ index: z.int().min(0), outcome: z.enum(ACCOUNT_OUTCOMES), studentId: Id.nullable(), accountReady: z.boolean() })
+  .object({ index: z.int().min(0), outcome: z.enum(ACCOUNT_OUTCOMES), studentId: Id.nullable() })
   .strict();
 export type CreatedAccountRow = z.infer<typeof CreatedAccountRow>;
 

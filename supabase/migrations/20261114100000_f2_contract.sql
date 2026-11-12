@@ -1,4 +1,4 @@
--- Contract, phase 2 (docs/contratos/fase-2.md, version 4): closed tables and columns, their guards, and the stubs of the
+-- Contract, phase 2 (docs/contratos/fase-2.md, version 5): closed tables and columns, their guards, and the stubs of the
 -- new RPCs.
 --
 -- Tables born closed as in phase 1: RLS enabled and forced, no policies, no grants, app.no_truncate.
@@ -9,8 +9,9 @@
 -- revoked by the default privileges of postgres (20261111120000_revoke_defaults.sql).
 -- app.rpc_begin() is not changed here: the check of the live session is T2.7.
 
--- An issue of cards: the operation that changes passwords in Auth, with a lease. It keeps no student ids: op_identity is the
--- sha256 (hex) of the group and the sorted set of students, only to compare repeats.
+-- An issue of cards. The exclusion between issues is not here but in the lease of each student
+-- (account_provisioning.lease_until). It keeps no student ids: op_identity is the sha256 (hex) of the group and the sorted
+-- set of students, only to compare repeats.
 create table app.access_card_issues (
   id uuid primary key default gen_random_uuid(),
   institution_id uuid not null references app.institutions (id) on delete cascade,
@@ -19,7 +20,6 @@ create table app.access_card_issues (
   op_identity text not null check (op_identity ~ '^[0-9a-f]{64}$'),
   issued_by uuid references app.app_users (id) on delete set null,
   status text not null default 'running' check (status in ('running', 'done', 'abandoned')),
-  lease_until timestamptz not null,
   created_at timestamptz not null default now(),
   finished_at timestamptz,
   unique (institution_id, id),
@@ -327,8 +327,8 @@ $$;
 create trigger invitations_register_hash after insert or update of token_hash on app.invitations
   for each row execute function app.invitations_register_hash();
 
--- The leases only grow: lease_until never goes down or back to NULL once set, and lease_holder changes only when the
--- previous lease has expired (or there was none). Against the owner too.
+-- The lease of a student only grows: lease_until never goes down or back to NULL once set, and lease_holder changes only when
+-- the previous lease has expired (or there was none). Against the owner too.
 create function app.account_provisioning_lease() returns trigger
 language plpgsql
 set search_path = ''
@@ -345,20 +345,6 @@ end
 $$;
 create trigger account_provisioning_lease before update on app.account_provisioning
   for each row execute function app.account_provisioning_lease();
-
-create function app.access_card_issues_lease() returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if new.lease_until < old.lease_until then
-    raise exception 'app.access_card_issues_lease: lease_until only grows' using errcode = 'P0004';
-  end if;
-  return new;
-end
-$$;
-create trigger access_card_issues_lease before update on app.access_card_issues
-  for each row execute function app.access_card_issues_lease();
 
 -- Session (T2.7).
 create function api.internal_revoke_user_sessions(p_user_id uuid)
@@ -436,23 +422,11 @@ create function api.begin_access_cards(p_group_id uuid, p_cards jsonb, p_op_key 
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
-create function api.finish_access_cards(p_issue_id uuid, p_done uuid[], p_uncertain uuid[])
+create function api.finish_access_cards(p_issue_id uuid, p_done uuid[])
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 
-create function api.internal_claim_card_password(p_issue_id uuid, p_student_id uuid)
-returns jsonb language plpgsql security definer set search_path = ''
-as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
-
-create function api.internal_extend_card_issue(p_issue_id uuid)
-returns jsonb language plpgsql security definer set search_path = ''
-as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
-
-create function api.internal_extend_provisioning(p_provisioning_id uuid, p_holder uuid)
-returns jsonb language plpgsql security definer set search_path = ''
-as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
-
-create function api.internal_claim_provisioning(p_provisioning_id uuid, p_holder uuid default null)
+create function api.internal_claim_account(p_provisioning_id uuid, p_holder uuid)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$ begin perform app.rpc_begin(); perform app.raise_error('UNAVAILABLE', 'not_implemented'); end $$;
 

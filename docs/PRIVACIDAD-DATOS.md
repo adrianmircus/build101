@@ -162,7 +162,7 @@ Una emisión de tarjetas: la operación con plazo que cambia contraseñas en Aut
 | Campo | Qué pasa | Después | Por qué |
 |---|---|---|---|
 | `op_key`, `op_identity` | conserva | no personal | Identidad del pedido: un uuid del cliente y un resumen de grupo y conjunto de estudiantes. No contiene ningún id de estudiante y no permite recuperar la lista. |
-| `institution_id`, `group_id`, `issued_by`, `status`, `lease_until`, `finished_at`, `id`, `created_at` | conserva | no personal | Control técnico de la operación y quién la hizo (un adulto). |
+| `institution_id`, `group_id`, `issued_by`, `status`, `finished_at`, `id`, `created_at` | conserva | no personal | Control técnico de la operación y quién la hizo (un adulto). |
 
 ### `access_cards`
 
