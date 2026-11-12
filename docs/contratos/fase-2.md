@@ -41,8 +41,8 @@ Los servicios no deciden permisos. Toda operación con el cliente admin (crear u
 
 ### Correo
 
-- Una interfaz `MailSender` (`lib/server/mail/`) con dos implementaciones: Resend por `fetch` a su API (sin dependencia nueva; `RESEND_API_KEY` y `MAIL_FROM`) y un buzón de archivos para desarrollo y pruebas, que escribe en `.tmp/mail/` (ignorado por git). Se elige por `MAIL_DRIVER=resend|file`. En producción, sin `RESEND_API_KEY` la app no arranca.
-- El correo de recuperar la contraseña lo manda Supabase Auth. En producción, con Resend como SMTP (`docs/PLATAFORMA.md`, «Decisiones a confirmar»). En local va a Inbucket.
+- Una interfaz `MailSender` (`lib/server/mail/`) con dos implementaciones: Resend por `fetch` a su API (sin dependencia nueva; `RESEND_API_KEY` y `MAIL_FROM`) y Mailpit para desarrollo y pruebas, por su API HTTP de envío (`POST /api/v1/send` en el puerto 54324 de Supabase local). Se elige por `MAIL_DRIVER=resend|mailpit`. En producción, sin `RESEND_API_KEY` la app no arranca.
+- El correo de recuperar la contraseña lo manda Supabase Auth. En producción, con Resend como SMTP (`docs/PLATAFORMA.md`, «Decisiones a confirmar»). En local va a Mailpit.
 - Ningún log lleva un token, un enlace con token ni un correo. `log.ts` ya filtra por lista de permitidos: no se suma ninguna clave nueva para esto.
 
 ### Tokens
@@ -317,7 +317,7 @@ Archivos: supabase/migrations/20261114120000_t2_3_invitations.sql, supabase/test
   supabase/tests/030_reasons.test.sql (sumar razones), lib/domain/errors/reasons.ts (sumar textos),
   lib/server/repos/invitations.ts, lib/server/repos/admin/invitations.ts, lib/server/repos/admin/auth-users.ts,
   lib/server/services/invitations.ts, lib/server/services/staff-auth.ts, lib/server/mail/**,
-  tests/integration/invitations/**, .env.example (MAIL_*), .gitignore (.tmp/mail).
+  tests/integration/invitations/**, .env.example (MAIL_*).
 Criterios: las RPC de «Invitaciones» con la reglas comunes de pgTAP; aceptar con otro correo da FORBIDDEN; dos
   aceptaciones a la vez dejan una membresía; alta por invitación crea la cuenta solo si el token está vigente;
   recuperar contraseña con límite y sin llamar a Auth para un correo sintético; ningún log con token o correo.
@@ -400,7 +400,7 @@ Criterios: el Playwright de la demo sigue en verde; la cookie de la demo solo ab
 - pgTAP de cada RPC nueva con las reglas comunes de la fase 1.
 - Integración contra Supabase local: aceptar una invitación (con y sin cuenta, con otro correo, vencida); crear cuentas y reintentar; emitir tarjetas y entrar con la contraseña nueva; la vieja ya no entra; reconciliar.
 - Carreras: dos aceptaciones de la misma invitación; dos emisiones de tarjetas del mismo estudiante; dos fallos de login a la vez.
-- Playwright: el profe entra y sale; recupera la contraseña con el correo de Inbucket; un admin invita a un profe y el profe acepta desde el buzón de archivos; el admin crea un grupo con estudiantes e imprime las tarjetas (la página de impresión, sin la impresora); el estudiante entra con los datos de la tarjeta y con el enlace del QR; la demo guiada completa en escritorio y celular.
+- Playwright: el profe entra y sale; recupera la contraseña con el correo de Mailpit; un admin invita a un profe y el profe acepta desde Mailpit; el admin crea un grupo con estudiantes e imprime las tarjetas (la página de impresión, sin la impresora); el estudiante entra con los datos de la tarjeta y con el enlace del QR; la demo guiada completa en escritorio y celular.
 - Fugas: ningún log de la fase tiene un correo, un token, un usuario o una contraseña (un test que corre los flujos con el log capturado y busca esos valores).
 
 ## Para después
