@@ -2,7 +2,7 @@
 
 Este documento fija cómo entran a Tiza los profes, los admins y los estudiantes con cuentas de verdad: las tablas y RPC nuevas, los servicios, las rutas, las pantallas y los tickets. Lo escribe el orquestador antes de repartir. Los tickets lo leen y no lo cambian: si algo no cierra, responden `BLOQUEADO`.
 
-Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 y 2 de Codex (F2C-1 a F2C-35, `docs/revisiones/fase-2-contrato-codex.md`).
+Fecha: 12/11/2026. Rama: `plataforma/fase-2`, desde `plataforma/fase-1`. Rige todo lo de `docs/contratos/fase-1.md` (esquemas, errores, nombres, locks, idempotencia, triggers de pertenencia) y `docs/contratos/fase-1-lecciones.md`. Incorpora las rondas 1 a 3 de Codex (F2C-1 a F2C-42, `docs/revisiones/fase-2-contrato-codex.md`).
 
 Archivos del contrato (los escribe el orquestador, ningún ticket los edita):
 
@@ -60,7 +60,7 @@ Como en la fase 1: argumentos `p_snake_case`, salidas `jsonb` en camelCase. Las 
 ### Sesión vigente en la base (F2C-9)
 
 - Un access token de Supabase sigue siendo válido hasta vencer aunque se cierre la sesión. Por eso `app.rpc_begin()` suma un chequeo: si el JWT trae `session_id` y esa sesión ya no está en `auth.sessions`, la RPC da `FORBIDDEN no_session`. Un JWT de Auth real siempre trae `session_id`; las pruebas que simulan claims sin él no cambian.
-- **Desde el rol del estudiante (F2C-26).** Las RPC `student_*` corren como `tiza_student`, que no ve el esquema `auth`. El chequeo lo hace `app.session_alive()`: sin argumentos, lee `session_id` de `request.jwt.claims` con `current_setting` y responde solo si esa sesión existe. Es `SECURITY DEFINER`, con dueño `postgres`, `search_path = ''`, y `EXECUTE` para `tiza_student`, `authenticated` y `service_role`. Es la única excepción a «ningún helper presta privilegios» (fase 1, «El rol del estudiante»): no recibe datos y solo dice si la sesión de quien llama sigue viva. `005_student_role` la suma a su lista de excepciones revisadas, con una prueba de que con el claim de otra sesión responde por esa y nada más.
+- **Desde el rol del estudiante (F2C-26).** Las RPC `student_*` corren como `tiza_student`, que no ve el esquema `auth`. El chequeo lo hace `app.session_alive()`: sin argumentos, lee `session_id` de `request.jwt.claims` con `current_setting` y responde solo si esa sesión existe. Es `SECURITY DEFINER`, con dueño `postgres`, `search_path = ''`, y `EXECUTE` solo para `tiza_student` (F2C-40): las RPC de staff y las internas corren como `postgres`, que es su dueño, y `000_privileges` sigue exigiendo que `authenticated` y `service_role` no ejecuten nada de `app`. Es la única excepción a «ningún helper presta privilegios» (fase 1, «El rol del estudiante»): no recibe datos y solo dice si la sesión de quien llama sigue viva. `005_student_role` la suma a su lista de excepciones revisadas, con una prueba de que con el claim de otra sesión responde por esa y nada más.
 - Salir (`signOut` con alcance `local`), cambiar la contraseña (`signOut` con alcance `others`) y emitir una tarjeta nueva (`internal_revoke_user_sessions`) borran sesiones. Desde ese momento, ninguna RPC acepta el token viejo.
 - `jwt_expiry` queda en 3600: el chequeo en la base hace que no importe para los datos.
 
@@ -102,39 +102,50 @@ Sale Upstash. Los contadores viven en `app.rate_limits` (ya existe) y se tocan s
 
 `<parte aleatoria>@estudiantes.usetiza.app`, con 32 caracteres hexadecimales de `crypto.randomBytes(16)`. El spec decía `<student_id>`; se usa una parte aleatoria para que el correo no se derive de un id que ven los profes, y se cambia en cada tarjeta nueva (F2C-27). `lib/domain/accounts/email.ts` lo arma y lo reconoce. El correo vigente vive solo en `auth.users`: `internal_resolve_student_login` lo lee de ahí. El subdominio no recibe correo. Recuperar contraseña rechaza un correo de ese dominio sin llamar a Auth, y una invitación a ese dominio da `INVALID invalid_email`.
 
-### El plazo de una operación con Auth (F2C-24, F2C-25)
+### El plazo de una operación con Auth (F2C-24, F2C-25, F2C-36 a F2C-38)
 
-Varias operaciones escriben en Auth, fuera de la transacción de Postgres: crear la cuenta de un estudiante, cambiarle la contraseña y el correo, crear la cuenta de un profe invitado. Para que una escritura atrasada no pise a otra, cada una toma antes un **plazo** en la base, bajo lock, y todas cumplen esta regla:
+Dos operaciones escriben en Auth, fuera de la transacción de Postgres, sobre una cuenta que ya existe o que se crea con un id elegido antes: aprovisionar la cuenta de un estudiante, y cambiarle la contraseña y el correo al emitir una tarjeta. Para que una escritura atrasada no pise a otra, cada una toma antes un **plazo** en la base, bajo lock, con un **titular**, y todas cumplen estas reglas:
 
-- **Nadie llama a Auth sin un plazo vigente con al menos 4 minutos por delante.** El servicio lo confirma con la RPC de su operación (`internal_claim_card_password`, `internal_claim_provisioning`) justo antes de llamar, y cada llamada a Auth tiene un `AbortSignal` de 5 segundos.
-- **El plazo es de 5 minutos y es más largo que cualquier proceso que pueda tenerlo.** Las Server Actions corren en funciones de Netlify, que la plataforma corta a los 60 segundos. Un proceso que confirmó el plazo y se frenó no puede seguir 4 minutos más: lo mata la plataforma. Su pedido a Auth, si ya salió, se resuelve o vence en 5 segundos.
-- **Nadie empieza otra operación sobre la misma cuenta hasta que el plazo anterior venció o terminó.** Cuando vence, ya no puede llegar a Auth ninguna escritura del proceso anterior.
-- **Los comandos de terminal** (`admin:reconcile`) no tienen ese corte. Por eso confirman el plazo antes de cada llamada, nunca hacen dos llamadas con una sola confirmación, y en producción corren en el entorno de funciones (la fase 3 los pasa a trabajos). Queda anotado como riesgo aceptado para la corrida manual en local o staging.
+- **Titular.** Tomar el plazo devuelve un `holder` (uuid) que queda guardado junto al plazo. Confirmar, recordar la cuenta y terminar exigen ese `holder`. Sin él, o con otro, la RPC da `ok: false` y no cambia nada. Así una confirmación de A no se confunde con una toma de B.
+- **Nadie llama a Auth sin confirmar antes un plazo vigente con al menos 4 minutos por delante**, y cada llamada a Auth vence a los 5 segundos. Los métodos admin de `auth-js` no reciben un `AbortSignal`: el plazo se pone con un `fetch` propio en el cliente admin de Auth (`global.fetch` con `AbortSignal.timeout(5000)`).
+- **El plazo es de 5 minutos y es más largo que cualquier proceso que pueda tenerlo.** Las Server Actions corren en funciones de Netlify, que la plataforma corta a los 60 segundos. Un proceso que confirmó el plazo no puede seguir 4 minutos más: lo mata la plataforma.
+- **Resultado confirmado contra resultado incierto (F2C-36).**
+  - Un **rechazo confirmado** de Auth (una respuesta 4xx que dice qué falló) es un fallo: la operación lo anota y sigue.
+  - Un **resultado incierto** (vencimiento de los 5 s, error de red, 5xx) no es un fallo. La operación extiende el plazo a **15 minutos desde ahora** y no lo suelta. La tarjeta de ese estudiante no se imprime. Ninguna emisión, aprovisionamiento ni supresión de esa cuenta puede avanzar hasta que venza.
+  - Los 15 minutos cubren con creces el tiempo máximo que Auth procesa un pedido: GoTrue corta cada pedido con su propio plazo de servidor. T2.5b busca en el código de `supabase/auth` el valor de ese corte (`API_MAX_REQUEST_DURATION` o el que corresponda) y lo anota en `docs/contratos/fase-2-notas.md`. Si es mayor a 5 minutos, el ticket responde `BLOQUEADO`.
+- **El plazo solo crece (F2C-37).** `lease_until` nunca baja ni vuelve a NULL una vez puesto, y `holder` cambia solo cuando el plazo anterior venció. Lo garantiza una guardia (P0004), también contra el dueño. Terminar una operación no «suelta» el plazo: lo deja como está. La operación siguiente espera a que venza, o la misma operación lo reconoce por su estado (`active`, `done`).
+- **Nadie empieza otra operación sobre la misma cuenta hasta que el plazo anterior venció o su operación terminó con un resultado confirmado.** Cuando vence, ya no puede llegar a Auth ninguna escritura del proceso anterior.
+- **Los comandos de terminal** (`admin:reconcile`) no tienen el corte de 60 s. Confirman el plazo antes de cada llamada, nunca hacen dos llamadas con una sola confirmación, y en producción corren en el entorno de funciones (la fase 3 los pasa a trabajos). Queda como riesgo aceptado para la corrida manual en local o staging.
+- **El alta de un profe invitado no usa plazo**, y queda exceptuada con esta razón: crea una cuenta nueva con un correo que Auth no deja repetir (gana una sola) y nunca cambia una cuenta que ya existe. No hay dos escrituras que se puedan pisar.
 
-### Aprovisionar una cuenta de estudiante (F2C-6 a F2C-8, F2C-25)
+### Aprovisionar una cuenta de estudiante (F2C-6 a F2C-8, F2C-25, F2C-36 a F2C-38)
 
 La cuenta de Auth de un estudiante tiene un id que se decide y se recuerda antes de crearla, así un reintento nunca crea una segunda:
 
-1. `internal_claim_provisioning(p_provisioning_id)` bloquea al estudiante y después su fila de aprovisionamiento (el orden de la fase 1). Si la fila está `deleted` o el estudiante no existe, devuelve `ok: false` y el servicio para. Si otro proceso tiene un plazo vigente, devuelve `ok: false` con `retryAt`. Si no, toma el plazo (`lease_until`, columna nueva) y devuelve la fila: estado, `authUserId` y un correo a usar.
-2. Si no tiene `authUserId`, el servicio elige uno (`crypto.randomUUID()`) y lo guarda con `internal_remember_student_account`, que exige el plazo vigente. Si ya había uno, la RPC devuelve ese: se usa el guardado, nunca el propio.
-3. `auth.admin.createUser({ id: authUserId, email: sintético, email_confirm: true, app_metadata: { provisioning_id }, password? })`.
-4. Si el id ya existe en Auth, `auth.admin.getUserById(authUserId)`: si su `app_metadata.provisioning_id` coincide, sigue; si no, `internal_fail_student_account('account_mismatch')` y para.
-5. `internal_upsert_app_user` e `internal_link_student_user` (existen). Al vincular, el plazo se libera.
+1. `internal_claim_provisioning(p_provisioning_id, p_holder)` bloquea al estudiante y después su fila de aprovisionamiento (el orden de la fase 1).
+   - Con `p_holder` NULL, intenta tomar el plazo. Si la fila está `deleted` o el estudiante no existe, da `ok: false`. Si otro titular tiene un plazo vigente, da `ok: false` con `retryAt`. Si no, toma el plazo con un `holder` nuevo y devuelve la fila: estado, `authUserId`, `holder` y `leaseUntil`.
+   - Con el `p_holder` propio, confirma: extiende el plazo a 5 minutos y da `ok: true`, solo si el titular sigue siendo ese, la fila no está `deleted` y quedan al menos 4 minutos.
+2. Si no tiene `authUserId`, el servicio elige uno (`crypto.randomUUID()`) y lo guarda con `internal_remember_student_account(p_provisioning_id, p_holder, p_auth_user_id)`. Si ya había uno, la RPC devuelve ese: se usa el guardado, nunca el propio.
+3. Confirma el plazo y llama a `auth.admin.createUser({ id: authUserId, email: sintético, email_confirm: true, app_metadata: { provisioning_id }, password? })`.
+4. Si el id ya existe en Auth, confirma de nuevo y llama a `auth.admin.getUserById(authUserId)`: si su `app_metadata.provisioning_id` coincide, sigue; si no, `internal_fail_student_account(p_provisioning_id, p_holder, 'account_mismatch')` y para.
+5. Si Auth da un resultado incierto, `internal_extend_provisioning(p_provisioning_id, p_holder)` lleva el plazo a 15 minutos y el servicio para sin marcar nada: lo retoma `reconcile` cuando el plazo venza.
+6. `internal_upsert_app_user` e `internal_link_student_user` (existen).
 
-- **Suprimir gana.** La supresión de la fase 9 marca la fila `deleted` bajo los mismos locks. Desde ese momento ningún `internal_claim_provisioning` da `ok`. La cuenta de Auth se borra recién cuando venció el último plazo (`lease_until`), así ninguna creación atrasada puede llegar después. La fase 9 hereda esta regla. Su prueba ya existe acá: con un plazo vigente, la supresión deja la fila `deleted` y el borrado en Auth espera.
-- **Cuenta que desapareció de Auth sin que nadie suprimiera al estudiante** (alguien la borró a mano desde el panel de Supabase): con la fila `pending`, `failed` o `active` y el id recordado, se recrea con el mismo id y el estudiante conserva su identidad. **Cuenta de un estudiante suprimido** (`deleted`): nunca se recrea. Son dos casos distintos y la fila los distingue.
-- `internal_fail_student_account` nunca cambia una fila `active` ni `deleted`: solo `pending` → `failed` o `failed` → `failed`. Un proceso atrasado que falla no deshace el éxito de otro.
+- **Suprimir gana.** La supresión de la fase 9 marca la fila `deleted` bajo los mismos locks. Desde ese momento ningún claim da `ok`. La cuenta de Auth se borra recién cuando venció `lease_until`, que solo crece. Así ninguna creación atrasada o incierta puede llegar después del borrado. La fase 9 hereda esta regla. Su prueba ya existe acá: con un plazo vigente, la supresión deja la fila `deleted` y el borrado en Auth espera.
+- **Cuenta que desapareció de Auth sin que nadie suprimiera al estudiante** (alguien la borró a mano desde el panel de Supabase): con la fila `pending`, `failed` o `active` y el id recordado, se recrea con el mismo id y el estudiante conserva su identidad. **Cuenta de un estudiante suprimido** (`deleted`): nunca se recrea. La fila distingue los dos casos.
+- `internal_fail_student_account` exige el titular y nunca cambia una fila `active` ni `deleted`: solo `pending` → `failed` o `failed` → `failed`. Un proceso atrasado no deshace el éxito de otro.
 - Dos procesos que aprovisionan a la vez no corren juntos: el segundo encuentra el plazo tomado.
 
-### Emitir tarjetas (F2C-4, F2C-5, F2C-24, F2C-30, F2C-31)
+### Emitir tarjetas (F2C-4, F2C-5, F2C-24, F2C-30, F2C-31, F2C-36)
 
 Emitir una tarjeta cambia la contraseña y el correo en Auth, fuera de la transacción. Cada emisión es una operación con plazo (ver «El plazo de una operación con Auth»), y un estudiante solo puede estar en una emisión abierta a la vez:
 
-1. **Empezar** (`begin_access_cards`, con la sesión). Autoriza. Bloquea a los estudiantes en orden de id. Si alguno tiene una tarjeta `pending` de otra emisión con el plazo vigente, `CONFLICT card_issue_running`. Si el plazo venció, esa tarjeta pasa a `revoked` y esa emisión a `abandoned`. Crea la emisión (`running`, plazo de 5 minutos) y una tarjeta `pending` por estudiante. Escribe `audit_log` (`access_card.issued`) con el conjunto.
-2. **Por estudiante** (servicio). `internal_claim_card_password(p_issue_id, p_student_id)` confirma, bajo lock, que la tarjeta sigue `pending` y la emisión `running` con al menos 4 minutos de plazo, lo extiende a 5 minutos desde ahora y devuelve la cuenta. Recién entonces el servicio aprovisiona si hace falta, pone en Auth la contraseña nueva y un correo nuevo, y cierra las sesiones del estudiante (`internal_revoke_user_sessions`). Si la confirmación da `ok: false`, no toca Auth.
-3. **Terminar** (`finish_access_cards`, con la sesión del mismo actor). Para cada estudiante que salió bien: la tarjeta vigente pasa a `revoked` y la `pending` a `active`. Las demás `pending` de esa emisión pasan a `revoked`. La emisión queda `done`. Devuelve los estudiantes activados. El servicio solo devuelve tarjetas de esos.
+1. **Empezar** (`begin_access_cards`, con la sesión). Autoriza. Bloquea a los estudiantes en orden de id. Si alguno tiene una tarjeta `pending` de otra emisión cuyo plazo sigue vigente (esté `running` o `done`), `CONFLICT card_issue_running`. Si el plazo venció, esa tarjeta pasa a `revoked`, y si su emisión seguía `running`, pasa a `abandoned`. El titular del plazo de una emisión es la emisión misma: solo el pedido que la empezó la conoce. Crea la emisión (`running`, plazo de 5 minutos) y una tarjeta `pending` por estudiante. Escribe `audit_log` (`access_card.issued`) con el conjunto.
+2. **Por estudiante** (servicio). `internal_claim_card_password(p_issue_id, p_student_id)` confirma, bajo lock, que la tarjeta sigue `pending` y la emisión `running` con al menos 4 minutos de plazo, lo extiende a 5 minutos desde ahora y devuelve la cuenta. Recién entonces el servicio aprovisiona si hace falta, pone en Auth la contraseña nueva y un correo nuevo, y cierra las sesiones del estudiante (`internal_revoke_user_sessions`). Si la confirmación da `ok: false`, no toca Auth. Si Auth da un resultado incierto, `internal_extend_card_issue(p_issue_id)` lleva el plazo de la emisión a 15 minutos y ese estudiante queda como incierto.
+3. **Terminar** (`finish_access_cards(p_issue_id, p_done, p_uncertain)`, con la sesión del mismo actor). Para cada estudiante de `p_done`: la tarjeta vigente pasa a `revoked` y la `pending` a `active`. Las de `p_uncertain` quedan `pending`, bloqueando nuevas emisiones de ese estudiante hasta que venza el plazo. Las demás `pending` de esa emisión pasan a `revoked`. La emisión queda `done`. Devuelve los estudiantes activados. El servicio solo devuelve tarjetas de esos.
 
 - Con la regla del plazo, la garantía es completa: una emisión nueva del mismo estudiante solo empieza cuando la anterior terminó o venció, y una vencida ya no puede escribir en Auth. Dos emisiones a la vez imprimen una sola contraseña, y es la que anda.
+- A un estudiante incierto la pantalla le dice «No pudimos confirmar la tarjeta de Lucía. Probá de nuevo en unos minutos». Pasado el plazo, la emisión siguiente pone una contraseña nueva, y ya no puede llegar ninguna escritura vieja.
 - Si el proceso muere a mitad de camino, las tarjetas `pending` vencen solas y la próxima emisión las limpia. Un estudiante cuya contraseña sí cambió sigue con su tarjeta vieja activa, que ya no entra: el profe ve «Tarjeta nueva» como siempre.
 - **Idempotencia.** `op_key` con identidad, como en la fase 1. La identidad es `op_identity`: el hex de `sha256` del grupo y el conjunto ordenado de estudiantes. Es un resumen, no la lista: la emisión no guarda ids de estudiantes y la supresión no tiene nada que sacar de ella (F2C-30). El orden de las respuestas a un `op_key` repetido:
   1. con otra identidad, `CONFLICT op_key_reused`;
@@ -239,12 +250,14 @@ create table app.access_cards (
 create unique index access_cards_active_key on app.access_cards (student_id) where status = 'active';
 create unique index access_cards_pending_key on app.access_cards (student_id) where status = 'pending';
 
--- Los hashes de invitación que ya no sirven (rotados, aceptados, revocados): no vuelven a nacer vigentes.
-create table app.invitation_spent_tokens (
-  token_hash bytea primary key check (octet_length(token_hash) = 32),
+-- Registro de todo hash de invitación que existió alguna vez. Un hash entra una sola vez, por el índice único, y no
+-- se borra mientras exista la institución: así nunca vuelve a nacer, ni de a pasos ni con dos conexiones (F2C-39).
+create table app.invitation_tokens (
+  id uuid primary key default gen_random_uuid(),
+  token_hash bytea not null unique check (octet_length(token_hash) = 32),
   institution_id uuid not null references app.institutions (id) on delete cascade,
   invitation_id uuid not null,
-  spent_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
   foreign key (institution_id, invitation_id) references app.invitations (institution_id, id) on delete cascade
 );
 
@@ -254,20 +267,21 @@ alter table app.invitations add column op_identity text;
 alter table app.invitations add column sent_at timestamptz;
 create unique index invitations_op_key on app.invitations (institution_id, op_key) where op_key is not null;
 
--- El plazo de quien está creando la cuenta de Auth de un estudiante.
+-- El plazo de quien está creando la cuenta de Auth de un estudiante, y su titular.
 alter table app.account_provisioning add column lease_until timestamptz;
+alter table app.account_provisioning add column lease_holder uuid;
 ```
 
 Guardias (P0004, como en la fase 1; entran DML y TRUNCATE de cualquier rol, incluido el dueño y concurrente):
 
-- **Pertenencia.** En tarjetas, emisiones y hashes gastados no cambian `institution_id`, `student_id`, `issue_id`, `group_id`, `invitation_id`, `token_hash`, `op_key` ni `op_identity`, e `issued_by` solo pasa a NULL (el `on delete set null`). En invitaciones, `op_key` y `op_identity` no cambian una vez puestos.
+- **Pertenencia.** En tarjetas, emisiones y el registro de hashes no cambian `institution_id`, `student_id`, `issue_id`, `group_id`, `invitation_id`, `token_hash`, `op_key` ni `op_identity`, e `issued_by` solo pasa a NULL (el `on delete set null`). En invitaciones, `op_key` y `op_identity` no cambian una vez puestos.
 - **Estados que solo avanzan.** Tarjeta: `pending` → `active` → `revoked`, o `pending` → `revoked`. Emisión: `running` → `done` o `abandoned`. Invitación: `accepted` y `revoked` son finales; `pending` y `expired` pueden pasar a `pending` solo con un `token_hash` nuevo.
-- **Rotación de una invitación (F2C-29).** El `token_hash` de una invitación cambia solo en ese paso a `pending`. El hash que se va entra a `invitation_spent_tokens` en la misma sentencia (trigger), y también entra el hash vigente cuando la invitación queda `accepted` o `revoked`. Un `token_hash` nuevo o insertado que ya está en `invitation_spent_tokens` da P0004.
+- **Rotación de una invitación (F2C-29, F2C-39).** El `token_hash` de una invitación cambia solo en ese paso a `pending`. Todo `token_hash` que nace o llega a una invitación se inserta en `app.invitation_tokens` en la misma sentencia (trigger `AFTER INSERT OR UPDATE OF token_hash`), con un `insert` simple: si el hash ya estuvo alguna vez, el índice único lo rechaza (y espera a una transacción concurrente que lo esté insertando, en cualquier nivel de aislamiento). El trigger convierte ese `unique_violation` en P0004. No hay estado «vigente» ni «gastado»: el vigente es el que tiene la invitación, y todos los demás son historia.
 - **Nacimiento.** Una tarjeta nace `pending`. Una emisión nace `running`. Una invitación nace `pending`, sin `accepted_by` (fase 1).
-- **Memoria (F2C-19, F2C-28).** Mientras exista su institución, no se borran las invitaciones ni los hashes gastados. Las tarjetas y las emisiones no se borran mientras exista su estudiante o su grupo: solo se van con ellos, por la cascada. Así un hash revocado no vuelve a nacer vigente por `DELETE` e `INSERT`. La retención de la fase 9 borra el correo de una invitación vieja con una redacción, sin borrar la fila.
-- **El plazo de aprovisionamiento.** `lease_until` solo lo cambian las RPC de aprovisionamiento (sin guardia especial: no da acceso a nada).
+- **Memoria (F2C-19, F2C-28).** Mientras exista su institución, no se borran las invitaciones ni las filas de `invitation_tokens`, y esas filas no cambian. Las tarjetas y las emisiones no se borran mientras exista su estudiante o su grupo: solo se van con ellos, por la cascada. Así un hash revocado no vuelve a nacer vigente por `DELETE` e `INSERT`. La retención de la fase 9 borra el correo de una invitación vieja con una redacción, sin borrar la fila. Para eso la fase 9 suma, en una migración nueva, una excepción acotada a la guardia del correo de `invitations_frozen` (T1.F15): solo en modo de supresión o retención, solo para invitaciones `accepted`, `revoked` o `expired` con más de 90 días, y solo hacia un valor redactado; con su prueba (F2C-42).
+- **Los plazos solo crecen (F2C-37).** En `account_provisioning` y `access_card_issues`, `lease_until` nunca baja ni vuelve a NULL una vez puesto. `lease_holder` cambia solo si el `lease_until` anterior ya venció. Las dos cosas son guardias P0004, también contra el dueño.
 
-**Inventario.** `access_cards` tiene datos de estudiantes (el id y el hash del token); al borrar al estudiante se van por la cascada. `access_card_issues` no tiene ningún dato de un estudiante. Se suman a `docs/PRIVACIDAD-DATOS.md`, `lib/domain/permissions/tables.ts` y `006_inventory.test.sql`. `invitations.email` es un dato personal de un adulto; su retención (redactar 90 días después de aceptada, revocada o vencida) la programa la fase 9. `invitation_spent_tokens` no tiene datos personales.
+**Inventario.** `access_cards` tiene datos de estudiantes (el id y el hash del token); al borrar al estudiante se van por la cascada. `access_card_issues` no tiene ningún dato de un estudiante. Se suman a `docs/PRIVACIDAD-DATOS.md`, `lib/domain/permissions/tables.ts` y `006_inventory.test.sql`. `invitations.email` es un dato personal de un adulto; su retención (redactar 90 días después de aceptada, revocada o vencida) la programa la fase 9. `invitation_tokens` no tiene datos personales.
 
 ## RPC nuevas
 
@@ -316,12 +330,14 @@ Razones nuevas: `already_member`, `invitation_pending`, `invitation_closed`, `in
 | `list_taken_usernames(p_institution_id uuid, p_bases text[])` → `{items: text[]}` | admin o profe de la institución | Usuarios que son una base o una base seguida de dígitos. Hasta 200 bases |
 | `list_group_accounts(p_group_id uuid)` → `{groupName, institutionCode, items: [{studentId, displayName, username, accountStatus, hasSignedIn, lastCardAt}]}` | staff del grupo o admin | `accountStatus`: `pending`, `active` o `failed`. Inscripciones activas, sin archivados. No es sensible |
 | `begin_access_cards(p_group_id uuid, p_cards jsonb, p_op_key uuid)` → `{issueId, leaseUntil, institutionCode, institutionName, items: [{studentId, displayName, username}]}` | staff del grupo o admin, no en un sandbox | `p_cards` es `[{studentId, tokenHash}]`, de 1 a 60, el hash en hex. Ver «Emitir tarjetas». No inscripto o archivado: `INVALID not_enrolled`. Forma mala: `INVALID invalid_cards` |
-| `finish_access_cards(p_issue_id uuid, p_done uuid[])` → `{activated: uuid[]}` | el mismo actor que empezó | Ver «Emitir tarjetas». Otra persona: `NOT_FOUND`. Emisión que no está `running`: `CONFLICT card_issue_done` |
+| `finish_access_cards(p_issue_id uuid, p_done uuid[], p_uncertain uuid[])` → `{activated: uuid[]}` | el mismo actor que empezó | Ver «Emitir tarjetas». Otra persona: `NOT_FOUND`. Emisión que no está `running`: `CONFLICT card_issue_done` |
 | `internal_claim_card_password(p_issue_id uuid, p_student_id uuid)` → `{ok, provisioningId, status, authUserId}` | service_role | Ver «Emitir tarjetas» |
-| `internal_claim_provisioning(p_provisioning_id uuid)` → `{ok, retryAt, status, authUserId, leaseUntil}` | service_role | Ver «Aprovisionar» |
+| `internal_extend_card_issue(p_issue_id uuid)` → `{leaseUntil}` | service_role | Lleva el plazo de una emisión a 15 minutos desde ahora, nunca más corto |
+| `internal_claim_provisioning(p_provisioning_id uuid, p_holder uuid)` → `{ok, retryAt, status, authUserId, holder, leaseUntil}` | service_role | Ver «Aprovisionar» |
+| `internal_extend_provisioning(p_provisioning_id uuid, p_holder uuid)` → `{ok, leaseUntil}` | service_role | Lleva el plazo a 15 minutos, solo para su titular |
 | `internal_get_student_accounts(p_student_ids uuid[])` → `{items: [{studentId, provisioningId, status, authUserId}]}` | service_role | Hasta 60 |
-| `internal_remember_student_account(p_provisioning_id uuid, p_auth_user_id uuid)` → `{authUserId}` | service_role | Exige el plazo vigente. Guarda el id si no había; si había, devuelve el guardado. Bajo el lock del estudiante y después el de la fila, en ese orden |
-| `internal_fail_student_account(p_provisioning_id uuid, p_error_code text)` → `{status, attempts}` | service_role | Solo `pending` → `failed` o `failed` → `failed`; con `active` o `deleted` no cambia nada. Libera el plazo |
+| `internal_remember_student_account(p_provisioning_id uuid, p_holder uuid, p_auth_user_id uuid)` → `{authUserId}` | service_role | Exige el plazo vigente de ese titular. Guarda el id si no había; si había, devuelve el guardado. Bajo el lock del estudiante y después el de la fila, en ese orden |
+| `internal_fail_student_account(p_provisioning_id uuid, p_holder uuid, p_error_code text)` → `{status, attempts}` | service_role | Exige el titular. Solo `pending` → `failed` o `failed` → `failed`; con `active` o `deleted` no cambia nada. No toca el plazo |
 | `internal_list_unfinished_accounts(p_limit integer)` → `{items: [{studentId, provisioningId, status, authUserId}]}` | service_role | `pending` y `failed` con menos de 5 intentos, sin archivar y sin plazo vigente. Nunca `deleted` |
 | `internal_find_institution(p_code text)` → `{code, name}` o `NOT_FOUND` | service_role | Solo escuelas |
 | `internal_resolve_student_login(p_code text, p_username text)` → `{institutionFound, authEmail}` | service_role | `authEmail` (el correo vigente, de `auth.users`) solo si el estudiante existe, no está archivado y su cuenta está `active`; si no, `null` |
@@ -336,6 +352,7 @@ Las capas de `eslint/rules/layers.mjs` mandan (F2C-35):
 - `db/client.ts` solo entra en `lib/server/repos/*.ts`. Por eso toda llamada con la sesión del usuario, también las de Auth (`signInWithPassword`, `signOut`, `verifyOtp`, `updateUser`, `getClaims`), vive en un repo de sesión: `lib/server/repos/auth-session.ts`.
 - `repos/admin/**` solo entra en `services/admin/**`, `jobs/**` y `tests/**`. Por eso todo lo que usa el cliente admin vive en `lib/server/services/admin/`. Los servicios públicos (`services/*.ts`) llaman a esos servicios, nunca a los repos admin.
 - `app/**` llama a servicios y nunca a repos.
+- **De dónde sale el cliente (F2C-41).** `lib/server/repos/db.ts` exporta `sessionDb(): Promise<RpcDb>` (crea el cliente de sesión del pedido) y `lib/server/repos/admin/db.ts` exporta `adminDb(): RpcDb` (el cliente admin, con el `fetch` de 5 s para Auth). Un servicio pide el cliente ahí y se lo pasa a los repos existentes, que ya reciben un `RpcDb`; nunca lo usa directamente. `sessionDb` lo escribe T2.1; `adminDb`, T2.7.
 
 Los cuerpos del contrato levantan `AppError("UNAVAILABLE", "Todavía no está disponible.")`.
 
@@ -427,7 +444,7 @@ Turno de base: no
 Objetivo: cada pedido refresca la sesión de Supabase y el código pregunta quién es el actor en un solo lugar.
 Archivos: proxy.ts (solo refresco y cookies de Supabase; las reglas de áreas siguen como están hasta T2.8),
   los encabezados no-store y no-referrer de las páginas con token, lib/server/auth/actor.ts,
-  lib/server/auth/session-proxy.ts, lib/server/repos/auth-session.ts (solo getClaims), lib/server/auth/*.test.ts,
+  lib/server/auth/session-proxy.ts, lib/server/repos/auth-session.ts (solo getClaims), lib/server/repos/db.ts (sessionDb), lib/server/auth/*.test.ts,
   tests/integration/auth/actor.test.ts.
 Criterios: el proxy refresca y no toca /api/jobs ni estáticos; getActor devuelve null, staff (con instituciones y
   roles) o estudiante; la cookie de la demo no da actor; requireAdmin de otra institución da FORBIDDEN.
@@ -441,7 +458,7 @@ Turno de base: sí
 Objetivo: una sesión cerrada ya no lee datos, y los intentos se cuentan en Postgres antes de probar.
 Archivos: supabase/migrations/20261114110000_t2_7_sessions_rate_limits.sql, supabase/tests/041_sessions_rate_limits.test.sql,
   supabase/tests/helpers (si hace falta un helper de sesión), lib/server/repos/admin/rate-limits.ts,
-  lib/server/repos/admin/sessions.ts, lib/server/services/admin/rate-limit.ts, lib/server/services/admin/sessions.ts,
+  lib/server/repos/admin/sessions.ts, lib/server/repos/admin/db.ts (adminDb con el fetch de 5 s), lib/server/services/admin/rate-limit.ts, lib/server/services/admin/sessions.ts,
   lib/server/services/rate-limit.ts (+ test), lib/server/auth/request.ts (+ test), supabase/tests/005_student_role.test.sql
   (sumar app.session_alive a las excepciones revisadas),
   supabase/config.toml ([auth.rate_limit], minimum_password_length), package.json y package-lock.json (solo sacar
