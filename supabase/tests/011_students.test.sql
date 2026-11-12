@@ -584,9 +584,12 @@ create function pg_temp.holds(p_key text) returns boolean language sql as $$
 $$;
 create function pg_temp.enr_key(p_group text, p_student text) returns text language sql as $$
   select 'tiza.enrollment:' || pg_temp.id(p_group)::text || ':' || pg_temp.id(p_student)::text $$;
-select ok(not pg_temp.holds(pg_temp.enr_key('g_f', 'sf2')), 'nothing holds the enrollment lock of a fresh pair');
-select is(pg_temp.enr('teach', 'g_f', 'sf2') ->> 'error', null, 'enroll_student enrolls');
-select ok(pg_temp.holds(pg_temp.enr_key('g_f', 'sf2')), 'and takes the (group, student) lock');
+-- sf5 is a student with no account, made only for this lock check: sf2 must stay out of g_f, because
+-- the matrix below needs a student of the institution who is NOT in the group (NOT_FOUND for them).
+insert into ids (k, id) select 'sf5', (pg_temp.new_student('other', 'go_f', 'Rita', 'rita.f') ->> 'id')::uuid;
+select ok(not pg_temp.holds(pg_temp.enr_key('g_f', 'sf5')), 'nothing holds the enrollment lock of a fresh pair');
+select is(pg_temp.enr('teach', 'g_f', 'sf5') ->> 'error', null, 'enroll_student enrolls');
+select ok(pg_temp.holds(pg_temp.enr_key('g_f', 'sf5')), 'and takes the (group, student) lock');
 select ok(not pg_temp.holds(pg_temp.enr_key('go_f', 'sf3')), 'nothing holds the lock of the pair that will leave');
 select is(pg_temp.enr('admin', 'go_f', 'sf3') ->> 'error', null, 'enrolling in the other group');
 select is(pg_temp.enr('admin', 'go_f', 'sf3', 'unenroll_student') ->> 'error', null, 'and unenrolling');
@@ -626,9 +629,11 @@ create function pg_temp.expect(p_incl text, p_stu text, p_stu2 text) returns tex
   select 'incl=P0001 ' || p_incl || ';stu_r1=P0001 ' || p_stu || ';stu_r2=P0001 ' || p_stu2
          || ';other=P0001 NOT_FOUND not_found;userb=P0001 NOT_FOUND not_found;nobody=P0001 NOT_FOUND not_found changed=false'
 $$;
--- sf1 is in g_f (stu_r1 is sf1); sf2 is in go_f only (stu_r2 is sf2); 'other' teaches go_f, not g_f. A student of the institution gets FORBIDDEN from the group RPCs (they see the group) and NOT_FOUND from another student's record.
+-- sf1 is in g_f (stu_r1 is sf1); sf2 is in go_f only and never in g_f (stu_r2 is sf2); 'other' teaches go_f, not g_f.
+-- A student enrolled in the group gets FORBIDDEN from its RPCs (they see the group). A student of the institution who is not
+-- in the group (stu_r2) gets NOT_FOUND: the group's existence is not revealed. Another student's record is NOT_FOUND for both.
 select is(pg_temp.denied(format('select api.create_student(%L, ''Zeta'', ''zeta.f'', gen_random_uuid())', pg_temp.id('g_f'))),
-  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'FORBIDDEN forbidden'), 'create_student: every denied role gets its code and nothing changes');
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'create_student: every denied role gets its code and nothing changes');
 select is(pg_temp.denied(format('select api.update_student(%L, 1, ''Z'', ''zeta.f'')', pg_temp.id('sf1'))),
   pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'update_student: same');
 select is(pg_temp.denied(format('select api.archive_student(%L, 1)', pg_temp.id('sf1'))),
@@ -636,9 +641,9 @@ select is(pg_temp.denied(format('select api.archive_student(%L, 1)', pg_temp.id(
 select is(pg_temp.denied(format('select api.restore_student(%L, 1)', pg_temp.id('sf1'))),
   pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'restore_student: same');
 select is(pg_temp.denied(format('select api.enroll_student(%L, %L)', pg_temp.id('g_f'), pg_temp.id('sf2'))),
-  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'FORBIDDEN forbidden'), 'enroll_student: same');
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'enroll_student: same');
 select is(pg_temp.denied(format('select api.unenroll_student(%L, %L)', pg_temp.id('g_f'), pg_temp.id('sf1'))),
-  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'FORBIDDEN forbidden'), 'unenroll_student: same');
+  pg_temp.expect('FORBIDDEN forbidden', 'FORBIDDEN forbidden', 'NOT_FOUND not_found'), 'unenroll_student: same');
 
 select * from finish();
 rollback;

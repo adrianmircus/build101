@@ -28,7 +28,9 @@ import { APP_TABLES, type AppTable } from "./tables";
 //   4. only then move the erasure to 'done' and copy it out of the database.
 
 export type ErasureRule = "delete" | "unlink" | "redact" | "keep" | "by_version";
-export type ErasureEntry = { rule: ErasureRule; why: string };
+// `nullifies` lists the columns of a kept or redacted row that go to NULL: the link to the student and
+// anything from which a candidate identity can be checked (T9.5 sets them; the doc marks each `desvincula`).
+export type ErasureEntry = { rule: ErasureRule; why: string; nullifies?: readonly string[] };
 
 export const ERASURE_RULES = {
   app_users: { rule: "delete", why: "Su usuario de la plataforma; se va en cascada al borrar la cuenta de Auth (paso 3)." },
@@ -36,7 +38,11 @@ export const ERASURE_RULES = {
   students: { rule: "delete", why: "Es el estudiante." },
   enrollments: { rule: "delete", why: "Dice en qué grupos estuvo." },
   student_pseudonyms: { rule: "unlink", why: "Mantiene la integridad de lo que se conserva; sin el vínculo no lleva a nadie, pero lo que quede atado sigue siendo personal salvo justificación." },
-  account_provisioning: { rule: "keep", why: "La marca deleted impide que reconcile_accounts recree la cuenta. Sin nombre ni vínculo con el estudiante; auth_user_id deja de ser personal porque la cuenta de Auth se borra antes de cerrar la supresión (paso 3)." },
+  account_provisioning: {
+    rule: "keep",
+    why: "La marca deleted y el op_key impiden que reconcile_accounts recree la cuenta. Sin nombre ni vínculo con el estudiante; op_identity (sha256 de grupo y username) se pone en nulo porque permite comprobar usernames candidatos; auth_user_id deja de ser personal porque la cuenta de Auth se borra antes de cerrar la supresión (paso 3).",
+    nullifies: ["student_id", "op_identity"],
+  },
   student_needs: { rule: "delete", why: "Dato de salud." },
   student_need_events: { rule: "delete", why: "Historial de un dato de salud." },
   student_notes: { rule: "delete", why: "Notas privadas sobre el estudiante." },

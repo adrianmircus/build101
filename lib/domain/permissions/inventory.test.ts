@@ -39,6 +39,7 @@ const REDACTABLE: Record<string, string[]> = {
 const CHANGED: Record<string, string> = {
   "student_pseudonyms.student_id": "desvincula",
   "account_provisioning.student_id": "desvincula",
+  "account_provisioning.op_identity": "desvincula",
   "versions.config": "redacta",
   "versions.general_instructions": "redacta",
   "version_exercises.body": "redacta",
@@ -149,6 +150,20 @@ describe("privacy inventory: fields", () => {
     expect(changedFields(swap(sections, { table: "version_questions", field: "stem", action: "individual: borra; compartida: conserva" }))).not.toEqual(CHANGED);
     expect(changedFields(swap(sections, { table: "versions", field: "config", action: "individual: borra; compartida: conserva" }))).not.toEqual(CHANGED);
     expect(changedFields(swap(sections, { table: "account_provisioning", field: "student_id", action: "conserva" }))).not.toEqual(CHANGED);
+  });
+
+  it("nulls account_provisioning.op_identity on erasure, and fails if it is kept (N1)", () => {
+    const nullified = ERASURE_RULES.account_provisioning.nullifies;
+    expect(nullified).toContain("op_identity");
+    const row = byTable.get("account_provisioning")?.rows.find((item) => item.fields.includes("op_identity"));
+    expect(row).toMatchObject({ action: "desvincula", after: "no queda" });
+    // The doc and erasure.ts agree on every nulled column of the table.
+    const inDoc = (byTable.get("account_provisioning")?.rows ?? []).filter((item) => item.action === "desvincula").flatMap((item) => item.fields);
+    expect(sorted(inDoc)).toEqual(sorted(nullified));
+    // Negative: if the doc kept it as "no personal", it no longer matches the rule.
+    const kept = swap(sections, { table: "account_provisioning", field: "op_identity", action: "conserva" });
+    expect(changedFields(kept)["account_provisioning.op_identity"]).toBeUndefined();
+    expect(changedFields(kept)).not.toEqual(CHANGED);
   });
 
   it("matches each rule with what its fields do", () => {

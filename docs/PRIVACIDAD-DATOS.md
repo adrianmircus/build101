@@ -148,7 +148,8 @@ Una fila por cuenta de estudiante, para que `reconcile_accounts` no recree una c
 | `student_id` | desvincula | no queda | La clave foránea es `ON DELETE SET NULL`: al borrar al estudiante queda en nulo. |
 | `auth_user_id` | conserva | no personal | Es el id de la cuenta de Auth. Es no personal solo por el orden de la supresión (ver «Orden de la supresión»): la cuenta de Auth se borra en el paso 3, antes de cerrarla en el paso 4, y sin la cuenta el id no lleva a nadie. |
 | `status` | conserva | no personal | Pasa a `deleted`: es la marca que impide recrear la cuenta. |
-| `op_key`, `op_identity`, `attempts`, `error_code` | conserva | no personal | Control técnico del aprovisionamiento, sin texto libre. `op_identity` es el sha256 de grupo y usuario de la creación: el id del grupo es aleatorio, así que el hash no lleva al estudiante sin el vínculo. |
+| `op_identity` | desvincula | no queda | Es el sha256 de grupo y username de la creación. Deja de ser «no personal»: los grupos y sus uuid siguen existiendo después de la supresión, así que quien conozca un username candidato puede calcular `sha256(grupo + ':' + username)` y comprobar si coincide. Queda en nulo al borrar al estudiante; se conservan la marca `deleted` y el `op_key`, que bastan para que `reconcile_accounts` no recree la cuenta. |
+| `op_key`, `attempts`, `error_code` | conserva | no personal | Control técnico del aprovisionamiento, sin texto libre. `op_key` es un uuid que genera el cliente y no se deriva de ningún dato del estudiante. |
 | `id`, `institution_id`, `created_at`, `updated_at`, `revision` | conserva | no personal | Identificadores y fechas de la fila, sin dato propio. |
 
 ### `student_needs`
