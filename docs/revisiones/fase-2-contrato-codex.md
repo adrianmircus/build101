@@ -403,3 +403,92 @@ La excepción mínima de `session_alive` y diferir la retención a fase 9 tambi�
 ### Qué se cambió
 
 Versión 5: una sola reserva por estudiante en account_provisioning para toda escritura en Auth, que se lleva a 15 minutos antes de cada llamada y nunca se suelta (F2C-43, F2C-44); la verificación del corte de GoTrue bloquea T2.5b si no se puede probar (F2C-43); authAdmin con el fetch de 5 s como única puerta de auth-users.ts (F2C-45); salidas ok true y ok false declaradas (F2C-46). Se van internal_claim_card_password, internal_claim_provisioning, los extend y p_uncertain; entra internal_claim_account. Crear un estudiante ya no aprovisiona: la cuenta nace con la primera tarjeta.
+
+## Ronda 5
+
+1. **F2C-47 · Alta — El endpoint público de Auth permite escribir fuera de la reserva.**
+
+   **Dónde:** [reserva única, línea 107](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:107), emisión y revocación de sesiones.
+
+   **Escenario:** un estudiante autenticado puede cambiar su contraseña directamente mediante `PUT /auth/v1/user`. Esa llamada no pasa por `authAdmin()` ni por `internal_claim_account`. Supabase ofrece expresamente esa operación. [Documentación oficial](https://supabase.com/docs/reference/javascript/auth-updateuser).
+
+   Puede empezar con una sesión válida y quedar demorada después de autenticarse. Mientras tanto, el profe cambia la contraseña, revoca las sesiones e imprime la tarjeta. La petición anterior continúa y sobrescribe esa contraseña: el recorrido consultado prepara el cambio antes de la transacción y posteriormente guarda la contraseña sin volver a exigir la existencia de la sesión. Es una carrera derivada del [handler de actualización](https://github.com/supabase/auth/blob/master/internal/api/user.go) y de [UpdatePassword](https://github.com/supabase/auth/blob/master/internal/models/user.go).
+
+   **Propongo:** definir un control efectivo en Auth o en su base que impida cambios autónomos de credenciales de estudiantes y exija una autorización ligada al protocolo. Debe cubrir también peticiones ya autenticadas cuando empieza la emisión. Asignar implementación y prueba contra el endpoint público; esconder el botón o canalizar nuestro servidor por `authAdmin()` no cierra este camino.
+
+2. **F2C-48 · Alta — `deleted` no queda protegido como estado terminal de aprovisionamiento.**
+
+   **Dónde:** [«Suprimir gana», línea 136](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:136), [guardias, línea 291](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:291) y `internal_claim_account`.
+
+   **Escenario:** la supresión marca el aprovisionamiento `deleted` mientras todavía existe el estudiante, por ejemplo mientras espera una reserva vigente. Un DML del dueño lo devuelve a `pending`. Cuando vence la reserva, `reconcile` puede reclamarlo y volver a crear Auth. El claim cumple su comprobación actual, pero ya se incumplió «desde ese momento ningún claim da ok».
+
+   Las guardias enumeradas protegen los estados de tarjetas, emisiones e invitaciones y las columnas de reserva. No incluyen la irreversibilidad de `account_provisioning.status = 'deleted'`; las guardias heredadas tampoco la aportan mientras `student_id` siga presente. Prohibir esa transición solamente dentro de `fail` no protege el DML directo.
+
+   **Propongo:** exigir una guardia P0004 que haga terminal `deleted`, también contra el dueño. Agregar la prueba `deleted → pending/failed/active` y una carrera con claim durante la espera de supresión.
+
+3. **F2C-49 · Alta — El reintento por UUID puede quedar atrapado permanentemente como incierto.**
+
+   **Dónde:** [aprovisionamiento, pasos 3–4, línea 132](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:132) y clasificación de todos los 5xx como inciertos.
+
+   **Escenario:** Auth crea el UUID recordado, pero el proceso cae antes de vincularlo. El siguiente intento genera otro correo sintético y vuelve a ejecutar `createUser` con ese UUID. El contrato depende de reconocer «el id ya existe» para pasar a `getUserById`.
+
+   En el [GoTrue consultado](https://github.com/supabase/auth/blob/master/internal/api/admin.go), el UUID duplicado llega al INSERT y el error transaccional se devuelve como **500**. No hay una respuesta específica equivalente al conflicto de correo. Aplicando la regla del documento, el servicio lo considera incierto, espera quince minutos y repite exactamente el mismo problema.
+
+   **Propongo:** consultar primero el UUID recordado, bajo reserva; si existe, verificar `provisioning_id` y actualizarlo; crear solamente ante ausencia confirmada. Mantener el tratamiento conservador de resultados inciertos. Exigir la prueba contra la versión desplegada, incluyendo caída después de crear Auth y antes del vínculo.
+
+4. **F2C-50 · Media — Entre `begin_access_cards` y el claim pueden perder las dos emisiones concurrentes.**
+
+   **Dónde:** [pasos de emisión, línea 144](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:144).
+
+   **Escenario:**
+
+   - A termina `begin_access_cards`: dejó tarjeta pendiente, pero todavía no tomó la reserva.
+   - B ejecuta `begin_access_cards`, encuentra la reserva libre, revoca la tarjeta de A y abandona su emisión.
+   - A ejecuta primero `internal_claim_account`. Esa RPC comprueba la cuenta y el titular, pero no exige una emisión vigente: obtiene la reserva y cambia Auth.
+   - B pierde el claim. A pierde `finish_access_cards` porque su emisión está abandonada.
+
+   Ninguno imprime y la contraseña anterior ya cambió; además, quedan hasta quince minutos de espera. No requiere DML directo.
+
+   **Propongo:** adquirir las reservas en `begin_access_cards`, dentro de la misma transacción, o vincular el claim de emisión a una tarjeta pendiente y una emisión `running`, comprobadas bajo los mismos locks. Precisar también qué representa el `leaseUntil` que devuelve `begin` si todavía no adquirió ninguna reserva.
+
+5. **F2C-51 · Media — Falta transportar el resultado incierto y la hora de reintento hasta la pantalla.**
+
+   **Dónde:** [mensaje prometido, línea 161](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:161), `list_group_accounts`, `applyCardPassword` y [salida de `issueAccessCards`, línea 393](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:393).
+
+   **Escenario:** dos estudiantes quedan inciertos con reservas confirmadas en momentos distintos. La acción devuelve únicamente sus ids en `failed`. No comunica cuáles fueron inciertos ni sus `retryAt`. Al recargar, `list_group_accounts` tampoco devuelve la reserva. La pantalla no puede construir el mensaje contractual con la hora correcta.
+
+   **Propongo:** declarar resultados por estudiante con estado y `retryAt`, y exponer esa disponibilidad en la lectura de cuentas. Completar el transporte del conflicto por estudiante: el `Failure.retryAt` singular no representa por sí solo el detalle prometido para un conjunto.
+
+6. **F2C-52 · Media — La recuperación mediante «Imprimir de nuevo» contradice el borrado en `afterprint`.**
+
+   **Dónde:** [conservación en memoria, línea 122](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:122), [impresión, línea 434](/C:/Users/adrim/build101/.claude/worktrees/fase-1/docs/contratos/fase-2.md:434) y criterio de T2.6b.
+
+   **Escenario:** el profe cierra el diálogo de impresión sin obtener las hojas. La sección nueva exige conservar las tarjetas hasta cerrar la página para poder reimprimir; la sección de pantallas y T2.6b obligan a borrar sus secretos después de `afterprint`. Si el implementador cumple ese criterio, pierde la recuperación y debe esperar hasta quince minutos.
+
+   **Propongo:** elegir una sola política y actualizar juntos comportamiento y criterios de T2.6b. Para sostener la mitigación elegida, conservar las tarjetas durante la vida de la página y borrarlas al cerrarla o mediante una acción explícita.
+
+El estado de los nueve hallazgos abiertos queda así:
+
+| Hallazgo | Estado en v5 | Evaluación |
+|---|---|---|
+| **F2C-4** | **Parcialmente cerrado** | Cierra la sobrescritura entre emisiones que respetan la reserva. La garantía completa conserva el camino de F2C-47. F2C-50 agrega una carrera de disponibilidad. |
+| **F2C-7** | **Parcialmente cerrado** | `fail` no degrada `active`; falta proteger la marca de supresión frente al DML de F2C-48. |
+| **F2C-24** | **Parcialmente cerrado** | El plazo anticipado y persistente resuelve al trabajador administrativo atrasado, sujeto a verificar la cota remota. Falta cubrir el escritor externo de F2C-47. |
+| **F2C-25** | **Parcialmente cerrado** | Distingue borrado accidental de supresión y coordina las llamadas reservadas; la irreversibilidad de la supresión tiene el hueco de F2C-48. |
+| **F2C-36** | **Cerrado en su defecto concreto** | La incertidumbre ya no libera la exclusión ni depende de una extensión posterior. F2C-49 es un problema nuevo de recuperación. |
+| **F2C-43** | **Cerrado en el diseño** | Los quince minutos se guardan antes de llamar. El cierre depende de cumplir efectivamente la compuerta bloqueante de T2.5b. |
+| **F2C-44** | **Cerrado en su defecto concreto** | Revocar una tarjeta pendiente ya no elimina la reserva por estudiante. |
+| **F2C-45** | **Cerrado** | La regla explícita de `authAdmin()` completa el recorrido del timeout y exige probarlo. Conviene corregir la referencia vieja a `db/admin.ts` en la tabla de servicios. |
+| **F2C-46** | **Cerrado** | Claim, remember y fail tienen variantes de éxito y rechazo declaradas. |
+
+Las razones de los riesgos residuales **alcanzan** para exceptuar el alta de profesores: crea una cuenta exclusiva por correo y el perdedor no modifica la ganadora. También alcanza aceptar la ejecución manual sin corte en **local o staging**, manteniendo el requisito de ejecución acotada en producción.
+
+La justificación temporal de quince minutos alcanza **como diseño condicionado a la verificación obligatoria** de la versión y configuración efectivas de Auth y de la cancelación de sus escrituras. No equivale a haber verificado ya esa garantía. La espera de quince minutos también es una decisión válida; F2C-51 y F2C-52 señalan contradicciones en cómo se ofrece su recuperación.
+
+Mantengo las aceptaciones previas sobre cuentas huérfanas sin membresía, enumeración de staff, defensa de login directo y la excepción mínima de `session_alive`. Ninguna de ellas declara ni justifica las escrituras directas de credenciales de F2C-47.
+
+**Veredicto: necesita otra ronda.**
+
+### Qué se cambió
+
+Versión 6: trigger en auth.users que impide al estudiante cambiar contraseña o correo fuera de una reserva, con el caso en vuelo aceptado porque solo se perjudica a sí mismo (F2C-47); deleted final (F2C-48); primero getUserById y recién con 404 createUser (F2C-49); begin_access_cards toma las reservas en su transacción y devuelve busy (F2C-50, F2C-51); nextCardAt en list_group_accounts y others con outcome y retryAt (F2C-51); las tarjetas quedan en memoria mientras la página está abierta (F2C-52); authAdmin en la tabla de servicios (F2C-45).
