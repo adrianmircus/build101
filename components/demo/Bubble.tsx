@@ -9,9 +9,9 @@ const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), texta
 function Body({ text }: { text: string }) {
   return text.split(/\*(.+?)\*/).map((part, i) =>
     i % 2 === 1 ? (
-      <em key={i} className="font-semibold">
+      <strong key={i} className="font-semibold">
         {part}
-      </em>
+      </strong>
     ) : (
       <Fragment key={i}>{part}</Fragment>
     ),
