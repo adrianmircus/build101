@@ -144,3 +144,45 @@ El estado de los anteriores queda así:
 **F2-15 — escenario restante:** el correo apunta a `localhost:3000`, mientras Playwright escucha en 3100. [staff-auth.spec.ts:102](/C:/Users/adrim/build101/.claude/worktrees/fase-1/tests/e2e/staff-auth.spec.ts:102) comprueba que el origen coincide con `site_url`, pero luego navega solamente a `pathname + hash`. Sigue pasando aunque el enlace recibido no abra la aplicación probada. Alinearía ambos orígenes y navegaría a `link.href` completo.
 
 Pasaron ambos chequeos de TypeScript sin emitir archivos. Las sondas en memoria confirmaron la sustitución por `main-content`, la identidad nueva al editar una fila incierta, la lectura única del QR y la coherencia de configuración de correo. No ejecuté Playwright, pgTAP, integración ni build; la demo y la impresión no tienen validación nueva de navegador en esta ronda. No modifiqué archivos.
+
+## Ronda 4
+
+1. **F2-20 — Alta — Los formularios de invitación conservan contraseñas al navegar.**  
+   **Dónde:** [InviteSignIn.tsx:33](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/InviteSignIn.tsx:33), [InviteNewAccount.tsx:47](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/InviteNewAccount.tsx:47).  
+   **Escenario:** un profe escribe su contraseña para aceptar una invitación, sigue «Olvidé mi contraseña» y vuelve atrás. Activity conserva el formulario y el estado de «Mostrar». Estos formularios no tienen la limpieza incorporada a `StaffLoginForm` y `NewPasswordForm`; otra persona puede recuperar y revelar lo escrito. En el alta ocurre siguiendo «términos» o «privacidad».  
+   **Cambiaría:** aplicar la misma limpieza al desactivar ambos formularios, reiniciar visibilidad y estado pendiente, y cubrir ida y vuelta mediante navegación interna.
+
+2. **F2-21 — Media — Cambiar de QR no invalida un login pendiente de la tarjeta anterior.**  
+   **Dónde:** [CardLanding.tsx:38](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/CardLanding.tsx:38), [useStudentLogin.ts:25](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/student/useStudentLogin.ts:25).  
+   **Escenario:** se envía el login correcto de A y, mientras espera, se abre `/t#B`. El flujo desmonta el formulario de A y comienza a leer B. Si después completa el login de A, su continuación todavía ejecuta `router.push("/estudiante")`: termina entrando como A después de haber cambiado de tarjeta. La generación nueva protege las respuestas de `readCard`, pero no el login. Confirmé la navegación tardía con el hook real y dependencias simuladas.  
+   **Cambiaría:** coordinar el cambio de tarjeta con el login en curso, incluyendo sus cookies; no habilitar el flujo de B mientras una respuesta de A pueda establecer la sesión. Agregar un recorrido con esa respuesta demorada.
+
+3. **F2-22 — Media — Un enlace malformado puede dejar activa la recuperación de otra cuenta.**  
+   **Dónde:** [fragmentToken.ts:18](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/fragmentToken.ts:18), [listener:35](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/auth/staff/fragmentToken.ts:35).  
+   **Escenario:** está abierto el formulario de recuperación de A y se pega en esa pestaña un enlace de B con el token truncado. `isTokenShaped` lo considera un ancla y el listener lo ignora: permanecen el formulario, el `userId` y la sesión de A. Guardar cambia la contraseña de A. La sonda confirmó que un `pkce_` válido de A permanece retenido después de recibir uno truncado de B.  
+   **Cambiaría:** distinguir las anclas internas conocidas, como `#main-content`, de un token inválido. Un enlace inválido nuevo debe invalidar el contexto anterior y mostrar el error. El soporte de `pkce_` no presenta por sí mismo un problema de longitud en el borde servidor.
+
+**F2-13 sigue parcialmente abierto.**  
+En [useCreateFlow.ts:45](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/useCreateFlow.ts:45), perder la respuesta completa de la Server Action solo muestra un aviso: no marca las filas como inciertas. Entonces [editRow:44](C:/Users/adrim/build101/.claude/worktrees/fase-1/components/institution/createFlowState.ts:44) permite cambiar el usuario y asigna otro `slot`; también permite volver a los nombres.
+
+Lo reproduje con los pasos y el reducer reales, simulando una confirmación cuya respuesta se pierde: `flags` quedó vacío y el reintento editado envió el mismo `opKey` con otro `slot`, creando dos estudiantes en el servidor simulado. Marcaría las filas enviadas como pendientes de resolución antes del pedido y conservaría esa condición ante una respuesta incierta. También bloquearía su edición mientras el pedido está en curso.
+
+El estado de los anteriores queda así:
+
+| Hallazgos | Estado |
+|---|---|
+| F2-1 y F2-2 | Cerrados por exclusión explícita del modelo. |
+| F2-3, F2-5, F2-6, F2-10, F2-11, F2-12, F2-14 y F2-16 | Correcciones conservadas; sin regresiones identificadas. |
+| F2-4 | Ahora incluye E2E de navegación interna y regreso sin contraseñas ni reimpresión. |
+| F2-7 | Ahora incluye PDF desde la ruta completa para cuatro y cinco tarjetas, verificando una y dos páginas. |
+| F2-8 | Recorridos activos e infraestructura prevista en CI. |
+| F2-9 | Pendiente aceptado para T1.0, no bloqueante. |
+| F2-13 | **Parcialmente abierto**, escenario anterior. |
+| F2-15 | Corregido: puerto predeterminado 3000 y navegación a `link.href` completo. Con otro puerto, ese caso se omite explícitamente. |
+| F2-17 | Corregido en los logins originales; F2-20 señala los formularios de invitación omitidos. |
+| F2-18 | Corregido para «Saltar al contenido»; F2-22 describe el problema nuevo con fragmentos inválidos. |
+| F2-19 | Corregido el reemplazo A→B sin login pendiente; queda la carrera F2-21. |
+
+Pasaron ambos chequeos de TypeScript sin emitir archivos. No ejecuté build, pgTAP, integración ni Playwright: la demo guiada, accesibilidad e impresión tienen revisión de código, pero no validación nueva de navegador en esta ronda.
+
+**Veredicto: necesita otra ronda.**
