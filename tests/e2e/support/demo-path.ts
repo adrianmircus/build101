@@ -1,12 +1,10 @@
 import type { Page } from "@playwright/test";
-import { bubble, expectStep } from "./tour";
+import { bubble, expectStep, tapInBubble } from "./tour";
 import { expect } from "./fixtures";
 
-// "Seguir" with Enter: the bubble can be off screen on tall steps (a known gap), and these helpers are only the way
-// to get to the step a test is about.
+// «Seguir» tapped like a mouse or a finger would: these helpers are only the way to get to the step a test is about.
 async function seguir(page: Page, title: string) {
-  await expectStep(page, title);
-  await bubble(page, title).getByRole("button", { name: "Seguir" }).press("Enter");
+  await tapInBubble(page, await expectStep(page, title), "Seguir");
 }
 
 // Enters the demo and goes to the first step that needs a page change: «Cada estudiante, su perfil».
